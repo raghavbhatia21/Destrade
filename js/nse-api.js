@@ -1,0 +1,1375 @@
+/**
+ * Destrade Pro — NSE API Layer (v6)
+ * OI Clock, PCR, Volume Shockers, 52W Scanners, Live Search, Smart Caching
+ */
+
+class NSEApi {
+    constructor() {
+        const host = window.location.hostname;
+        const isLocal = host === 'localhost' ||
+            host === '127.0.0.1' ||
+            window.location.protocol === 'file:' ||
+            /^192\.168\./.test(host) ||
+            /^10\./.test(host) ||
+            /^172\.(1[6-9]|2[0-9]|3[01])\./.test(host) ||
+            host.endsWith('.local');
+        
+        // Dynamically resolve proxy host to support local network devices (like Android/iOS phones on the same Wi-Fi)
+        this.proxyUrl = isLocal ? `${window.location.protocol}//${window.location.host}` : '';
+        this._cache = new Map();
+        this._cacheTTL = 800; // 0.8s cache TTL for 1s real-time streaming
+        this.fnoSymbols = []; // Now populated dynamically
+        this.proxyDetails = { status: 'Checking...', lastError: null };
+
+        this.fnoSymbols = [];
+        this.dynamicSlugMap = new Map();
+        this.config = {
+            source: 'groww', // 'nse' or 'groww'
+            preferGrowwForOptionChain: true
+        };
+    }
+
+    async checkProxy() {
+        try {
+            const res = await fetch(`${this.proxyUrl}/api/health`, { signal: AbortSignal.timeout(2500) });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                this.proxyDetails = {
+                    status: 'Connected',
+                    session: data.session || 'unknown',
+                    cached: data.cached || 0,
+                    lastError: null
+                };
+                return true;
+            }
+        } catch (e) {}
+
+        // Resilient fallback for direct browser / mobile mode
+        this.proxyDetails = { status: 'Direct Stream (Groww)', session: 'direct', cached: 0, lastError: null };
+        this.config.source = 'groww';
+        return true;
+    }
+
+    async _fetch(endpoint, retries = 2, backoff = 1000) {
+        const isOC = endpoint.includes('option-chain') || endpoint.includes('quote-equity');
+        const effectiveRetries = isOC ? 0 : retries;
+
+        // 1. Client-side cache check
+        const cached = this._cache.get(endpoint);
+        if (cached && Date.now() - cached.t < this._cacheTTL) {
+            return cached.d;
+        }
+
+        // 2. In-flight request deduplication
+        if (!this._inFlight) this._inFlight = new Map();
+        if (this._inFlight.has(endpoint)) {
+            return this._inFlight.get(endpoint);
+        }
+
+        // 3. Perform the actual fetch
+        const fetchPromise = (async () => {
+            const clean = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
+            const connector = clean.includes('?') ? '&' : '?';
+            const bustedEndpoint = `${clean}${connector}_t=${Date.now()}`;
+            const url = this.proxyUrl ? `${this.proxyUrl}${bustedEndpoint}` : bustedEndpoint;
+
+            try {
+                const res = await fetch(url, {
+                    cache: 'no-store',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Referer': 'https://www.nseindia.com/'
+                    },
+                    signal: AbortSignal.timeout(isOC ? 4000 : 15 * 1000)
+                });
+
+                if (!res.ok) {
+                    if (res.status === 403 || res.status === 429 || res.status >= 500) {
+                        if (effectiveRetries > 0) {
+                            console.warn(`[API RETRY] ${url} Status: ${res.status}. Retrying in ${backoff}ms...`);
+                            await new Promise(r => setTimeout(r, backoff));
+                            return this._fetch(endpoint, effectiveRetries - 1, backoff * 2);
+                        }
+                    }
+                    if (!isOC) {
+                        console.error(`[API ERROR] ${url} Status: ${res.status}`);
+                    }
+                    this.proxyDetails.lastError = `Status ${res.status} on ${endpoint}`;
+                    return null;
+                }
+
+                const data = await res.json();
+                this._cache.set(endpoint, { d: data, t: Date.now() });
+                this.proxyDetails.lastError = null;
+                return data;
+            } catch (e) {
+                if (effectiveRetries > 0) {
+                    console.warn(`[API RETRY] ${url} Error: ${e.message}. Retrying in ${backoff}ms...`);
+                    await new Promise(r => setTimeout(r, backoff));
+                    return this._fetch(endpoint, effectiveRetries - 1, backoff * 2);
+                }
+                if (!isOC) console.warn(`⚠️ ${endpoint}: ${e.message}`);
+                this.proxyDetails.lastError = e.message;
+                return null;
+            } finally {
+                this._inFlight.delete(endpoint);
+            }
+        })();
+
+        this._inFlight.set(endpoint, fetchPromise);
+        return fetchPromise;
+    }
+
+    async _fetchGroww(path) {
+        const endpoint = `/groww${path.startsWith('/') ? '' : '/'}${path}`;
+        return this._fetch(endpoint);
+    }
+
+    // ===== GROWW LIVE PRICE (Index + Stock) =====
+    async getLivePriceGroww(symbol = 'NIFTY') {
+        const up = symbol.toUpperCase();
+        const indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
+        const isIndex = indices.includes(up);
+
+        let ticker = up;
+        let endpoint;
+
+        if (isIndex) {
+            // Indices: use tr_live_indices
+            endpoint = `/v1/api/stocks_data/v1/tr_live_indices/exchange/NSE/segment/CASH/${ticker}/latest`;
+        } else {
+            // Stocks: use tr_live_prices with NSE ticker directly
+            endpoint = `/v1/api/stocks_data/v1/tr_live_prices/exchange/NSE/segment/CASH/${ticker}/latest`;
+        }
+
+        const d = await this._fetchGroww(endpoint);
+
+        if (isIndex) {
+            return d?.value || d?.lastPrice || d?.ltp || 0;
+        } else {
+            return d?.ltp || d?.lastPrice || d?.value || 0;
+        }
+    }
+
+    // ===== MARKET STATUS =====
+    async getMarketStatus() {
+        if (!this.proxyUrl) {
+            // Netlify fallback: estimate market status locally to prevent WAF 403
+            const now = new Date();
+            const day = now.getDay();
+            const hours = now.getHours();
+            const minutes = now.getMinutes();
+            const timeVal = hours * 100 + minutes;
+            
+            let status = 'Closed';
+            if (day >= 1 && day <= 5) {
+                if (timeVal >= 915 && timeVal <= 1530) {
+                    status = 'Open';
+                }
+            }
+            return { marketStatus: status, market: 'Capital Market' };
+        }
+        const d = await this._fetch('/marketStatus');
+        return d?.marketState?.[0] || { marketStatus: 'Closed', market: 'Capital Market' };
+    }
+
+    // ===== ALL INDICES =====
+    async getAllIndices() {
+        if (!this.proxyUrl) {
+            // Netlify fallback: query Groww for F&O indices to bypass WAF 403
+            const symbols = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
+            try {
+                const results = await Promise.all(symbols.map(async (sym) => {
+                    const ep = `/v1/api/stocks_data/v1/tr_live_indices/exchange/NSE/segment/CASH/${sym}/latest`;
+                    const d = await this._fetchGroww(ep);
+                    if (!d) return null;
+                    return {
+                        index: sym === 'NIFTY' ? 'NIFTY 50' : sym === 'BANKNIFTY' ? 'NIFTY BANK' : sym === 'FINNIFTY' ? 'NIFTY FINANCIAL SERVICES' : sym,
+                        last: d.value || d.lastPrice || 0,
+                        change: d.dayChange || 0,
+                        pChange: d.dayChangePerc || 0,
+                        open: d.open || 0,
+                        high: d.high || 0,
+                        low: d.low || 0,
+                        previousClose: d.close || 0
+                    };
+                }));
+                return results.filter(Boolean);
+            } catch (e) {
+                console.warn("Failed to fetch indices from Groww:", e.message);
+                return [];
+            }
+        }
+        
+        const d = await this._fetch('/allIndices');
+        if (!d?.data) return [];
+        return d.data.map(i => ({
+            index: i.index, last: i.last || i.lastPrice || 0,
+            change: i.variation || 0, pChange: i.percentChange || i.pChange || 0,
+            open: i.open || 0, high: i.high || 0, low: i.low || 0, previousClose: i.previousClose || 0
+        }));
+    }
+
+    // ===== ROBUST STOCK DATA FETCH & MERGE =====
+    async _getRawStockDataAndOI() {
+        const growwGainersEp = '/v1/api/stocks_fo_data/v1/live-aggregations/explore/market_trends/instrument/STOCKS?exchange=NSE&interval=ONE_DAY&limit=300&marketTrendFactor=PRICE&type=GAINERS';
+        const growwLosersEp = '/v1/api/stocks_fo_data/v1/live-aggregations/explore/market_trends/instrument/STOCKS?exchange=NSE&interval=ONE_DAY&limit=300&marketTrendFactor=PRICE&type=LOSERS';
+
+        const runNse = !!this.proxyUrl || !!window.Capacitor;
+
+        const [growwGainers, growwLosers, gainersData, loosersData, oiData, underData] = await Promise.all([
+            this._fetchGroww(growwGainersEp).catch(() => null),
+            this._fetchGroww(growwLosersEp).catch(() => null),
+            runNse ? this._fetch('/live-analysis-variations?index=gainers').catch(() => null) : Promise.resolve(null),
+            runNse ? this._fetch('/live-analysis-variations?index=loosers').catch(() => null) : Promise.resolve(null),
+            runNse ? this._fetch('/live-analysis-oi-spurts-underlyings').catch(() => null) : Promise.resolve(null),
+            runNse ? this._fetch('/underlying-information').catch(() => null) : Promise.resolve(null)
+        ]);
+
+        const stockMap = new Map();
+        const discovered = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
+
+        // 1. Populate from Groww Market Trends (Pure F&O Gainers & Losers)
+        const growwList = [
+            ...(growwGainers?.companyDetailsList || []),
+            ...(growwLosers?.companyDetailsList || [])
+        ];
+
+        growwList.forEach(item => {
+            const sym = item.identifier || item.symbol;
+            if (sym && sym !== 'NIFTY 50' && sym !== 'NIFTY BANK') {
+                if (item.searchId) {
+                    this.dynamicSlugMap.set(sym.toUpperCase(), item.searchId);
+                }
+                stockMap.set(sym, {
+                    symbol: sym,
+                    lastPrice: item.livePriceDetailsDto?.ltp || 0,
+                    pChange: item.livePriceDetailsDto?.dayChangePerc || 0,
+                    totalTradedVolume: item.livePriceDetailsDto?.volume || 0,
+                    yearHigh: 0,
+                    yearLow: 0
+                });
+                if (!discovered.includes(sym)) discovered.push(sym);
+            }
+        });
+
+        // 2. Merge F&O variations (FOSec only, not cash market allSec)
+        const foVariations = [
+            ...(gainersData?.FOSec?.data || []),
+            ...(loosersData?.FOSec?.data || [])
+        ];
+
+        foVariations.forEach(item => {
+            if (item.symbol && item.symbol !== 'NIFTY 50' && item.symbol !== 'NIFTY BANK') {
+                const existing = stockMap.get(item.symbol) || {};
+                stockMap.set(item.symbol, {
+                    symbol: item.symbol,
+                    lastPrice: existing.lastPrice || item.ltp || item.open_price || 0,
+                    pChange: existing.pChange !== undefined ? existing.pChange : (item.perChange || 0),
+                    totalTradedVolume: existing.totalTradedVolume || item.trade_quantity || 0,
+                    yearHigh: existing.yearHigh || 0,
+                    yearLow: existing.yearLow || 0
+                });
+                if (!discovered.includes(item.symbol)) discovered.push(item.symbol);
+            }
+        });
+
+        // 3. Add NSE Underlying List for complete F&O contract discovery
+        if (underData?.data?.UnderlyingList) {
+            underData.data.UnderlyingList.forEach(u => {
+                if (u.symbol && !discovered.includes(u.symbol)) discovered.push(u.symbol);
+            });
+        }
+
+        // 4. Resilient Fallback: Batch-fetch live prices for top F&O stocks if stockMap is small
+        if (stockMap.size < 5) {
+            const fallbackSymbols = ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK', 'SBIN', 'BHARTIARTL', 'AXISBANK', 'KOTAKBANK', 'LT', 'ITC', 'HINDUNILVR', 'BAJFINANCE', 'MARUTI', 'SUNPHARMA', 'TATASTEEL', 'NTPC', 'POWERGRID'];
+            await Promise.all(fallbackSymbols.map(async sym => {
+                try {
+                    const q = await this.getLiveQuoteGroww(sym);
+                    if (q && q.lastPrice > 0) {
+                        stockMap.set(sym, {
+                            symbol: sym,
+                            lastPrice: q.lastPrice,
+                            pChange: q.pChange,
+                            totalTradedVolume: q.volume || 0,
+                            yearHigh: q.yearHigh || 0,
+                            yearLow: q.yearLow || 0
+                        });
+                        if (!discovered.includes(sym)) discovered.push(sym);
+                    }
+                } catch (e) {}
+            }));
+        }
+
+        if (discovered.length > 10) {
+            if (JSON.stringify(discovered) !== JSON.stringify(this.fnoSymbols)) {
+                this.fnoSymbols = discovered;
+                console.log(`✨ Discovered ${this.fnoSymbols.length} Pure F&O Symbols`);
+            }
+        }
+
+        return {
+            stocks: Array.from(stockMap.values()),
+            oiData: oiData?.data || []
+        };
+    }
+
+    // ===== SCREENER & ANALYSIS DATA =====
+    async getScreenerData() {
+        const { stocks, oiData } = await this._getRawStockDataAndOI();
+
+        if (!stocks || stocks.length === 0) {
+            return { longBuildup: [], shortBuildup: [], high52w: [], low52w: [], volumeShockers: [], priceSurges: [], all: [] };
+        }
+
+        const oiMap = new Map();
+        if (oiData) {
+            oiData.forEach(item => oiMap.set(item.symbol, item));
+        }
+
+        const all = stocks.map(s => {
+            const pc = s.pChange || 0;
+            const oi = oiMap.get(s.symbol);
+            const oic = oi ? (oi.pChange || 0) : 0;
+            return {
+                symbol: s.symbol,
+                price: s.lastPrice || 0,
+                pChange: pc,
+                oiChange: oic,
+                oiValue: oi ? (oi.latestOI || 0) : 0,
+                volume: s.totalTradedVolume || 0,
+                tag: this._deriveBuildup(pc, oic),
+                yearHigh: s.yearHigh || 0,
+                yearLow: s.yearLow || 0
+            };
+        });
+
+        return {
+            longBuildup: all.filter(s => s.tag === 'Long Buildup' || (s.pChange > 0 && s.price > 0)).sort((a, b) => b.pChange - a.pChange),
+            shortBuildup: all.filter(s => s.tag === 'Short Buildup' || (s.pChange < 0 && s.price > 0)).sort((a, b) => a.pChange - b.pChange),
+            high52w: all.filter(s => s.yearHigh > 0 && s.price >= (s.yearHigh * 0.98)).sort((a, b) => b.pChange - a.pChange),
+            low52w: all.filter(s => s.yearLow > 0 && s.price <= (s.yearLow * 1.02)).sort((a, b) => a.pChange - b.pChange),
+            volShockers: [...all].sort((a, b) => b.volume - a.volume).slice(0, 15),
+            priceSurges: [...all].sort((a, b) => b.pChange - a.pChange).slice(0, 15),
+            all: all
+        };
+    }
+
+    _deriveBuildup(priceChange, oiChange) {
+        if (oiChange > 0) {
+            return priceChange >= 0 ? 'Long Buildup' : 'Short Buildup';
+        } else if (oiChange < 0) {
+            return priceChange >= 0 ? 'Short Covering' : 'Long Unwinding';
+        }
+        
+        // Smart fallback when live OI spurt API is offline/closed:
+        if (priceChange > 2.0) return 'Long Buildup';
+        if (priceChange < -2.0) return 'Short Buildup';
+        if (priceChange > 0) return 'Short Covering';
+        if (priceChange < 0) return 'Long Unwinding';
+        return 'Neutral';
+    }
+
+    // ===== MARKET PULSE =====
+    async getMarketPulse() {
+        const { stocks, oiData } = await this._getRawStockDataAndOI();
+
+        if (!stocks || stocks.length === 0) {
+            return { trend: 'NEUTRAL', advances: 0, declines: 0, unchanged: 0, ratio: '1.00', newHighs: 0, newLows: 0, volShockers: 0, longBuildups: 0, shortBuildups: 0 };
+        }
+
+        const oiMap = new Map();
+        if (oiData) {
+            oiData.forEach(item => oiMap.set(item.symbol, item));
+        }
+
+        const adv = stocks.filter(s => (s.pChange || 0) > 0).length;
+        const dec = stocks.filter(s => (s.pChange || 0) < 0).length;
+        const unc = stocks.length - adv - dec;
+
+        const avgVol = stocks.reduce((a, b) => a + (b.totalTradedVolume || 0), 0) / (stocks.length || 1);
+        const volShockers = stocks.filter(s => (s.totalTradedVolume || 0) > avgVol * 1.8).length;
+
+        const enriched = stocks.map(s => {
+            const oi = oiMap.get(s.symbol);
+            return {
+                ...s,
+                oiChange: oi ? (oi.avgInOI || 0) : 0
+            };
+        });
+
+        const longB = enriched.filter(s => (s.pChange || 0) > 0 && (s.oiChange || 0) > 0).length;
+        const shortB = enriched.filter(s => (s.pChange || 0) < 0 && (s.oiChange || 0) > 0).length;
+
+        return {
+            trend: adv > dec * 1.2 ? 'BULLISH' : dec > adv * 1.2 ? 'BEARISH' : 'NEUTRAL',
+            advances: adv, declines: dec, unchanged: unc,
+            ratio: (adv / (dec || 1)).toFixed(2),
+            newHighs: stocks.filter(s => (s.yearHigh || 0) > 0 && (s.lastPrice || 0) >= ((s.yearHigh || 0) * 0.98)).length,
+            newLows: stocks.filter(s => (s.yearLow || 0) > 0 && (s.lastPrice || 0) <= ((s.yearLow || 0) * 1.02)).length,
+            volShockers,
+            longBuildups: longB,
+            shortBuildups: shortB
+        };
+    }
+
+    // ===== SECTORS =====
+    async getSectors() {
+        const d = await this._fetch('/allIndices');
+        if (d?.data && d.data.length > 0) {
+            const names = ['NIFTY BANK', 'NIFTY IT', 'NIFTY AUTO', 'NIFTY PHARMA', 'NIFTY METAL', 'NIFTY FMCG', 'NIFTY REALTY', 'NIFTY ENERGY', 'NIFTY MEDIA'];
+            return d.data.filter(i => names.includes(i.index)).map(s => ({
+                name: s.index, label: s.index.replace('NIFTY ', ''),
+                price: s.last || s.lastPrice || 0, change: s.percentChange || s.pChange || 0,
+                open: s.open || 0, high: s.high || 0, low: s.low || 0
+            }));
+        }
+
+        // Resilient fallback when /allIndices is unreachable
+        const { stocks } = await this._getRawStockDataAndOI();
+        if (!stocks || stocks.length === 0) return [];
+
+        const mapping = {
+            'BANK': ['HDFCBANK', 'ICICIBANK', 'SBIN', 'KOTAKBANK', 'AXISBANK'],
+            'IT': ['TCS', 'INFY', 'HCLTECH', 'WIPRO', 'TECHM'],
+            'AUTO': ['MARUTI', 'TATAMOTORS', 'M&M', 'BAJAJ-AUTO'],
+            'PHARMA': ['SUNPHARMA', 'CIPLA', 'DRREDDY', 'DIVISLAB'],
+            'METAL': ['TATASTEEL', 'HINDALCO', 'JSWSTEEL', 'COALINDIA'],
+            'FMCG': ['HINDUNILVR', 'ITC', 'NESTLEIND', 'BRITANNIA'],
+            'REALTY': ['DLF', 'GODREJPROP', 'OBEROIRLTY'],
+            'ENERGY': ['RELIANCE', 'ONGC', 'NTPC', 'POWERGRID'],
+            'MEDIA': ['ZEEL', 'PVRINOX', 'SUNTV']
+        };
+
+        const stockMap = new Map(stocks.map(s => [s.symbol, s]));
+        const sectors = [];
+
+        for (const [secLabel, syms] of Object.entries(mapping)) {
+            const matched = syms.map(s => stockMap.get(s)).filter(Boolean);
+            if (matched.length > 0) {
+                const avgChg = matched.reduce((a, b) => a + (b.pChange || 0), 0) / matched.length;
+                const avgPrice = matched.reduce((a, b) => a + (b.price || 0), 0) / matched.length;
+                sectors.push({
+                    name: `NIFTY ${secLabel}`,
+                    label: secLabel,
+                    price: Math.round(avgPrice),
+                    change: avgChg,
+                    open: Math.round(avgPrice),
+                    high: Math.round(avgPrice * 1.01),
+                    low: Math.round(avgPrice * 0.99)
+                });
+            }
+        }
+        return sectors;
+    }
+
+    async getLiveQuoteGroww(symbol = 'NIFTY') {
+        const up = symbol.toUpperCase();
+        const indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
+        const isIndex = indices.includes(up);
+
+        let ticker = up;
+        let endpoint;
+
+        if (isIndex) {
+            endpoint = `/v1/api/stocks_data/v1/tr_live_indices/exchange/NSE/segment/CASH/${ticker}/latest`;
+        } else {
+            endpoint = `/v1/api/stocks_data/v1/tr_live_prices/exchange/NSE/segment/CASH/${ticker}/latest`;
+        }
+
+        const d = await this._fetchGroww(endpoint);
+        if (!d) return null;
+
+        return {
+            lastPrice: d.ltp || d.value || d.lastPrice || 0,
+            pChange: d.dayChangePerc || 0,
+            change: d.dayChange || 0,
+            open: d.open || 0,
+            high: d.high || 0,
+            low: d.low || 0,
+            previousClose: d.close || 0,
+            yearHigh: d.yearHighPrice || 0,
+            yearLow: d.yearLowPrice || 0,
+            volume: d.volume || 0
+        };
+    }
+
+    // ===== QUOTE =====
+    async getQuote(symbol) {
+        const up = symbol.toUpperCase();
+        const isIdx = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'].some(k => up.includes(k));
+        if (isIdx) {
+            const indices = await this.getAllIndices();
+            const clean = up.includes('BANK') ? 'NIFTY BANK' : up.includes('50') || up === 'NIFTY' ? 'NIFTY 50' : up;
+            const found = indices?.find(i => i.index === clean || i.index === up);
+            if (found && found.last > 0) {
+                return { lastPrice: found.last, pChange: found.pChange, open: found.open, high: found.high, low: found.low, previousClose: found.previousClose };
+            }
+        }
+        return await this.getLiveQuoteGroww(up);
+    }
+
+    // ===== OPTION CHAIN (Discovery + v3 Fetch) =====
+    async getOptionChain(symbol = 'NIFTY') {
+        let clean = symbol.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY');
+        const isIdx = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'].includes(clean);
+
+        try {
+            // Step 1: Discover Expiry Dates
+            console.log(`[API] Discovery: Fetching contract-info for ${clean}`);
+            const contract = await this._fetch(`/option-chain-contract-info?symbol=${clean}`);
+            const expiries = contract?.expiryDates || [];
+
+            if (expiries.length > 0) {
+                const nearest = expiries[0];
+                const type = isIdx ? 'Indices' : 'Equities';
+                const v3ep = `/option-chain-v3?type=${type}&symbol=${clean}&expiry=${nearest}`;
+
+                console.log(`[API] Discovery Success: Nearest Expiry ${nearest}. Fetching v3...`);
+                const v3 = await this._fetch(v3ep);
+
+                // Robust normalization for v3 structure
+                let rows = v3?.records?.data || v3?.filtered?.data || v3?.data || [];
+                if (rows.length > 0) {
+                    // Multi-layer fallback for underlying price
+                    let uv = v3.underlyingValue ||
+                        v3.records?.underlyingValue ||
+                        v3.filtered?.underlyingValue ||
+                        v3.metadata?.lastPrice ||
+                        rows[0]?.CE?.underlyingValue ||
+                        rows[0]?.PE?.underlyingValue || 0;
+
+                    if (uv === 0) {
+                        const q = await this.getQuote(clean);
+                        if (q) uv = q.lastPrice;
+                    }
+
+                    return {
+                        records: {
+                            data: rows,
+                            expiryDates: v3?.records?.expiryDates || v3?.filtered?.expiryDates || v3?.expiryDates || [nearest],
+                            underlyingValue: uv,
+                            timestamp: v3.timestamp || v3?.records?.timestamp || new Date().toLocaleTimeString()
+                        }
+                    };
+                }
+            }
+        } catch (e) {
+            console.warn(`[API] Discovery Step Failed for ${clean}:`, e.message);
+        }
+
+        // Fallback sequence if Discovery/v3 fails
+        const legacyCandidates = [
+            isIdx ? `/option-chain-indices?symbol=${clean}` : `/option-chain-equities?symbol=${encodeURIComponent(clean)}`,
+            `/option-chain-v3?type=${isIdx ? 'Indices' : 'Equities'}&symbol=${clean}`, // Try v3 without expiry as last resort
+            `/json/option-chain/option-chain-v2.json`
+        ];
+
+        for (const ep of legacyCandidates) {
+            console.log(`[API] Fallback: Attempting Legacy Source: ${ep}`);
+            const d = await this._fetch(ep);
+            if (d?.records?.data?.length > 0) return d;
+            if (d?.filtered?.data?.length > 0) {
+                return {
+                    records: {
+                        data: d.filtered.data,
+                        expiryDates: d.records?.expiryDates || d.filtered?.expiryDates || [],
+                        underlyingValue: d.records?.underlyingValue || d.filtered?.underlyingValue || 0
+                    }
+                };
+            }
+        }
+
+        return null;
+    }
+
+    // ===== OI CLOCK & PCR =====
+    async getOIClock(symbol = 'NIFTY', expiryDate = '') {
+        let d;
+        const cleanSym = symbol.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
+
+        if (this.config.preferGrowwForOptionChain && typeof this.getOptionChainGroww === 'function') {
+            d = await this.getOptionChainGroww(cleanSym, expiryDate);
+        }
+
+        if (!d) {
+            d = await this.getOptionChain(cleanSym);
+        }
+
+        if (!d?.records?.data) {
+            return null;
+        }
+
+        let totalCEOI = 0, totalPEOI = 0, totalCEChange = 0, totalPEChange = 0;
+        let maxCEOI = 0, maxPEOI = 0, maxCEStrike = 0, maxPEStrike = 0;
+
+        const rows = d.records.data;
+        if (!rows || rows.length === 0) return null;
+
+        for (const row of rows) {
+            const ceOI = row.CE?.openInterest || 0;
+            const peOI = row.PE?.openInterest || 0;
+            totalCEOI += ceOI; totalPEOI += peOI;
+            totalCEChange += (row.CE?.changeinOpenInterest || 0);
+            totalPEChange += (row.PE?.changeinOpenInterest || 0);
+            if (ceOI > maxCEOI) { maxCEOI = ceOI; maxCEStrike = row.strikePrice; }
+            if (peOI > maxPEOI) { maxPEOI = peOI; maxPEStrike = row.strikePrice; }
+        }
+
+        const pcr = totalCEOI > 0 ? (totalPEOI / totalCEOI).toFixed(2) : '0.00';
+        const sentiment = pcr > 1.3 ? 'BULLISH' : pcr < 0.7 ? 'BEARISH' : 'NEUTRAL';
+        const underlying = d.records.underlyingValue || 0;
+        // Show full data instead of slicing
+        const displayRows = rows;
+
+        const expiry = d.records.currentExpiry || (d.records.expiryDates || [])[0];
+        const daysToExpiry = expiry ? (new Date(expiry) - new Date()) / (1000 * 60 * 60 * 24) : 7;
+        const T = Math.max(0.001, daysToExpiry / 365);
+        const r = 0.10; // 10% Risk-free rate
+
+        // Enrich with Greeks and normalize fields
+        const enrichedData = displayRows.map(row => {
+            const ce = row.CE ? { ...row.CE } : null;
+            const pe = row.PE ? { ...row.PE } : null;
+
+            if (ce) {
+                // Normalize pChange (NSE uses pchange, Groww uses pChange)
+                ce.pChange = ce.pChange || ce.pchange || 0;
+            }
+            if (pe) {
+                pe.pChange = pe.pChange || pe.pchange || 0;
+            }
+
+            // Only calculate Greeks if not already provided by the API source
+            if (ce && ce.impliedVolatility && !ce.greeks) {
+                const g = this._calculateGreeks(underlying, row.strikePrice, T, r, ce.impliedVolatility / 100, 'CE');
+                ce.greeks = g;
+            }
+            if (pe && pe.impliedVolatility && !pe.greeks) {
+                const g = this._calculateGreeks(underlying, row.strikePrice, T, r, pe.impliedVolatility / 100, 'PE');
+                pe.greeks = g;
+            }
+            return { ...row, CE: ce, PE: pe };
+        });
+
+        // Max Pain calculation (High Precision)
+        const strikes = rows.map(r => r.strikePrice).filter((_, i) => i % 2 === 0); // sample every 2nd strike for better speed/accuracy balance
+        let minPain = Infinity, maxPainStrike = strikes[0];
+        for (const strike of strikes) {
+            let pain = 0;
+            for (const row of rows) {
+                const ceOI = row.CE?.openInterest || 0;
+                const peOI = row.PE?.openInterest || 0;
+                if (row.strikePrice < strike) pain += ceOI * (strike - row.strikePrice);
+                if (row.strikePrice > strike) pain += peOI * (row.strikePrice - strike);
+            }
+            if (pain < minPain) { minPain = pain; maxPainStrike = strike; }
+        }
+
+        return {
+            pcr, sentiment, underlying, totalCEOI, totalPEOI, totalCEChange, totalPEChange,
+            maxCEStrike, maxPEStrike, maxCEOI, maxPEOI, maxPainStrike,
+            expiryDates: d.records.expiryDates || [],
+            currentExpiry: d.records.currentExpiry || '',
+            lotSize: d.records.lotSize || 100,
+            timestamp: d.records.timestamp,
+            data: enrichedData
+        };
+    }
+
+    // ===== OPTION GREEKS (Black-Scholes) =====
+    _cnd(x) {
+        let a1 = 0.31938153, a2 = -0.356563782, a3 = 1.781477937, a4 = -1.821255978, a5 = 1.330274429;
+        let L = Math.abs(x), K = 1.0 / (1.0 + 0.2316419 * L);
+        let w = 1.0 - 1.0 / Math.sqrt(2 * Math.PI) * Math.exp(-L * L / 2) * (a1 * K + a2 * K * K + a3 * Math.pow(K, 3) + a4 * Math.pow(K, 4) + a5 * Math.pow(K, 5));
+        return x < 0 ? 1.0 - w : w;
+    }
+
+    _calculateGreeks(S, K, T, r, sigma, type) {
+        if (T <= 0 || sigma <= 0) return { delta: 0, gamma: 0, theta: 0, vega: 0 };
+        let d1 = (Math.log(S / K) + (r + sigma * sigma / 2) * T) / (sigma * Math.sqrt(T));
+        let d2 = d1 - sigma * Math.sqrt(T);
+        let nd1 = Math.exp(-d1 * d1 / 2) / Math.sqrt(2 * Math.PI);
+
+        let delta, theta;
+        if (type === 'CE') {
+            delta = this._cnd(d1);
+            theta = (-S * nd1 * sigma / (2 * Math.sqrt(T)) - r * K * Math.exp(-r * T) * this._cnd(d2)) / 365;
+        } else {
+            delta = this._cnd(d1) - 1;
+            theta = (-S * nd1 * sigma / (2 * Math.sqrt(T)) + r * K * Math.exp(-r * T) * this._cnd(-d2)) / 365;
+        }
+
+        let gamma = nd1 / (S * sigma * Math.sqrt(T));
+        let vega = S * Math.sqrt(T) * nd1 / 100;
+
+        return { delta: +delta.toFixed(3), gamma: +gamma.toFixed(4), theta: +theta.toFixed(2), vega: +vega.toFixed(3) };
+    }
+
+    // ===== SEARCH =====
+    searchSymbols(query) {
+        const q = query.toUpperCase();
+        return this.fnoSymbols.filter(s => s.includes(q)).slice(0, 8);
+    }
+
+    _getSimulatedOI(symbol) {
+        const spot = 24000 + (Math.random() - 0.5) * 200;
+        const strikeStep = symbol.includes('BANKNIFTY') ? 100 : 50;
+        const baseStrike = Math.round(spot / strikeStep) * strikeStep;
+
+        const data = [];
+        for (let i = -10; i <= 10; i++) {
+            const strike = baseStrike + (i * strikeStep);
+            const dist = Math.abs(strike - spot) / strikeStep;
+            const ceOI = Math.round(Math.exp(-dist / 5) * 50000);
+            const peOI = Math.round(Math.exp(-dist / 5) * 45000);
+
+            const ceP = Math.max(5, 500 - (strike - spot) * 0.5);
+            const peP = Math.max(5, 500 + (strike - spot) * 0.5);
+
+            data.push({
+                strikePrice: strike,
+                CE: {
+                    openInterest: ceOI, changeinOpenInterest: Math.round(ceOI * 0.1), lastPrice: ceP,
+                    pChange: 15.5 + (Math.random() * 20), // Simulated momentum
+                    greeks: this._calculateGreeks(spot, strike, 0.02, 0.1, 0.25, 'CE')
+                },
+                PE: {
+                    openInterest: peOI, changeinOpenInterest: Math.round(peOI * 0.08), lastPrice: peP,
+                    pChange: 12.2 + (Math.random() * 15), // Simulated momentum
+                    greeks: this._calculateGreeks(spot, strike, 0.02, 0.1, 0.25, 'PE')
+                }
+            });
+        }
+
+        const totalCEOI = data.reduce((s, r) => s + r.CE.openInterest, 0);
+        const totalPEOI = data.reduce((s, r) => s + r.PE.openInterest, 0);
+
+        return {
+            underlying: +spot.toFixed(2),
+            timestamp: new Date().toLocaleTimeString(),
+            totalCEOI, totalPEOI,
+            pcr: (totalPEOI / totalCEOI).toFixed(2),
+            maxPainStrike: baseStrike,
+            sentiment: (totalPEOI / totalCEOI) > 1.1 ? 'BULLISH' : (totalPEOI / totalCEOI) < 0.9 ? 'BEARISH' : 'NEUTRAL',
+            data
+        };
+    }
+
+    _getLotSize(symbol) {
+        const up = symbol.toUpperCase();
+        const mapping = {
+            "360ONE": 500, "ABB": 125, "ABCAPITAL": 3100, "ADANIENSOL": 675, "ADANIENT": 309,
+            "ADANIGREEN": 600, "ADANIPORTS": 475, "ADANIPOWER": 3550, "ALKEM": 125, "AMBER": 100,
+            "AMBUJACEM": 1050, "ANGELONE": 2500, "APLAPOLLO": 350, "APOLLOHOSP": 125, "ASHOKLEY": 5000,
+            "ASIANPAINT": 250, "ASTRAL": 425, "AUBANK": 1000, "AUROPHARMA": 550, "AXISBANK": 625,
+            "BAJAJ-AUTO": 75, "BAJAJFINSV": 250, "BAJAJHLDNG": 50, "BAJFINANCE": 750, "BANDHANBNK": 3600,
+            "BANKBARODA": 2925, "BANKINDIA": 5200, "BANKNIFTY": 30, "BDL": 350, "BEL": 1425,
+            "BHARATFORG": 500, "BHARTIARTL": 475, "BHEL": 2625, "BIOCON": 2500, "BLUESTARCO": 325,
+            "BOSCHLTD": 25, "BPCL": 1975, "BRITANNIA": 125, "BSE": 375, "CAMS": 750,
+            "CANBK": 6750, "CDSL": 475, "CGPOWER": 850, "CHOLAFIN": 625, "CIPLA": 375,
+            "COALINDIA": 1350, "COCHINSHIP": 400, "COFORGE": 375, "COLPAL": 225, "CONCOR": 1250,
+            "CROMPTON": 1800, "CUMMINSIND": 200, "DABUR": 1250, "DALBHARAT": 325, "DELHIVERY": 2075,
+            "DIVISLAB": 100, "DIXON": 50, "DLF": 825, "DMART": 150, "DRREDDY": 625,
+            "EICHERMOT": 100, "ETERNAL": 2425, "EXIDEIND": 1800, "FEDERALBNK": 5000, "FINNIFTY": 60,
+            "FORCEMOT": 25, "FORTIS": 775, "GAIL": 3150, "GLENMARK": 375, "GMRAIRPORT": 6975,
+            "GODFRYPHLP": 275, "GODREJCP": 500, "GODREJPROP": 275, "GRASIM": 250, "HAL": 150,
+            "HAVELLS": 500, "HCLTECH": 350, "HDFCAMC": 300, "HDFCBANK": 550, "HDFCLIFE": 1100,
+            "HEROMOTOCO": 150, "HINDALCO": 700, "HINDPETRO": 2025, "HINDUNILVR": 300, "HINDZINC": 1225,
+            "HUDCO": 2775, "HYUNDAI": 275, "ICICIBANK": 700, "ICICIGI": 325, "ICICIPRULI": 925,
+            "IDEA": 71475, "IDFCFIRSTB": 9275, "IEX": 3750, "INDHOTEL": 1000, "INDIANB": 1000,
+            "INDIGO": 150, "INDUSINDBK": 700, "INDUSTOWER": 1700, "INFY": 400, "INOXWIND": 3575,
+            "IOC": 4875, "IREDA": 3450, "IRFC": 4250, "ITC": 1600, "JINDALSTEL": 625,
+            "JIOFIN": 2350, "JSWENERGY": 1000, "JSWSTEEL": 675, "JUBLFOOD": 1250, "KALYANKJIL": 1175,
+            "KAYNES": 100, "KEI": 175, "KFINTECH": 500, "KOTAKBANK": 2000, "KPITTECH": 425,
+            "LAURUSLABS": 850, "LICHSGFIN": 1000, "LICI": 700, "LODHA": 450, "LT": 175,
+            "LTF": 2250, "LTM": 150, "LUPIN": 425, "M&M": 200, "MANAPPURAM": 3000,
+            "MANKIND": 225, "MARICO": 1200, "MARUTI": 50, "MAXHEALTH": 525, "MAZDOCK": 200,
+            "MCX": 625, "MFSL": 400, "MIDCPNIFTY": 120, "MOTHERSON": 6150, "MOTILALOFS": 775,
+            "MPHASIS": 275, "MUTHOOTFIN": 275, "NAM-INDIA": 625, "NATIONALUM": 3750, "NAUKRI": 375,
+            "NBCC": 6500, "NESTLEIND": 500, "NHPC": 6400, "NIFTY": 65, "NMDC": 6750,
+            "NTPC": 1500, "NUVAMA": 500, "NYKAA": 3125, "OBEROIRLTY": 350, "OFSS": 75,
+            "OIL": 1400, "ONGC": 2250, "PAGEIND": 15, "PATANJALI": 900, "PAYTM": 725,
+            "PERSISTENT": 100, "PETRONET": 1900, "PFC": 1300, "PGEL": 950, "PHOENIXLTD": 350,
+            "PIDILITIND": 500, "PIIND": 175, "PNB": 8000, "PNBHOUSING": 650, "POLICYBZR": 350,
+            "POLYCAB": 125, "POWERGRID": 1900, "POWERINDIA": 50, "PPLPHARMA": 2625, "PREMIERENE": 575,
+            "PRESTIGE": 450, "RBLBANK": 3175, "RECLTD": 1400, "RELIANCE": 500, "RVNL": 1525,
+            "SAIL": 4700, "SAMMAANCAP": 4300, "SBICARD": 800, "SBILIFE": 375, "SBIN": 750,
+            "SHREECEM": 25, "SHRIRAMFIN": 825, "SIEMENS": 175, "SOLARINDS": 50, "SONACOMS": 1225,
+            "SRF": 200, "SUNPHARMA": 350, "SUPREMEIND": 175, "SUZLON": 9025, "SWIGGY": 1300,
+            "TATACONSUM": 550, "TATAELXSI": 100, "TATAPOWER": 1450, "TATASTEEL": 5500, "TATATECH": 800,
+            "TCS": 175, "TECHM": 600, "TIINDIA": 200, "TITAN": 175, "TMPV": 800,
+            "TORNTPHARM": 250, "TORNTPOWER": 425, "TRENT": 100, "TVSMOTOR": 175, "ULTRACEMCO": 50,
+            "UNIONBANK": 4425, "UNITDSPR": 400, "UNOMINDA": 550, "UPL": 1355, "VBL": 1125,
+            "VEDL": 1150, "VMM": 4850, "VOLTAS": 375, "WAAREEENER": 175, "WIPRO": 3000,
+            "YESBANK": 31100, "ZYDUSLIFE": 900, "NIFTYNXT50": 25
+        };
+
+        // Exact match check
+        if (mapping[up]) return mapping[up];
+
+        // Logical prefix check (for symbols with suffixes or indices)
+        for (const [k, v] of Object.entries(mapping)) {
+            if (up.includes(k)) return v;
+        }
+        return 100; // Final safe default
+    }
+
+    // ===== TRADE ADVISOR (AI-Ready Quantitative Logic) =====
+    getMarketAnalysisAndRecommendation(data, symbol) {
+        if (!data || !data.data || data.data.length === 0) return null;
+
+        const underlying = parseFloat(data.underlying || 0);
+        const pcr = parseFloat(data.pcr) || 1.0;
+        const rows = data.data;
+
+        // 1. Calculate Core OI Levels
+        let strongSupport = 0, maxPEOI = 0;
+        let strongResistance = 0, maxCEOI = 0;
+        let supportBuilding = 0, maxPEOIChange = -Infinity;
+        let resistanceBuilding = 0, maxCEOIChange = -Infinity;
+        let totalPEOIChange = 0;
+        let totalCEOIChange = 0;
+
+        let strikeInterval = 50;
+        if (rows.length > 1) {
+            const diffs = [];
+            for (let i = 1; i < rows.length; i++) {
+                const diff = Math.abs(rows[i].strikePrice - rows[i-1].strikePrice);
+                if (diff > 0) diffs.push(diff);
+            }
+            if (diffs.length > 0) strikeInterval = Math.min(...diffs);
+        }
+
+        for (const row of rows) {
+            const strike = row.strikePrice;
+            const ce = row.CE || {};
+            const pe = row.PE || {};
+
+            const peOI = pe.openInterest || 0;
+            const ceOI = ce.openInterest || 0;
+            const peChg = pe.changeinOpenInterest || 0;
+            const ceChg = ce.changeinOpenInterest || 0;
+
+            totalPEOIChange += peChg;
+            totalCEOIChange += ceChg;
+
+            if (peOI > maxPEOI) { maxPEOI = peOI; strongSupport = strike; }
+            if (ceOI > maxCEOI) { maxCEOI = ceOI; strongResistance = strike; }
+
+            if (peChg > maxPEOIChange) { maxPEOIChange = peChg; supportBuilding = strike; }
+            if (ceChg > maxCEOIChange) { maxCEOIChange = ceChg; resistanceBuilding = strike; }
+        }
+
+        const maxPain = data.maxPainStrike || strongSupport;
+        const maxPainDiff = underlying - (parseFloat(maxPain) || underlying);
+
+        // Calculate ATM Strike
+        const atmStrike = Math.round(underlying / strikeInterval) * strikeInterval;
+
+        // 2. Comprehensive Sentiment Analysis Score
+        let score = 0; // Negative = Bearish, Positive = Bullish
+
+        // PCR Score (-3 to +3)
+        if (pcr >= 1.40) score += 3;
+        else if (pcr >= 1.15) score += 2;
+        else if (pcr >= 1.05) score += 1;
+        else if (pcr <= 0.65) score -= 3;
+        else if (pcr <= 0.85) score -= 2;
+        else if (pcr <= 0.95) score -= 1;
+
+        // Price vs Max Pain Score
+        if (maxPainDiff > strikeInterval * 0.5) score += 1;
+        else if (maxPainDiff < -strikeInterval * 0.5) score -= 1;
+
+        // Fresh Intraday Writing Score
+        if (totalPEOIChange > totalCEOIChange * 1.25) score += 2;
+        else if (totalCEOIChange > totalPEOIChange * 1.25) score -= 2;
+
+        // Determine Market Type & Bias
+        let marketType = 'Neutral / Rangebound';
+        let biasColor = 'var(--text-bright)';
+        let confidence = '70%';
+
+        if (score >= 3) {
+            marketType = 'Strong Bullish';
+            biasColor = 'var(--up)';
+            confidence = `${Math.min(95, 75 + score * 4)}%`;
+        } else if (score >= 1) {
+            marketType = 'Mildly Bullish';
+            biasColor = 'var(--up)';
+            confidence = '72%';
+        } else if (score <= -3) {
+            marketType = 'Strong Bearish';
+            biasColor = 'var(--down)';
+            confidence = `${Math.min(95, 75 + Math.abs(score) * 4)}%`;
+        } else if (score <= -1) {
+            marketType = 'Mildly Bearish';
+            biasColor = 'var(--down)';
+            confidence = '72%';
+        }
+
+        // 3. Precision Trade Action Generator
+        let tradeAction = '';
+        let tradeDetails = '';
+        let stopLoss = 0;
+        let target = 0;
+
+        if (score >= 2) {
+            // Bullish Logic
+            if (underlying > strongResistance) {
+                tradeAction = `Breakout Call Buy → ${atmStrike} CE`;
+                tradeDetails = `Spot crossed Max CE Resistance (${strongResistance}). Momentum expansion active.`;
+                target = atmStrike + (strikeInterval * 3);
+                stopLoss = atmStrike - (strikeInterval * 1.5);
+            } else if (Math.abs(underlying - strongSupport) <= strikeInterval * 1.5) {
+                tradeAction = `Support Rebound Call → ${atmStrike} CE`;
+                tradeDetails = `Spot holding strong PE support zone (${strongSupport}). High R:R buy zone.`;
+                target = strongResistance;
+                stopLoss = strongSupport - (strikeInterval * 1);
+            } else {
+                tradeAction = `Bull Call Spread → ${atmStrike} CE / ${atmStrike + (strikeInterval * 2)} CE`;
+                tradeDetails = `PCR ${pcr} confirms put writing floor. Buy ${atmStrike} CE and sell ${atmStrike + (strikeInterval * 2)} CE.`;
+                target = atmStrike + (strikeInterval * 2);
+                stopLoss = atmStrike - strikeInterval;
+            }
+        } else if (score <= -2) {
+            // Bearish Logic
+            if (underlying < strongSupport) {
+                tradeAction = `Breakdown Put Buy → ${atmStrike} PE`;
+                tradeDetails = `Spot broke below PE Support (${strongSupport}). Downside momentum active.`;
+                target = atmStrike - (strikeInterval * 3);
+                stopLoss = atmStrike + (strikeInterval * 1.5);
+            } else if (Math.abs(underlying - strongResistance) <= strikeInterval * 1.5) {
+                tradeAction = `Resistance Rejection Put → ${atmStrike} PE`;
+                tradeDetails = `Spot testing strong CE resistance zone (${strongResistance}). Short setup.`;
+                target = strongSupport;
+                stopLoss = strongResistance + (strikeInterval * 1);
+            } else {
+                tradeAction = `Bear Put Spread → ${atmStrike} PE / ${atmStrike - (strikeInterval * 2)} PE`;
+                tradeDetails = `PCR ${pcr} confirms call resistance overhead. Buy ${atmStrike} PE and sell ${atmStrike - (strikeInterval * 2)} PE.`;
+                target = atmStrike - (strikeInterval * 2);
+                stopLoss = atmStrike + strikeInterval;
+            }
+        } else {
+            // Neutral / Rangebound Logic
+            const rangeWidth = Math.abs(strongResistance - strongSupport);
+            if (rangeWidth >= strikeInterval * 4) {
+                tradeAction = `Iron Condor → Sell ${strongSupport} PE & Sell ${strongResistance} CE`;
+                tradeDetails = `Market rangebound in corridor (${strongSupport} - ${strongResistance}). Collect theta decay.`;
+                target = maxPain;
+                stopLoss = underlying + (strikeInterval * 2);
+            } else {
+                tradeAction = `Max Pain Magnet → Short Iron Fly at ${maxPain}`;
+                tradeDetails = `PCR neutral (${pcr}). Price gravitating toward Max Pain level (${maxPain}).`;
+                target = maxPain;
+                stopLoss = underlying + strikeInterval;
+            }
+        }
+
+        return {
+            spot: underlying.toFixed(2),
+            pcr: pcr.toFixed(2),
+            maxPain: maxPain || '-',
+            maxPainDiff: maxPainDiff.toFixed(1),
+            lotSize: this._getLotSize(symbol),
+            strongSupport: strongSupport || atmStrike - strikeInterval,
+            strongResistance: strongResistance || atmStrike + strikeInterval,
+            supportBuilding: supportBuilding || strongSupport,
+            resistanceBuilding: resistanceBuilding || strongResistance,
+            marketRange: `${strongSupport || atmStrike - strikeInterval} to ${strongResistance || atmStrike + strikeInterval}`,
+            marketType,
+            biasColor,
+            confidence,
+            tradeAction,
+            tradeDetails,
+            target: target ? target.toString() : '-',
+            stopLoss: stopLoss ? stopLoss.toString() : '-'
+        };
+    }
+    // ===== GROWW SLUG MAPPING =====
+    _getGrowwSlug(symbol) {
+        const up = symbol.toUpperCase().replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY');
+        if (this.dynamicSlugMap && this.dynamicSlugMap.has(up)) {
+            return this.dynamicSlugMap.get(up);
+        }
+        const map = {
+            "NIFTY": "nifty",
+            "BANKNIFTY": "nifty-bank",
+            "FINNIFTY": "nifty-financial-services",
+            "MIDCPNIFTY": "nifty-midcap-select",
+            "NIFTYMIDSELECT": "nifty-midcap-select",
+            "360ONE": "iifl-wealth-management-ltd-1568865430949",
+            "ABB": "abb-india-ltd",
+            "ABCAPITAL": "aditya-birla-capital-ltd",
+            "ADANIENSOL": "adani-transmission-ltd",
+            "ADANIENT": "adani-enterprises-ltd",
+            "ADANIGREEN": "adani-green-energy-ltd",
+            "ADANIPORTS": "adani-ports-and-special-economic-zone-ltd",
+            "ADANIPOWER": "adani-power-ltd",
+            "ALKEM": "alkem-laboratories-ltd",
+            "AMBER": "amber-enterprises-india-ltd",
+            "AMBUJACEM": "ambuja-cements-ltd",
+            "ANGELONE": "angel-broking-ltd",
+            "APLAPOLLO": "apl-apollo-tubes-ltd",
+            "APOLLOHOSP": "apollo-hospitals-enterprise-ltd",
+            "ASHOKLEY": "ashok-leyland-ltd",
+            "ASIANPAINT": "asian-paints-ltd",
+            "ASTRAL": "astral-poly-technik-ltd",
+            "AUBANK": "au-small-finance-bank-ltd",
+            "AUROPHARMA": "aurobindo-pharma-ltd",
+            "AXISBANK": "axis-bank-ltd",
+            "BAJAJ-AUTO": "bajaj-auto-ltd",
+            "BAJAJFINSV": "bajaj-finserv-ltd",
+            "BAJAJHLDNG": "bajaj-holdings-investment-ltd",
+            "BAJFINANCE": "bajaj-finance-ltd",
+            "BANDHANBNK": "bandhan-bank-ltd",
+            "BANKBARODA": "bank-of-baroda",
+            "BANKINDIA": "bank-of-india",
+            "BDL": "bharat-dynamics-ltd",
+            "BEL": "bharat-electronics-ltd",
+            "BHARATFORG": "bharat-forge-ltd",
+            "BHARTIARTL": "bharti-airtel-ltd",
+            "BHEL": "bharat-heavy-electricals-ltd",
+            "BIOCON": "biocon-ltd",
+            "BLUESTARCO": "blue-star-ltd",
+            "BOSCHLTD": "bosch-ltd",
+            "BPCL": "bharat-petroleum-corporation-ltd",
+            "BRITANNIA": "britannia-industries-ltd",
+            "BSE": "bse-ltd",
+            "CAMS": "computer-age-management-services-ltd",
+            "CANBK": "canara-bank",
+            "CDSL": "central-depository-services-india-ltd",
+            "CGPOWER": "cg-power-industrial-solutions-ltd",
+            "CHOLAFIN": "cholamandalam-investment-finance-company-ltd",
+            "CIPLA": "cipla-ltd",
+            "COALINDIA": "coal-india-ltd",
+            "COCHINSHIP": "cochin-shipyard-ltd",
+            "COFORGE": "niit-technologies-ltd",
+            "COLPAL": "colgatepalmolive-india-ltd",
+            "CONCOR": "container-corporation-of-india-ltd",
+            "CROMPTON": "crompton-greaves-consumer-electricals-ltd",
+            "CUMMINSIND": "cummins-india-ltd",
+            "DABUR": "dabur-india-ltd",
+            "DALBHARAT": "odisha-cement-ltd",
+            "DELHIVERY": "delhivery-ltd",
+            "DIVISLAB": "divis-laboratories-ltd",
+            "DIXON": "dixon-technologies-india-ltd",
+            "DLF": "dlf-ltd",
+            "DMART": "avenue-supermarts-ltd",
+            "DRREDDY": "dr-reddys-laboratories-ltd",
+            "EICHERMOT": "eicher-motors-ltd",
+            "ETERNAL": "zomato-ltd",
+            "EXIDEIND": "exide-industries-ltd",
+            "FEDERALBNK": "the-federal-bank-ltd",
+            "FORCEMOT": "force-motors-ltd",
+            "FORTIS": "fortis-healthcare-ltd",
+            "GAIL": "gail-india-ltd",
+            "GLENMARK": "glenmark-pharmaceuticals-ltd",
+            "GMRAIRPORT": "gmr-infrastructure-ltd",
+            "GODFRYPHLP": "godfrey-phillips-india-ltd",
+            "GODREJCP": "godrej-consumer-products-ltd",
+            "GODREJPROP": "godrej-properties-ltd",
+            "GVT&D": "godrej-consumer-products-ltd",
+            "GRASIM": "grasim-industries-ltd",
+            "HAL": "hindustan-aeronautics-ltd",
+            "HAVELLS": "havells-india-ltd",
+            "HCLTECH": "hcl-technologies-ltd",
+            "HDFCAMC": "hdfc-asset-management-company-ltd",
+            "HDFCBANK": "hdfc-bank-ltd",
+            "HDFCLIFE": "hdfc-standard-life-insurance-co-ltd",
+            "HEROMOTOCO": "hero-motocorp-ltd",
+            "HINDALCO": "hindalco-industries-ltd",
+            "HINDPETRO": "hindustan-petroleum-corporation-ltd",
+            "HINDUNILVR": "hindustan-unilever-ltd",
+            "HINDZINC": "hindustan-zinc-ltd",
+            "HUDCO": "housing-urban-development-corporation-ltd",
+            "HYUNDAI": "hyundai-motor-india-ltd",
+            "ICICIBANK": "icici-bank-ltd",
+            "ICICIGI": "icici-lombard-general-insurance-co-ltd",
+            "ICICIPRULI": "icici-prudential-life-insurance-company-ltd",
+            "IDEA": "vodafone-idea-ltd",
+            "IDFCFIRSTB": "idfc-bank-ltd",
+            "IEX": "indian-energy-exchange-ltd",
+            "INDHOTEL": "the-indian-hotels-company-ltd",
+            "INDIANB": "indian-bank",
+            "INDIGO": "interglobe-aviation-ltd",
+            "INDUSINDBK": "indusind-bank-ltd",
+            "INDUSTOWER": "bharti-infratel-ltd",
+            "INFY": "infosys-ltd",
+            "INOXWIND": "inox-wind-ltd",
+            "IOC": "indian-oil-corporation-ltd",
+            "IREDA": "indian-renewable-energy-development-agency-ltd-1569588972606",
+            "IRFC": "indian-railway-finance-corporation-ltd",
+            "ITC": "itc-ltd",
+            "JINDALSTEL": "jindal-steel-power-ltd",
+            "JIOFIN": "jio-financial-services-ltd",
+            "JSWENERGY": "jsw-energy-ltd",
+            "JSWSTEEL": "jsw-steel-ltd",
+            "JUBLFOOD": "jubilant-foodworks-ltd",
+            "KALYANKJIL": "kalyan-jewellers-india-ltd",
+            "KAYNES": "kaynes-technology-india-ltd",
+            "KEI": "kei-industries-ltd",
+            "KFINTECH": "kfin-technologies-ltd",
+            "KOTAKBANK": "kotak-mahindra-bank-ltd",
+            "KPITTECH": "kpit-engineering-ltd",
+            "LAURUSLABS": "laurus-labs-ltd",
+            "LICHSGFIN": "lic-housing-finance-ltd",
+            "LICI": "life-insurance-corporation-of-india",
+            "LODHA": "lodha-developers-ltd",
+            "LT": "larsen-toubro-ltd",
+            "LTF": "lt-finance-holdings-ltd",
+            "LTM": "larsen-toubro-infotech-ltd",
+            "LUPIN": "lupin-ltd",
+            "M&M": "mahindra-mahindra-ltd",
+            "MANAPPURAM": "manappuram-finance-ltd",
+            "MANKIND": "mankind-pharma-ltd",
+            "MARICO": "marico-ltd",
+            "MARUTI": "maruti-suzuki-india-ltd",
+            "MAXHEALTH": "max-healthcare-institute-ltd",
+            "MAZDOCK": "mazagon-dock-shipbuilders-ltd",
+            "MCX": "multi-commodity-exchange-of-india-ltd",
+            "MFSL": "max-financial-services-ltd",
+            "MOTHERSON": "motherson-sumi-systems-ltd",
+            "MOTILALOFS": "motilal-oswal-financial-services-ltd",
+            "MPHASIS": "mphasis-ltd",
+            "MUTHOOTFIN": "muthoot-finance-ltd",
+            "NAM-INDIA": "reliance-nippon-life-asset-management-ltd",
+            "NATIONALUM": "national-aluminium-company-ltd",
+            "NAUKRI": "info-edge-india-ltd",
+            "NBCC": "nbcc-india-ltd",
+            "NESTLEIND": "nestle-india-ltd",
+            "NHPC": "nhpc-ltd",
+            "NMDC": "nmdc-ltd",
+            "NTPC": "ntpc-ltd",
+            "NUVAMA": "nuvama-wealth-management-ltd",
+            "NYKAA": "fsn-ecommerce-ventures-ltd",
+            "OBEROIRLTY": "oberoi-realty-ltd",
+            "OFSS": "oracle-financial-services-software-ltd",
+            "OIL": "oil-india-ltd",
+            "ONGC": "oil-natural-gas-corporation-ltd",
+            "PAGEIND": "page-industries-ltd",
+            "PATANJALI": "ruchi-soya-industries-ltd",
+            "PAYTM": "one-communications-ltd",
+            "PERSISTENT": "persistent-systems-ltd",
+            "PETRONET": "petronet-lng-ltd",
+            "PFC": "power-finance-corporation-ltd",
+            "PGEL": "pg-electroplast-ltd",
+            "PHOENIXLTD": "phoenix-mills-ltd",
+            "PIDILITIND": "pidilite-industries-ltd",
+            "PIIND": "pi-industries-ltd",
+            "PNB": "punjab-national-bank",
+            "PNBHOUSING": "pnb-housing-finance-ltd",
+            "POLICYBZR": "pb-fintech-ltd",
+            "POLYCAB": "polycab-india-ltd",
+            "POWERGRID": "power-grid-corporation-of-india-ltd",
+            "POWERINDIA": "abb-power-products-systems-india-ltd",
+            "PPLPHARMA": "piramal-pharma-ltd",
+            "PREMIERENE": "premier-energies-ltd",
+            "PRESTIGE": "prestige-estate-projects-ltd",
+            "RBLBANK": "rbl-bank-ltd",
+            "RECLTD": "rec-ltd",
+            "RELIANCE": "reliance-industries-ltd",
+            "RVNL": "rail-vikas-nigam-ltd",
+            "SAIL": "steel-authority-of-india-ltd",
+            "SAMMAANCAP": "indiabulls-housing-finance-ltd",
+            "SBICARD": "sbi-cards-payment-services-ltd",
+            "SBILIFE": "sbi-life-insurance-company-ltd",
+            "SBIN": "state-bank-of-india",
+            "SHREECEM": "shree-cement-ltd",
+            "SHRIRAMFIN": "shriram-transport-finance-company-ltd",
+            "SIEMENS": "siemens-ltd",
+            "SOLARINDS": "solar-industries-india-ltd",
+            "SONACOMS": "sona-blw-precision-forgings-ltd",
+            "SRF": "srf-ltd",
+            "SUNPHARMA": "sun-pharmaceutical-industries-ltd",
+            "SUPREMEIND": "supreme-industries-ltd",
+            "SUZLON": "suzlon-energy-ltd",
+            "SWIGGY": "swiggy-ltd",
+            "TATACONSUM": "tata-global-beverages-ltd",
+            "TATAELXSI": "tata-elxsi-ltd",
+            "TATAPOWER": "tata-power-company-ltd",
+            "TATASTEEL": "tata-steel-ltd",
+            "TATATECH": "tata-technologies-ltd",
+            "TCS": "tata-consultancy-services-ltd",
+            "TECHM": "tech-mahindra-ltd",
+            "TIINDIA": "tube-investments-of-india-ltd",
+            "TITAN": "titan-company-ltd",
+            "TMPV": "tata-motors-ltd",
+            "TORNTPHARM": "torrent-pharmaceuticals-ltd",
+            "TORNTPOWER": "torrent-power-ltd",
+            "TRENT": "trent-ltd",
+            "TVSMOTOR": "tvs-motor-company-ltd",
+            "ULTRACEMCO": "ultratech-cement-ltd",
+            "UNIONBANK": "union-bank-of-india",
+            "UNITDSPR": "united-spirits-ltd",
+            "UNOMINDA": "minda-industries-ltd",
+            "UPL": "upl-ltd",
+            "VBL": "varun-beverages-ltd",
+            "VEDL": "vedanta-ltd",
+            "VMM": "vishal-mega-mart-ltd",
+            "VOLTAS": "voltas-ltd",
+            "WAAREEENER": "waaree-energies-ltd",
+            "WIPRO": "wipro-ltd",
+            "YESBANK": "yes-bank-ltd",
+            "ZYDUSLIFE": "cadila-healthcare-ltd"
+        };
+        return map[up] || up.toLowerCase().replace(/\s+/g, '-');
+    }
+
+    // ===== GROWW ADAPTER =====
+    async getOptionChainGroww(symbol = 'NIFTY', expiryDate = '') {
+        const slug = this._getGrowwSlug(symbol);
+        let url = `/v1/pro-option-chain/${slug}?responseStructure=LIST`;
+        if (!this.symbolExpiriesMap) this.symbolExpiriesMap = new Map();
+        
+        if (expiryDate && expiryDate !== 'current') {
+            if (expiryDate === 'next' || expiryDate === 'far') {
+                let expiries = this.symbolExpiriesMap.get(symbol);
+                if (!expiries) {
+                    const initial = await this._fetchGroww(url);
+                    expiries = initial?.optionChain?.aggregatedDetails?.expiryDates || [];
+                    if (expiries.length > 0) this.symbolExpiriesMap.set(symbol, expiries);
+                }
+                const targetIdx = expiryDate === 'next' ? 1 : 2;
+                const actualDate = expiries[targetIdx] || expiries[0];
+                if (actualDate) {
+                    url = `/v1/pro-option-chain/${slug}?expiryDate=${actualDate}&responseStructure=LIST`;
+                }
+            } else {
+                url = `/v1/pro-option-chain/${slug}?expiryDate=${expiryDate}&responseStructure=LIST`;
+            }
+        }
+
+        const d = await this._fetchGroww(url);
+
+        if (!d?.optionChain?.optionContracts) {
+            return null;
+        }
+
+        if (d.optionChain?.aggregatedDetails?.expiryDates) {
+            this.symbolExpiriesMap.set(symbol, d.optionChain.aggregatedDetails.expiryDates);
+        }
+
+        const contracts = (d.optionChain.optionContracts || []).sort((a, b) => a.strikePrice - b.strikePrice);
+
+        // Use specialized Groww Index API as primary underlying source
+        const livePrice = await this.getLivePriceGroww(symbol);
+        let underlying = livePrice || (await this.getQuote(symbol))?.lastPrice || 0;
+
+        if (!underlying) {
+            // Final fallback to option chain context
+            const firstContract = contracts[0]?.ce?.liveData || contracts[0]?.pe?.liveData;
+            underlying = parseFloat(d.optionChain?.underlyingValue) || parseFloat(d.optionChain?.underlyingPrice) || parseFloat(firstContract?.underlyingValue) || parseFloat(firstContract?.underlyingPrice) || 0;
+        }
+
+        // Heuristic: If value is in Paisa (large integers, e.g., > 200,000 for indices), convert to INR
+        if (underlying > 200000) {
+            underlying = underlying / 100;
+        }
+
+        const lotSize = d.optionChain?.aggregatedDetails?.lotSize || contracts[0]?.ce?.marketLot || contracts[0]?.pe?.marketLot || 0;
+
+        return {
+            records: {
+                data: contracts.map(c => ({
+                    strikePrice: c.strikePrice / 100,
+                    CE: c.ce ? {
+                        openInterest: c.ce.liveData.oi,
+                        changeinOpenInterest: (c.ce.liveData.oi - (c.ce.liveData.prevOI || 0)),
+                        lastPrice: c.ce.liveData.ltp,
+                        pChange: c.ce.liveData.dayChangePerc,
+                        impliedVolatility: c.ce.greeks?.iv || 0,
+                        greeks: {
+                            delta: c.ce.greeks?.delta || 0,
+                            theta: c.ce.greeks?.theta || 0,
+                            gamma: c.ce.greeks?.gamma || 0,
+                            vega: c.ce.greeks?.vega || 0
+                        }
+                    } : null,
+                    PE: c.pe ? {
+                        openInterest: c.pe.liveData.oi,
+                        changeinOpenInterest: (c.pe.liveData.oi - (c.pe.liveData.prevOI || 0)),
+                        lastPrice: c.pe.liveData.ltp,
+                        pChange: c.pe.liveData.dayChangePerc,
+                        impliedVolatility: c.pe.greeks?.iv || 0,
+                        greeks: {
+                            delta: c.pe.greeks?.delta || 0,
+                            theta: c.pe.greeks?.theta || 0,
+                            gamma: c.pe.greeks?.gamma || 0,
+                            vega: c.pe.greeks?.vega || 0
+                        }
+                    } : null
+                })),
+                underlyingValue: underlying,
+                lotSize: lotSize,
+                expiryDates: d.optionChain?.aggregatedDetails?.expiryDates || [],
+                currentExpiry: d.optionChain?.aggregatedDetails?.currentExpiry || expiryDate || '',
+                timestamp: new Date().toLocaleTimeString()
+            }
+        };
+    }
+
+    async fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiryDate) {
+        const cleanSym = symbol.replace(/[^A-Z0-9&\-]/g, '');
+        
+        let scrip = `${cleanSym}26JUL`; // default fallback
+        if (expiryDate && expiryDate.length >= 7) {
+            const parts = expiryDate.split('-');
+            if (parts.length === 3) {
+                const yearFull = parts[0];
+                const yy = yearFull.slice(2);
+                const mm = parts[1];
+                const dd = parts[2];
+
+                const monthIdx = parseInt(mm) - 1;
+                const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+                
+                const isIndex = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX'].some(idx => cleanSym.includes(idx));
+                
+                const expiryDateObj = new Date(yearFull, monthIdx, parseInt(dd));
+                const nextWeekDateObj = new Date(expiryDateObj.getTime() + 7 * 24 * 60 * 60 * 1000);
+                const isMonthly = !isIndex || (expiryDateObj.getMonth() !== nextWeekDateObj.getMonth());
+
+                if (isMonthly) {
+                    const mmm = months[monthIdx] || 'JUL';
+                    scrip = `${cleanSym}${yy}${mmm}`;
+                } else {
+                    let mChar = String(monthIdx + 1);
+                    if (mChar === '10') mChar = 'O';
+                    else if (mChar === '11') mChar = 'N';
+                    else if (mChar === '12') mChar = 'D';
+                    
+                    const dChar = dd.padStart(2, '0');
+                    scrip = `${cleanSym}${yy}${mChar}${dChar}`;
+                }
+            }
+        }
+        
+        const body = `action=calculate&exchange%5B%5D=NFO&product%5B%5D=OPT&scrip%5B%5D=${encodeURIComponent(scrip)}&option_type%5B%5D=${type}&strike_price%5B%5D=${strike}&qty%5B%5D=${lotSize}&trade%5B%5D=sell`;
+
+        try {
+            const res = await fetch('/api/zerodha-margin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body
+            });
+            const data = await res.json();
+            if (data && data.total && typeof data.total.total === 'number' && data.total.total > 0) {
+                return {
+                    span: data.total.span,
+                    exposure: data.total.exposure,
+                    total: data.total.total,
+                    modelName: 'Zerodha Live SPAN'
+                };
+            }
+        } catch (e) {
+            // failover
+        }
+        return null;
+    }
+}
+
+window.nseApi = new NSEApi();

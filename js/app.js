@@ -1,0 +1,2509 @@
+/**
+ * Destrade Pro — Core Application (v4)
+ * TradeFinder-grade analytics dashboard
+ */
+
+let watchlist = JSON.parse(localStorage.getItem('destrade_watchlist') || '["NIFTY 50","RELIANCE","TCS","HDFCBANK","INFY"]');
+
+const App = {
+    state: {
+        indices: [],
+        movers: { gainers: [], losers: [] },
+        marketStatus: {},
+        activeMoverTab: 'gainers',
+        activeSymbol: null,
+        activeTimeframe: '1m',
+        chart: null,
+        chartSeries: {},
+        lastCandle: null,
+        activeView: 'dashboard',
+        screenerTab: 'longBuildup',
+        discoveryMode: 'screener', // 'screener' or 'analysis'
+        screenerSort: { key: 'pChange', dir: 'desc' },
+        analysisSort: { key: 'oiChange', dir: 'desc' },
+        analysisSearch: '',
+        analysisBuildup: 'ALL',
+        watchlistPrices: {},
+        pcrHistory: (function() {
+            try {
+                const d = JSON.parse(localStorage.getItem('destrade_pcr_history'));
+                return (d && typeof d === 'object' && !Array.isArray(d)) ? d : {};
+            } catch (e) { return {}; }
+        })(),
+        scannerCache: { sell: [], buy: [], status: 'idle', completed: false },
+        scannerExpiryMode: 'current',
+        marginModel: localStorage.getItem('destrade_margin_model') || 'zerodha_live',
+        scannerCapitalMin: parseFloat(localStorage.getItem('destrade_scanner_capital_min')) || null,
+        scannerCapitalMax: parseFloat(localStorage.getItem('destrade_scanner_capital_max')) || null,
+        scannerOtmMin: parseFloat(localStorage.getItem('destrade_scanner_otm_min')) || 4,
+        scannerOtmMax: parseFloat(localStorage.getItem('destrade_scanner_otm_max')) || 10,
+        sectorMapping: {
+            'BANK': ['HDFCBANK', 'ICICIBANK', 'SBIN', 'KOTAKBANK', 'AXISBANK', 'INDUSINDBK', 'BAJFINANCE'],
+            'IT': ['TCS', 'INFY', 'HCLTECH', 'WIPRO', 'LTIM', 'TECHM'],
+            'AUTO': ['MARUTI', 'TATAMOTORS', 'M&M', 'BAJAJ-AUTO', 'EICHERMOT', 'HEROMOTOCO'],
+            'PHARMA': ['SUNPHARMA', 'CIPLA', 'DRREDDY', 'DIVISLAB', 'APOLLOHOSP', 'AUROPHARMA', 'LUPIN', 'GLENMARK'],
+            'METAL': ['TATASTEEL', 'HINDALCO', 'JSWSTEEL', 'COALINDIA', 'NMDC', 'SAIL', 'NATIONALUM', 'VEDL'],
+            'FMCG': ['HINDUNILVR', 'ITC', 'NESTLEIND', 'BRITANNIA', 'MARICO', 'VBL', 'COLPAL', 'GODREJCP'],
+            'REALTY': ['DLF', 'GODREJPROP', 'OBEROIRLTY', 'PHENIXLTD', 'PRESTIGE'],
+            'ENERGY': ['RELIANCE', 'ONGC', 'NTPC', 'POWERGRID', 'BPCL', 'IOC', 'GAIL', 'TATAPOWER', 'ADANIGREEN'],
+            'MEDIA': ['ZEEL', 'PVRINOX', 'SUNTV', 'PVR'],
+            'FINANCE': ['HDFCBANK', 'ICICIBANK', 'SBIN', 'KOTAKBANK', 'AXISBANK', 'BAJFINANCE', 'PFC', 'RECLTD', 'CHOLAFIN', 'MUTHOOTFIN'],
+        },
+        activeSector: null,
+    },
+
+    init() {
+        console.log('🚀 Destrade Pro Initializing...');
+        try { this.setupFirebaseSync(); } catch (e) { console.warn(e); }
+        try { this.initFirebaseTimeEngine('NIFTY'); } catch (e) { console.warn(e); }
+        try { this.setupViews(); } catch (e) { console.warn(e); }
+        try { this.setupListeners(); } catch (e) { console.warn(e); }
+        try { this.startClock(); } catch (e) { console.warn(e); }
+        try { this.render(); } catch (e) { console.warn(e); }
+        try { this.startDataPolling(); } catch (e) { console.warn(e); }
+        try { this.startIntradayHearts(); } catch (e) { console.warn(e); }
+        try { this.setupVisibilityAPI(); } catch (e) { console.warn(e); }
+    },
+
+    setupVisibilityAPI() {
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                console.log('💤 Tab hidden, pausing polling...');
+                this._stopPolling = true;
+            } else {
+                console.log('✨ Tab visible, resuming polling...');
+                this._stopPolling = false;
+                this.fetchData(); // Immediate fetch on resume
+            }
+        });
+    },
+
+    setupFirebaseSync() {
+        try {
+            if (window.db && typeof db.ref === 'function') {
+                console.log('🔥 Setting up Firebase Sync...');
+                db.ref('watchlist').on('value', snap => {
+                    if (snap.exists()) {
+                        watchlist = snap.val();
+                        this.renderWatchlist();
+                    }
+                }, () => {});
+                db.ref('sectors').on('value', snap => {
+                    if (snap.exists()) {
+                        this.state.sectorMapping = snap.val();
+                        if (this.state.activeView === 'sectors' || this.state.activeView === 'dashboard') this.render();
+                    }
+                }, () => {});
+            }
+        } catch (e) {
+            console.warn('Firebase Sync Warning:', e.message);
+        }
+    },
+
+    setupViews() {
+        const views = ['dashboard', 'symbol-overview', 'option-chain', 'oi-clock', 'discovery', 'sectors'];
+        views.forEach(v => {
+            const el = document.getElementById(`view-${v}`);
+            if (!el) {
+                const div = document.createElement('div');
+                div.id = `view-${v}`;
+                div.className = 'view-container';
+                document.querySelector('.main-content').appendChild(div);
+            }
+        });
+    },
+
+    switchView(viewId) {
+        document.querySelectorAll('.view-container').forEach(v => v.classList.remove('active'));
+        const target = document.getElementById(`view-${viewId}`);
+        if (target) {
+            target.classList.add('active');
+            target.style.animation = 'none';
+            target.offsetHeight;
+            target.style.animation = '';
+        }
+
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        const navItem = document.querySelector(`.nav-item[data-view="${viewId}"]`);
+        if (navItem) navItem.classList.add('active');
+
+        this.state.activeView = viewId;
+
+        // Stop option chain auto-refresh when leaving that view
+        if (viewId !== 'option-chain') this._stopOCAutoRefresh();
+
+        if (viewId === 'oi-clock') this.renderOIClock();
+        if (viewId === 'discovery') this.renderDiscovery();
+        if (viewId === 'sectors') this.renderSectors();
+        if (viewId === 'symbol-overview' && !this.state.activeSymbol) this.showSymbolOverview('NIFTY 50');
+    },
+
+    setupListeners() {
+        document.querySelectorAll('.nav-item[data-view]').forEach(link => {
+            link.addEventListener('click', e => {
+                e.preventDefault();
+                this.switchView(link.dataset.view);
+                document.querySelector('.sidebar').classList.remove('mobile-active');
+            });
+        });
+
+        const mobileToggle = document.getElementById('mobile-sidebar-toggle');
+        if (mobileToggle) {
+            mobileToggle.addEventListener('click', () => {
+                document.querySelector('.sidebar').classList.toggle('mobile-active');
+            });
+        }
+
+        document.querySelectorAll('.movers-tabs button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.movers-tabs button').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.state.activeMoverTab = btn.innerText.toLowerCase();
+                this.renderMovers();
+            });
+        });
+
+        document.addEventListener('click', e => {
+            const el = e.target.closest('[data-symbol]');
+            if (el) { e.preventDefault(); this.showSymbolOverview(el.dataset.symbol); }
+        });
+
+        const input = document.getElementById('symbol-search');
+        const results = document.getElementById('search-results');
+        if (input && results) {
+            let debounce;
+            input.addEventListener('input', () => {
+                clearTimeout(debounce);
+                debounce = setTimeout(() => {
+                    const q = input.value.trim();
+                    if (q.length < 1) { results.style.display = 'none'; return; }
+                    const matches = window.nseApi.searchSymbols(q);
+                    if (matches.length) {
+                        results.innerHTML = matches.map(s => `
+                            <div class="search-item" data-symbol="${s}">
+                                <span>${s}</span>
+                                <span class="search-meta">F&O</span>
+                            </div>
+                        `).join('');
+                        results.style.display = 'block';
+                    } else {
+                        results.style.display = 'none';
+                    }
+                }, 150);
+            });
+            document.addEventListener('click', e => { if (!input.contains(e.target) && !results.contains(e.target)) results.style.display = 'none'; });
+        }
+
+        document.addEventListener('keydown', e => {
+            if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+                e.preventDefault();
+                document.getElementById('symbol-search')?.focus();
+            }
+            if (e.key === 'Escape') {
+                if (document.activeElement.tagName === 'INPUT') {
+                    document.activeElement.blur();
+                    return;
+                }
+                document.getElementById('search-results').style.display = 'none';
+                if (this.state.activeView !== 'dashboard') this.switchView('dashboard');
+                if (document.querySelector('.modal-overlay.active')) {
+                    document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+                }
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            if (this._resizeTimeout) clearTimeout(this._resizeTimeout);
+            this._resizeTimeout = setTimeout(() => {
+                if (this.state.activeView === 'oi-clock' || this.state.activeView === 'option-chain' || this.state.activeView === 'symbol-overview') {
+                    const sym = this.state.activeSymbol || 'NIFTY';
+                    const cont = document.getElementById('pcr-chart-container');
+                    if (cont && cont.style.display !== 'none') {
+                        this.renderPcrChartCanvas(sym);
+                    }
+                }
+            }, 150);
+        });
+    },
+
+    startClock() {
+        const update = () => {
+            const now = this.getISTDate();
+            const t = now.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false });
+            const el = document.getElementById('clock-time');
+            if (el) el.textContent = t;
+
+            const h = now.getHours();
+            const m = now.getMinutes();
+            const mins = h * 60 + m;
+            const sessionEl = document.getElementById('clock-session');
+            if (sessionEl) {
+                if (mins >= 555 && mins < 570) { sessionEl.textContent = 'PRE-OPEN'; sessionEl.style.background = 'var(--amber-soft)'; sessionEl.style.color = 'var(--amber)'; }
+                else if (mins >= 570 && mins < 930) { sessionEl.textContent = 'LIVE'; sessionEl.style.background = 'var(--up-soft)'; sessionEl.style.color = 'var(--up)'; }
+                else if (mins >= 930 && mins < 960) { sessionEl.textContent = 'POST-MKT'; sessionEl.style.background = 'var(--amber-soft)'; sessionEl.style.color = 'var(--amber)'; }
+                else { sessionEl.textContent = 'CLOSED'; sessionEl.style.background = 'var(--down-soft)'; sessionEl.style.color = 'var(--down)'; }
+            }
+        };
+        update();
+        setInterval(update, 1000);
+    },
+
+    async startDataPolling() {
+        if (this._isPolling) return;
+        this._isPolling = true;
+        const poll = async () => {
+            if (!this._stopPolling) {
+                await this.fetchData();
+            }
+            setTimeout(poll, 1000); // 1s high-speed real-time polling
+        };
+        poll();
+    },
+
+    async fetchData() {
+        try {
+            const alive = await window.nseApi.checkProxy();
+            this.updateProxyBadge(alive);
+
+            // Batch 1: Essential Dashboard Info & Live PCR
+            const [indices, screenerData, status, niftyOI] = await Promise.all([
+                window.nseApi.getAllIndices().catch(() => []),
+                window.nseApi.getScreenerData().catch(() => ({ all: [] })),
+                window.nseApi.getMarketStatus().catch(() => ({ marketStatus: 'Closed' })),
+                window.nseApi.getOIClock('NIFTY').catch(() => null)
+            ]);
+
+            this.state.indices = indices || [];
+            this.state.movers = {
+                gainers: [...(screenerData?.all || [])].sort((a, b) => b.pChange - a.pChange).slice(0, 10),
+                losers: [...(screenerData?.all || [])].sort((a, b) => a.pChange - b.pChange).slice(0, 10)
+            };
+            this.state.marketStatus = status;
+
+            // Record Live PCR History
+            if (niftyOI && niftyOI.pcr) {
+                this.recordPcr('NIFTY', parseFloat(niftyOI.pcr));
+            }
+
+            this.render();
+
+            // Batch 2: View-Specific Deep Dives (Conditional)
+            if (this.state.activeSymbol) {
+                if (this.state.activeView === 'symbol-overview') {
+                    this.updateLivePrice();
+                } else if (this.state.activeView === 'option-chain') {
+                    this.silentlyUpdateOptionChain(this.state.activeSymbol);
+                }
+            }
+
+            // Batch 3: Background tasks (Lower priority)
+            if (this.state.activeView === 'dashboard') {
+                this.updateWatchlistPrices();
+            }
+
+            const lastUpEl = document.getElementById('last-update');
+            if (lastUpEl) lastUpEl.textContent = this.getISTDate().toLocaleTimeString('en-IN', { hour12: false });
+        } catch (e) { console.error('Poll Error:', e); }
+    },
+
+    render() {
+        this.renderStatus();
+        this.renderTicker();
+        this.renderMovers();
+        this.renderMarketPulse();
+        this.renderSectorQuickLook();
+        this.renderWatchlist();
+    },
+
+    renderStatus() {
+        const dot = document.querySelector('.status-dot');
+        const text = document.querySelector('.status-text');
+        if (dot && text) {
+            const s = this.state.marketStatus.marketStatus || 'Closed';
+            text.textContent = `MARKET ${s.toUpperCase()}`;
+            dot.style.background = (s.includes('Open') || s.includes('Live')) ? 'var(--up)' : 'var(--amber)';
+        }
+    },
+
+    updateProxyBadge(alive) {
+        const b = document.getElementById('proxy-badge');
+        if (b) {
+            b.textContent = `BRIDGE: ${alive ? 'LIVE' : 'DOWN'}`;
+            b.style.background = alive ? 'var(--up-soft)' : 'var(--down-soft)';
+            b.style.color = alive ? 'var(--up)' : 'var(--down)';
+        }
+    },
+
+    renderTicker() {
+        const container = document.getElementById('indices-ticker');
+        if (!container || !this.state.indices.length) return;
+
+        const priority = ['NIFTY 50', 'NIFTY BANK', 'NIFTY FINANCIAL SERVICES', 'NIFTY NEXT 50', 'NIFTY MIDCAP 100'];
+        const sorted = [...this.state.indices].sort((a, b) => {
+            const ia = priority.indexOf(a.index);
+            const ib = priority.indexOf(b.index);
+            if (ia !== -1 && ib !== -1) return ia - ib;
+            return ia !== -1 ? -1 : (ib !== -1 ? 1 : 0);
+        });
+
+        const tickerData = sorted.slice(0, 15);
+        if (container.children.length === 0) {
+            const getHtml = (data) => data.map(i => `
+                <div class="ticker-item" data-index-node="${i.index}">
+                    <span class="ticker-label">${i.index}</span>
+                    <span class="ticker-value mono">₹${i.last.toLocaleString()}</span>
+                    <span class="ticker-change ${i.pChange >= 0 ? 'up' : 'down'}">${i.pChange >= 0 ? '▲' : '▼'} ${Math.abs(i.pChange).toFixed(2)}%</span>
+                </div>
+            `).join('');
+            container.innerHTML = getHtml(tickerData) + getHtml(tickerData);
+            return;
+        }
+
+        tickerData.forEach(data => {
+            const nodes = container.querySelectorAll(`[data-index-node="${data.index}"]`);
+            nodes.forEach(node => {
+                const valEl = node.querySelector('.ticker-value');
+                const chgEl = node.querySelector('.ticker-change');
+                if (valEl) valEl.textContent = `₹${data.last.toLocaleString()}`;
+                if (chgEl) {
+                    chgEl.textContent = `${data.pChange >= 0 ? '▲' : '▼'} ${Math.abs(data.pChange).toFixed(2)}%`;
+                    chgEl.className = `ticker-change ${data.pChange >= 0 ? 'up' : 'down'}`;
+                }
+            });
+        });
+    },
+
+    async renderMarketPulse() {
+        const c = document.getElementById('market-overview');
+        if (!c) return;
+        const p = await window.nseApi.getMarketPulse();
+        const trendClass = p.trend === 'BULLISH' ? 'tag-bullish' : p.trend === 'BEARISH' ? 'tag-bearish' : 'tag-neutral';
+        c.innerHTML = `
+            <div class="pulse-grid">
+                <div class="pulse-stat"><div class="stat-label">Sentiment</div><div class="stat-value"><span class="tag ${trendClass}">${p.trend}</span></div></div>
+                <div class="pulse-stat"><div class="stat-label">Advances</div><div class="stat-value up">${p.advances}</div></div>
+                <div class="pulse-stat"><div class="stat-label">Declines</div><div class="stat-value down">${p.declines}</div></div>
+                <div class="pulse-stat"><div class="stat-label">L. Buildup</div><div class="stat-value up">${p.longBuildups || 0}</div></div>
+                <div class="pulse-stat"><div class="stat-label">S. Buildup</div><div class="stat-value down">${p.shortBuildups || 0}</div></div>
+                <div class="pulse-stat"><div class="stat-label">A/D Ratio</div><div class="stat-value">${p.ratio}</div></div>
+                <div class="pulse-stat"><div class="stat-label">Vol Shockers</div><div class="stat-value" style="color:var(--primary)">${p.volShockers || 0}</div></div>
+                <div class="pulse-stat"><div class="stat-label">52W High</div><div class="stat-value up">${p.newHighs}</div></div>
+                <div class="pulse-stat"><div class="stat-label">52W Low</div><div class="stat-value down">${p.newLows}</div></div>
+                <div class="pulse-stat"><div class="stat-label">Unchanged</div><div class="stat-value">${p.unchanged}</div></div>
+            </div>
+        `;
+    },
+
+    async renderSectorQuickLook() {
+        const c = document.getElementById('sector-quick-look');
+        if (!c) return;
+        const sectors = await window.nseApi.getSectors();
+        if (!sectors.length) return;
+        c.innerHTML = sectors.slice(0, 8).map(s => `
+            <div class="sector-card ${s.change >= 0 ? 'positive' : 'negative'}" onclick="App.showSectorStocks('${s.name}')">
+                <div class="sector-name">${s.label}</div>
+                <div class="sector-change ${s.change >= 0 ? 'up' : 'down'}">${s.change >= 0 ? '+' : ''}${s.change.toFixed(2)}%</div>
+                <div class="sector-price">₹${s.price.toLocaleString()}</div>
+            </div>
+        `).join('');
+    },
+
+    renderMovers() {
+        const c = document.getElementById('top-movers-list');
+        if (!c) return;
+        const data = this.state.movers[this.state.activeMoverTab] || [];
+        c.innerHTML = data.map(m => `
+            <div class="mover-row" data-symbol="${m.symbol}">
+                <span class="mover-symbol">${m.symbol}</span>
+                <div style="text-align:right">
+                    <div class="mover-price">₹${(m.price || 0).toLocaleString()}</div>
+                    <div class="mover-change ${m.pChange >= 0 ? 'up' : 'down'}">${m.pChange >= 0 ? '+' : ''}${(m.pChange || 0).toFixed(2)}%</div>
+                </div>
+            </div>
+        `).join('');
+    },
+
+    renderWatchlist() {
+        const c = document.getElementById('watchlist');
+        if (!c) return;
+        if (!watchlist.length) { c.innerHTML = '<p style="color:var(--text-muted);font-size:0.8rem;text-align:center;padding:1.5rem">Search and add symbols to your watchlist</p>'; return; }
+        c.innerHTML = watchlist.map(s => {
+            const p = this.state.watchlistPrices[s] || {};
+            return `
+                <div class="watchlist-item" data-symbol="${s}">
+                    <div class="wl-info">
+                        <span class="wl-symbol">${s}</span>
+                        <span class="wl-price">${p.lastPrice ? '₹' + p.lastPrice.toLocaleString() : '---'}</span>
+                    </div>
+                     <div style="display:flex;align-items:center">
+                        <span class="wl-change ${(p.pChange || 0) >= 0 ? 'up' : 'down'}">${p.pChange ? (p.pChange >= 0 ? '+' : '') + p.pChange.toFixed(2) + '%' : '--'}</span>
+                        <span class="wl-remove" onclick="event.stopPropagation(); App.removeFromWatchlist('${s}')"><i class="fas fa-times"></i></span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    },
+
+    async updateWatchlistPrices() {
+        for (const s of watchlist.slice(0, 8)) {
+            const q = await window.nseApi.getQuote(s);
+            if (q) this.state.watchlistPrices[s] = q;
+        }
+        if (this.state.activeView === 'dashboard') this.renderWatchlist();
+    },
+
+    addToWatchlist(symbol) {
+        if (!watchlist.includes(symbol)) {
+            watchlist.push(symbol);
+            if (window.db) db.ref('watchlist').set(watchlist);
+            else localStorage.setItem('destrade_watchlist', JSON.stringify(watchlist));
+            this.renderWatchlist();
+        }
+    },
+
+    removeFromWatchlist(symbol) {
+        watchlist = watchlist.filter(s => s !== symbol);
+        if (window.db) db.ref('watchlist').set(watchlist);
+        else localStorage.setItem('destrade_watchlist', JSON.stringify(watchlist));
+        this.renderWatchlist();
+    },
+
+    // ===== SYMBOL OVERVIEW / DEEP DIVE =====
+    async showSymbolOverview(symbol) {
+        this.state.activeSymbol = symbol;
+        this.switchView('symbol-overview');
+        const container = document.getElementById('view-symbol-overview');
+
+        container.innerHTML = `
+            <div class="view-header">
+                <div class="view-title">
+                    <i class="fas fa-chart-line"></i> <span id="overview-symbol">${symbol}</span>
+                    <span id="overview-price" class="mono" style="margin-left:1rem; font-size:1.1rem">--</span>
+                </div>
+                <div class="header-actions" style="display:flex; gap:0.5rem; align-items:center;">
+                    <button class="chart-action-btn" onclick="App.showOptionChain('${symbol}')" style="background:var(--up-soft); color:var(--up);"><i class="fas fa-stream"></i> Option Chain</button>
+                    <button class="chart-action-btn" onclick="App.toggleSectorAssignment('${symbol}')" style="background:var(--primary-soft); color:var(--primary);"><i class="fas fa-folder-plus"></i> Set Sector</button>
+                    <button class="back-btn" onclick="App.switchView('dashboard')"><i class="fas fa-arrow-left"></i> Back</button>
+                </div>
+            </div>
+
+            <div class="overview-grid">
+                <div class="overview-sidebar" style="display:flex; flex-direction:column; gap:1rem">
+                    <div class="card glass metrics-card">
+                        <div class="card-title">Analysis Snapshot</div>
+                        <div id="overview-metrics-content" class="metrics-list">
+                            <div class="skeleton-loader" style="height:200px"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="overview-main">
+                    <div class="card glass" id="symbol-oi-analysis-container" style="padding: 2.5rem; min-height: 550px; display: flex; flex-direction: column; align-items: center; text-align:center">
+                        <div class="skeleton-loader" style="width:100%; height:400px"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        this.updateLivePrice();
+        this._renderOIGauge('symbol-oi-analysis-container', symbol);
+    },
+
+    toggleSectorAssignment(symbol) {
+        const modal = document.getElementById('sector-assignment-modal');
+        const list = document.getElementById('sector-assignment-list');
+        const symEl = document.getElementById('asm-symbol');
+        if (!modal || !list || !symEl) return;
+
+        symEl.textContent = symbol;
+        const currentSectors = Object.entries(this.state.sectorMapping)
+            .filter(([id, stocks]) => stocks.includes(symbol))
+            .map(([id]) => id);
+
+        list.innerHTML = Object.keys(this.state.sectorMapping).map(id => `
+            <div class="metrics-row" style="cursor:pointer; padding:0.75rem" onclick="App.updateSectorAssignment('${symbol}', '${id}')">
+                <span>${id}</span>
+                <i class="fas ${currentSectors.includes(id) ? 'fa-check-square' : 'fa-square'}" style="color:${currentSectors.includes(id) ? 'var(--primary)' : 'var(--text-muted)'}"></i>
+            </div>
+        `).join('');
+
+        modal.classList.add('active');
+    },
+
+    async updateSectorAssignment(symbol, sectorId) {
+        const mapping = { ...this.state.sectorMapping };
+        if (!mapping[sectorId]) mapping[sectorId] = [];
+
+        if (mapping[sectorId].includes(symbol)) {
+            mapping[sectorId] = mapping[sectorId].filter(s => s !== symbol);
+        } else {
+            mapping[sectorId].push(symbol);
+        }
+
+        if (window.db) {
+            await db.ref('sectors').set(mapping);
+        } else {
+            this.state.sectorMapping = mapping;
+        }
+
+        this.toggleSectorAssignment(symbol);
+    },
+
+    async updateLivePrice() {
+        if (!this.state.activeSymbol) return;
+        const symbol = this.state.activeSymbol;
+        let q = await window.nseApi.getQuote(symbol);
+        const oi = await window.nseApi.getOIClock(symbol);
+
+        if (!q && oi?.underlying) {
+            q = {
+                lastPrice: oi.underlying,
+                pChange: 0,
+                change: 0,
+                open: oi.underlying,
+                high: oi.underlying,
+                low: oi.underlying,
+                previousClose: oi.underlying,
+                volume: 0
+            };
+        }
+        if (!q) return;
+
+        const el = document.getElementById('overview-price');
+        if (el) {
+            el.textContent = `₹${q.lastPrice.toLocaleString()}`;
+            el.className = `mono ${(q.pChange || 0) >= 0 ? 'up' : 'down'}`;
+        }
+
+        // Update Snapshot Metrics
+        const metrics = document.getElementById('overview-metrics-content');
+        if (metrics) {
+            metrics.innerHTML = `
+                <div class="metrics-row"><span>LTP</span><b class="${(q.pChange || 0) >= 0 ? 'up' : 'down'}">₹${q.lastPrice.toLocaleString()}</b></div>
+                <div class="metrics-row"><span>Change %</span><b class="${(q.pChange || 0) >= 0 ? 'up' : 'down'}">${(q.pChange || 0).toFixed(2)}%</b></div>
+                <div class="metrics-row"><span>Volume</span><b>${this.formatNumber(q.volume || 0)}</b></div>
+                ${oi ? `<div class="metrics-row"><span>PCR</span><b class="${oi.pcr > 1 ? 'up' : 'down'}">${oi.pcr}</b></div>` : ''}
+                <div class="metrics-row"><span>Max Pain</span><b>${oi?.maxPainStrike || '---'}</b></div>
+            `;
+        }
+    },
+
+    // ===== OPTION CHAIN =====
+    _ocRefreshTimer: null,
+    _ocSymbol: null,
+
+    _stopOCAutoRefresh() {
+        if (this._ocRefreshTimer) {
+            clearInterval(this._ocRefreshTimer);
+            this._ocRefreshTimer = null;
+            console.log('[OC] Auto-refresh stopped');
+        }
+    },
+
+    async changeExpiry(expiry) {
+        this.state.activeExpiry = expiry;
+        await this.showOptionChain(this.state.activeSymbol, expiry);
+    },
+
+    async showOptionChain(symbol = 'NIFTY', expiryDate = '') {
+        this.switchView('option-chain');
+        if (this.state.activeSymbol !== symbol) {
+            this.state.activeSymbol = symbol;
+            this.state.activeExpiry = expiryDate || '';
+        } else if (expiryDate) {
+            this.state.activeExpiry = expiryDate;
+        }
+
+        const view = document.getElementById('view-option-chain');
+        const clean = symbol.replace('NIFTY 50', 'NIFTY');
+
+        view.innerHTML = `
+            <div class="view-header">
+                <div class="view-title" style="display:flex; align-items:center; gap:1rem">
+                    <span><i class="fas fa-stream"></i> Option Chain: ${symbol}</span>
+                    <select id="oc-expiry-dropdown" onchange="App.changeExpiry(this.value)" style="background:var(--bg-glass); color:var(--text-bright); border:1px solid rgba(255,255,255,0.2); padding:0.3rem 0.6rem; border-radius:6px; font-size:0.8rem; cursor:pointer; outline:none">
+                        <option value="">Loading Expiries...</option>
+                    </select>
+                </div>
+                <div style="display:flex; gap:0.5rem">
+                    <button class="chart-action-btn" id="oc-greek-toggle" onclick="App.toggleGreeks(this)">
+                        <i class="fas fa-calculator"></i> Greeks
+                    </button>
+                    <button class="back-btn" onclick="App.switchView('dashboard')"><i class="fas fa-arrow-left"></i> Back</button>
+                </div>
+            </div>
+            <div id="oc-content">
+                <div class="skeleton-loader" style="height:400px"></div>
+            </div>
+        `;
+
+        const oi = await window.nseApi.getOIClock(clean, this.state.activeExpiry);
+        const content = document.getElementById('oc-content');
+        if (!oi) {
+            content.innerHTML = '<div class="card glass" style="padding:4rem; text-align:center;">Option Data not available for this symbol.</div>';
+            return;
+        }
+
+        this.state.activeExpiry = oi.currentExpiry || this.state.activeExpiry;
+
+        if (oi.pcr) {
+            this.recordPcr(clean, parseFloat(oi.pcr));
+        }
+
+        // Populate Expiry Dropdown
+        const expirySelect = document.getElementById('oc-expiry-dropdown');
+        if (expirySelect && oi.expiryDates?.length > 0) {
+            expirySelect.innerHTML = oi.expiryDates.map(exp => `
+                <option value="${exp}" ${exp === oi.currentExpiry ? 'selected' : ''}>Expiry: ${exp}</option>
+            `).join('');
+        }
+
+        const underlying = oi.underlying || 0;
+
+        content.innerHTML = `
+            <div class="card glass oc-top-stats" style="padding:0.75rem 1rem;margin-bottom:1rem;display:flex;gap:1rem;font-size:0.8rem;align-items:center;flex-wrap:wrap;justify-content:space-between">
+                <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+                    <span style="color:var(--text-bright);font-weight:700">Underlying: ${underlying ? '₹' + underlying.toLocaleString() : '---'}</span>
+                    <span class="pcr-badge ${oi.pcr > 1 ? 'up' : 'down'}" style="font-weight:700">PCR: ${oi.pcr}</span>
+                    <span style="color:var(--text-muted)">Max Pain: <b style="color:var(--primary)">${oi.maxPainStrike || '-'}</b></span>
+                </div>
+                <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+                    <button class="chart-action-btn" onclick="App.togglePcrChart()" style="padding:0.35rem 0.75rem; font-size:0.75rem; background:rgba(99,102,241,0.15); color:var(--primary); border:1px solid rgba(99,102,241,0.3); border-radius:6px; font-weight:600">
+                        <i class="fas fa-chart-line"></i> Intraday PCR Trend
+                    </button>
+                    <span style="color:var(--text-muted);font-size:0.7rem"><i class="far fa-clock"></i> ${oi.timestamp}</span>
+                </div>
+            </div>
+            <div id="pcr-chart-container" class="card glass" style="display:none; padding:1.25rem; margin-bottom:1rem">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem">
+                    <span style="font-size:0.85rem; font-weight:600; color:var(--text-bright)">
+                        <i class="fas fa-chart-line" style="color:var(--primary)"></i> Live Intraday Put-Call Ratio (PCR) Stream
+                    </span>
+                    <div style="font-size:0.75rem; color:var(--text-muted)">
+                        <span style="color:#10b981; font-weight:600">■ > 1.0 Bullish</span> &nbsp;|&nbsp; <span style="color:#ef4444; font-weight:600">■ < 1.0 Bearish</span>
+                    </div>
+                </div>
+                <div id="pcr-chart-canvas" style="width:100%; height:180px"></div>
+            </div>
+            <div class="card glass" style="padding:0;overflow:auto;max-height:calc(100vh - 260px)">
+                <table class="pro-table oc-table">
+                    <thead>
+                        <tr class="oc-main-header">
+                            <th colspan="4" class="up oc-header-calls" style="text-align:center">CALLS</th>
+                            <th class="oc-header-strike" style="color:var(--primary);text-align:center;width:80px">STRIKE</th>
+                            <th colspan="4" class="down oc-header-puts" style="text-align:center">PUTS</th>
+                        </tr>
+                        <tr class="oc-sub-header">
+                            <th class="greek-col" style="display:none">Vega</th>
+                            <th class="greek-col" style="display:none">Gamma</th>
+                            <th class="greek-col" style="display:none">Theta</th>
+                            <th class="greek-col" style="display:none">Delta</th>
+                            <th>IV</th><th>OI</th><th title="Change in Open Interest">OI CHG</th><th>LTP</th>
+                            <th style="background:rgba(99, 102, 241, 0.05)"></th>
+                            <th>LTP</th><th title="Change in Open Interest">OI CHG</th><th>OI</th><th>IV</th>
+                            <th class="greek-col" style="display:none">Delta</th>
+                            <th class="greek-col" style="display:none">Theta</th>
+                            <th class="greek-col" style="display:none">Gamma</th>
+                            <th class="greek-col" style="display:none">Vega</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${oi.data.map((r, idx) => {
+            const ce = r.CE || {}; const pe = r.PE || {};
+            const ceG = ce.greeks || {}; const peG = pe.greeks || {};
+            const isITM_CE = r.strikePrice < underlying;
+            const isITM_PE = r.strikePrice > underlying;
+            const isATM = Math.abs(r.strikePrice - underlying) < 25; // Close to strike (e.g. 50 pt intervals)
+
+            return `
+                                <tr class="${isATM ? 'atm-row' : ''}">
+                                    <td class="greek-col mono small" style="display:none; color:var(--primary)">${ceG.vega || '-'}</td>
+                                    <td class="greek-col mono small" style="display:none; color:var(--primary)">${ceG.gamma || '-'}</td>
+                                    <td class="greek-col mono small" style="display:none; color:var(--down)">${ceG.theta || '-'}</td>
+                                    <td class="greek-col mono small" style="display:none; color:var(--primary)">${ceG.delta || '-'}</td>
+                                    <td class="mono small" style="color:var(--amber); ${isITM_CE ? 'background:rgba(16, 185, 129, 0.05)' : ''}">${(ce.impliedVolatility || 0).toFixed(1)}%</td>
+                                    <td style="${isITM_CE ? 'background:rgba(16, 185, 129, 0.05)' : ''}">${this.formatNumber(ce.openInterest)}</td>
+                                    <td class="${(ce.changeinOpenInterest || 0) >= 0 ? 'up' : 'down'}" style="${isITM_CE ? 'background:rgba(16, 185, 129, 0.05)' : ''}">${this.formatNumber(ce.changeinOpenInterest)}</td>
+                                    <td class="mono" style="${isITM_CE ? 'background:rgba(16, 185, 129, 0.05); font-weight:600' : ''}">₹${(ce.lastPrice || 0).toFixed(2)}</td>
+                                    
+                                    <td class="strike-cell">${r.strikePrice}</td>
+                                    
+                                    <td class="mono" style="${isITM_PE ? 'background:rgba(239, 68, 68, 0.05); font-weight:600' : ''}">₹${(pe.lastPrice || 0).toFixed(2)}</td>
+                                    <td class="${(pe.changeinOpenInterest || 0) >= 0 ? 'up' : 'down'}" style="${isITM_PE ? 'background:rgba(239, 68, 68, 0.05)' : ''}">${this.formatNumber(pe.changeinOpenInterest)}</td>
+                                    <td style="${isITM_PE ? 'background:rgba(239, 68, 68, 0.05)' : ''}">${this.formatNumber(pe.openInterest)}</td>
+                                    <td class="mono small" style="color:var(--amber); ${isITM_PE ? 'background:rgba(239, 68, 68, 0.05)' : ''}">${(pe.impliedVolatility || 0).toFixed(1)}%</td>
+                                    <td class="greek-col mono small" style="display:none; color:var(--primary)">${peG.delta || '-'}</td>
+                                    <td class="greek-col mono small" style="display:none; color:var(--down)">${peG.theta || '-'}</td>
+                                    <td class="greek-col mono small" style="display:none; color:var(--primary)">${peG.gamma || '-'}</td>
+                                    <td class="greek-col mono small" style="display:none; color:var(--primary)">${peG.vega || '-'}</td>
+                                </tr>
+                            `;
+        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        // Scroll to ATM & auto-center horizontal scroll on STRIKE column on mobile
+        setTimeout(() => {
+            const tableCard = document.querySelector('.oc-table')?.closest('.card');
+            if (tableCard) {
+                const strikeHeader = document.querySelector('.oc-header-strike');
+                if (strikeHeader) {
+                    const scrollLeft = strikeHeader.offsetLeft - (tableCard.clientWidth / 2) + (strikeHeader.clientWidth / 2);
+                    tableCard.scrollLeft = Math.max(0, scrollLeft);
+                }
+            }
+
+            const rows = document.querySelectorAll('.oc-table tbody tr');
+            let closestRow = null;
+            let minDiff = Infinity;
+
+            rows.forEach(row => {
+                const strike = parseFloat(row.querySelector('.strike-cell')?.textContent);
+                const diff = Math.abs(strike - underlying);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestRow = row;
+                }
+            });
+
+            if (closestRow) {
+                closestRow.classList.add('atm-row');
+                closestRow.scrollIntoView({ behavior: 'auto', block: 'center' });
+            }
+        }, 100);
+
+        // Start 1s auto-refresh for live option chain data
+        this._startOCAutoRefresh(clean);
+    },
+
+    _startOCAutoRefresh(symbol) {
+        if (this._ocTimer) {
+            clearInterval(this._ocTimer);
+            this._ocTimer = null;
+        }
+        this._ocTimer = setInterval(() => {
+            if (this.state.activeView === 'oi-clock') {
+                this.silentlyUpdateOptionChain(symbol);
+            } else {
+                clearInterval(this._ocTimer);
+                this._ocTimer = null;
+            }
+        }, 1000);
+    },
+
+    async silentlyUpdateOptionChain(symbol = 'NIFTY') {
+        const clean = symbol.replace('NIFTY 50', 'NIFTY');
+        const oi = await window.nseApi.getOIClock(clean, this.state.activeExpiry);
+        if (!oi) return;
+
+        const underlying = oi.underlying || 0;
+        const container = document.getElementById('oc-content');
+        if (!container) return;
+
+        // Update top bar stats
+        const topBar = container.querySelector('.card.glass:first-child');
+        if (topBar) {
+            topBar.innerHTML = `
+                <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+                    <span style="color:var(--text-bright);font-weight:700">Underlying: ${underlying ? '₹' + underlying.toLocaleString() : '---'}</span>
+                    <span class="pcr-badge ${oi.pcr > 1 ? 'up' : 'down'}" style="font-weight:700">PCR: ${oi.pcr}</span>
+                    <span style="color:var(--text-muted)">Max Pain: <b style="color:var(--primary)">${oi.maxPainStrike || '-'}</b></span>
+                </div>
+                <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+                    <button class="chart-action-btn" onclick="App.togglePcrChart()" style="padding:0.35rem 0.75rem; font-size:0.75rem; background:rgba(99,102,241,0.15); color:var(--primary); border:1px solid rgba(99,102,241,0.3); border-radius:6px; font-weight:600">
+                        <i class="fas fa-chart-line"></i> Intraday PCR Trend
+                    </button>
+                    <span style="color:var(--text-muted);font-size:0.7rem"><i class="far fa-clock"></i> ${oi.timestamp}</span>
+                </div>
+            `;
+        }
+
+        const tbody = document.querySelector('.oc-table tbody');
+        if (tbody) {
+            tbody.innerHTML = oi.data.map((r, idx) => {
+                const ce = r.CE || {}; const pe = r.PE || {};
+                const ceG = ce.greeks || {}; const peG = pe.greeks || {};
+                const isITM_CE = r.strikePrice < underlying;
+                const isITM_PE = r.strikePrice > underlying;
+                const isATM = Math.abs(r.strikePrice - underlying) < 25;
+
+                return `
+                    <tr class="${isATM ? 'atm-row' : ''}">
+                        <td class="greek-col mono small" style="display:none; color:var(--primary)">${ceG.vega || '-'}</td>
+                        <td class="greek-col mono small" style="display:none; color:var(--primary)">${ceG.gamma || '-'}</td>
+                        <td class="greek-col mono small" style="display:none; color:var(--down)">${ceG.theta || '-'}</td>
+                        <td class="greek-col mono small" style="display:none; color:var(--primary)">${ceG.delta || '-'}</td>
+                        <td class="mono small" style="color:var(--amber); ${isITM_CE ? 'background:rgba(16, 185, 129, 0.05)' : ''}">${(ce.impliedVolatility || 0).toFixed(1)}%</td>
+                        <td style="${isITM_CE ? 'background:rgba(16, 185, 129, 0.05)' : ''}">${this.formatNumber(ce.openInterest)}</td>
+                        <td class="${(ce.changeinOpenInterest || 0) >= 0 ? 'up' : 'down'}" style="${isITM_CE ? 'background:rgba(16, 185, 129, 0.05)' : ''}">${this.formatNumber(ce.changeinOpenInterest)}</td>
+                        <td class="mono" style="${isITM_CE ? 'background:rgba(16, 185, 129, 0.05); font-weight:600' : ''}">₹${(ce.lastPrice || 0).toFixed(2)}</td>
+                        
+                        <td class="strike-cell">${r.strikePrice}</td>
+                        
+                        <td class="mono" style="${isITM_PE ? 'background:rgba(239, 68, 68, 0.05); font-weight:600' : ''}">₹${(pe.lastPrice || 0).toFixed(2)}</td>
+                        <td class="${(pe.changeinOpenInterest || 0) >= 0 ? 'up' : 'down'}" style="${isITM_PE ? 'background:rgba(239, 68, 68, 0.05)' : ''}">${this.formatNumber(pe.changeinOpenInterest)}</td>
+                        <td style="${isITM_PE ? 'background:rgba(239, 68, 68, 0.05)' : ''}">${this.formatNumber(pe.openInterest)}</td>
+                        <td class="mono small" style="color:var(--amber); ${isITM_PE ? 'background:rgba(239, 68, 68, 0.05)' : ''}">${(pe.impliedVolatility || 0).toFixed(1)}%</td>
+                        <td class="greek-col mono small" style="display:none; color:var(--primary)">${peG.delta || '-'}</td>
+                        <td class="greek-col mono small" style="display:none; color:var(--down)">${peG.theta || '-'}</td>
+                        <td class="greek-col mono small" style="display:none; color:var(--primary)">${peG.gamma || '-'}</td>
+                        <td class="greek-col mono small" style="display:none; color:var(--primary)">${peG.vega || '-'}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            const btn = document.getElementById('oc-greek-toggle');
+            if (btn && btn.classList.contains('active')) {
+                document.querySelectorAll('.greek-col').forEach(c => c.style.display = 'table-cell');
+            }
+        }
+    },
+
+    toggleGreeks(btn) {
+        const active = btn.classList.toggle('active');
+        const display = active ? 'table-cell' : 'none';
+        const colspan = active ? 8 : 4;
+        document.querySelectorAll('.greek-col').forEach(c => c.style.display = display);
+        document.querySelectorAll('.oc-header-calls').forEach(c => c.colSpan = colspan);
+        document.querySelectorAll('.oc-header-puts').forEach(c => c.colSpan = colspan);
+    },
+
+    getISTDate() {
+        const nowMs = Date.now() + (this._fbTimeOffset || 0);
+        const d = new Date(nowMs);
+        const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+        return new Date(utc + (5.5 * 60 * 60 * 1000));
+    },
+
+    isWeekend(istDate = this.getISTDate()) {
+        const day = istDate.getDay();
+        return day === 0 || day === 6; // 0 = Sunday, 6 = Saturday
+    },
+
+    getLastTradingDateStr(istDate = this.getISTDate()) {
+        const d = new Date(istDate.getTime());
+        const day = d.getDay();
+        if (day === 0) d.setDate(d.getDate() - 2); // Sunday -> Friday
+        else if (day === 6) d.setDate(d.getDate() - 1); // Saturday -> Friday
+        return d.toISOString().split('T')[0];
+    },
+
+    initFirebaseTimeEngine(sym) {
+        try {
+            if (!window.firebase || typeof window.firebase.database !== 'function') return;
+
+            // 1. Sync Server Time Offset for 100% precise cross-device alignment
+            if (!this._fbTimeEngineInitialized) {
+                this._fbTimeEngineInitialized = true;
+                const db = window.firebase.database();
+                db.ref('.info/serverTimeOffset').on('value', (snap) => {
+                    this._fbTimeOffset = snap.val() || 0;
+                    console.log(`⏱️ Firebase Time Engine Synced. Offset: ${this._fbTimeOffset}ms`);
+                }, () => {});
+            }
+
+            // 2. Real-time Multi-Device PCR Stream Listener
+            const cleanSym = (sym || this.state.activeSymbol || 'NIFTY').replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
+            const dateStr = this.isWeekend() ? this.getLastTradingDateStr() : this.getISTDate().toISOString().split('T')[0];
+            const streamPath = `pcr_history/${cleanSym}/${dateStr}`;
+
+            if (this._fbActiveStreamPath === streamPath) return;
+            if (this._fbActiveStreamRef) {
+                try { this._fbActiveStreamRef.off(); } catch (e) {}
+            }
+
+            const db = window.firebase.database();
+            this._fbActiveStreamPath = streamPath;
+            this._fbActiveStreamRef = db.ref(streamPath);
+
+            this._fbActiveStreamRef.on('value', (snapshot) => {
+                if (snapshot.exists()) {
+                    const val = snapshot.val();
+                    const list = Array.isArray(val) ? val : Object.values(val);
+                    if (list && list.length > 0) {
+                        if (typeof this.state.pcrHistory !== 'object' || Array.isArray(this.state.pcrHistory)) {
+                            this.state.pcrHistory = {};
+                        }
+                        this.state.pcrHistory[cleanSym] = list;
+                        if ((this.state.activeView === 'oi-clock' || this.state.activeView === 'option-chain' || this.state.activeView === 'symbol-overview') && (this.state.activeSymbol || 'NIFTY').toUpperCase().includes(cleanSym)) {
+                            this.renderPcrChartCanvas(cleanSym);
+                        }
+                    }
+                }
+            }, () => {});
+        } catch (e) {
+            console.warn('Firebase Time Engine Warning:', e.message);
+        }
+    },
+
+    async prefillIntradayPcrHistory(sym) {
+        const cleanSym = sym.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
+        if (typeof this.state.pcrHistory !== 'object' || Array.isArray(this.state.pcrHistory)) {
+            this.state.pcrHistory = {};
+        }
+
+        const istDate = this.getISTDate();
+        const isWknd = this.isWeekend(istDate);
+        const targetDateStr = isWknd ? this.getLastTradingDateStr(istDate) : istDate.toISOString().split('T')[0];
+
+        // Initialize Firebase Time Engine & Live Multi-Device Sync
+        this.initFirebaseTimeEngine(cleanSym);
+
+        const cacheKey = 'destrade_pcr_hist_' + targetDateStr;
+
+        // 1. Try loading from local persistent cache
+        if (!this.state.pcrHistory[cleanSym] || this.state.pcrHistory[cleanSym].length < 5) {
+            try {
+                const saved = localStorage.getItem(cacheKey);
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    if (parsed[cleanSym] && parsed[cleanSym].length >= 5) {
+                        this.state.pcrHistory[cleanSym] = parsed[cleanSym];
+                        this.renderPcrChartCanvas(cleanSym);
+                        return;
+                    }
+                }
+            } catch(e) {}
+        }
+
+        // 2. Try loading target trading day's history from Firebase Realtime DB
+        if (window.firebase && window.firebase.apps && window.firebase.apps.length > 0 && window.firebase.database) {
+            try {
+                const snapshot = await window.firebase.database().ref(`pcr_history/${cleanSym}/${targetDateStr}`).once('value');
+                if (snapshot.exists()) {
+                    const val = snapshot.val();
+                    const list = Array.isArray(val) ? val : Object.values(val);
+                    if (list && list.length > 0) {
+                        this.state.pcrHistory[cleanSym] = list;
+                        this.renderPcrChartCanvas(cleanSym);
+                        return;
+                    }
+                }
+            } catch(e) {}
+        }
+
+        // 3. On Saturdays/Sundays: Do NOT generate synthetic demo data if no history exists!
+        if (isWknd) {
+            const container = document.getElementById('pcr-chart-canvas');
+            if (container) {
+                container.innerHTML = `
+                    <div style="padding: 2.5rem 1rem; text-align:center; color:var(--text-bright); background:rgba(15, 23, 42, 0.4); border-radius:10px; border:1px dashed rgba(245, 158, 11, 0.3)">
+                        <div style="font-size: 1.3rem; color:var(--amber); margin-bottom:0.5rem; font-weight:700">
+                            <i class="fas fa-calendar-times"></i> Market Closed (Weekend)
+                        </div>
+                        <div style="font-size: 0.85rem; color:var(--text-muted)">Options market is closed on Saturdays and Sundays.</div>
+                        <div style="font-size: 0.8rem; color:var(--primary); margin-top:0.75rem; font-weight:600">
+                            <i class="fas fa-satellite-dish fa-spin"></i> Live Multi-Device PCR Streaming resumes Monday at 09:15 AM IST.
+                        </div>
+                    </div>
+                `;
+            }
+            return;
+        }
+
+        // 4. On Trading Days (Mon-Fri) Live Baseline Timeline Setup
+        const oi = await window.nseApi.getOIClock(cleanSym);
+        if (!oi || !oi.pcr) return;
+
+        const currentPcr = parseFloat(oi.pcr) || 1.0;
+        const underlying = parseFloat(oi.underlying) || 0;
+
+        const now = istDate;
+        let endMinTotal = (now.getHours() * 60) + now.getMinutes();
+        const startMinTotal = 9 * 60 + 15; // 09:15 AM
+
+        if (endMinTotal < startMinTotal) endMinTotal = startMinTotal + 60;
+        if (endMinTotal > 15 * 60 + 30) endMinTotal = 15 * 60 + 30;
+
+        const totalMins = Math.max(30, endMinTotal - startMinTotal);
+        const steps = 45;
+        const intervalMins = totalMins / steps;
+
+        const synthetic = [];
+        const startTime = new Date(now.getTime());
+        startTime.setHours(9, 15, 0, 0);
+
+        for (let i = 0; i <= steps; i++) {
+            const t = new Date(startTime.getTime() + (i * intervalMins * 60 * 1000));
+            const timeStr = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            const progress = i / steps;
+            const wave = Math.sin(i * 0.45) * 0.06 * (1 - progress);
+            const val = parseFloat(Math.max(0.4, Math.min(2.2, currentPcr + wave)).toFixed(2));
+
+            synthetic.push({
+                time: Math.floor(t.getTime() / 1000),
+                timeStr: timeStr,
+                value: val,
+                spot: underlying
+            });
+        }
+
+        this.state.pcrHistory[cleanSym] = synthetic;
+        this.renderPcrChartCanvas(cleanSym);
+    },
+
+    recordPcr(symbol, pcrVal, underlying = 0) {
+        if (!symbol || isNaN(pcrVal) || pcrVal <= 0) return;
+
+        // Do not record live ticks on weekends
+        if (this.isWeekend()) return;
+
+        const sym = symbol.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
+
+        if (typeof this.state.pcrHistory !== 'object' || Array.isArray(this.state.pcrHistory)) {
+            this.state.pcrHistory = {};
+        }
+        if (!this.state.pcrHistory[sym]) {
+            this.state.pcrHistory[sym] = [];
+        }
+
+        const list = this.state.pcrHistory[sym];
+        const nowSec = Math.floor(Date.now() / 1000);
+        const now = this.getISTDate();
+        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const lastEntry = list[list.length - 1];
+
+        if (!lastEntry || (nowSec - lastEntry.time) >= 1) {
+            list.push({ time: nowSec, timeStr: timeStr, value: parseFloat(pcrVal), spot: parseFloat(underlying) || 0 });
+            if (list.length > 2500) list.shift();
+
+            const todayKey = 'destrade_pcr_hist_' + now.toISOString().split('T')[0];
+            try {
+                localStorage.setItem(todayKey, JSON.stringify(this.state.pcrHistory));
+            } catch(e) {}
+
+            if (window.firebase && window.firebase.database && (!this._lastFbPush || Date.now() - this._lastFbPush > 2000)) {
+                this._lastFbPush = Date.now();
+                const dateStr = now.toISOString().split('T')[0];
+                window.firebase.database().ref(`pcr_history/${sym}/${dateStr}`).set(list).catch(() => {});
+            }
+        }
+
+        if ((this.state.activeView === 'oi-clock' || this.state.activeView === 'symbol-overview') && (this.state.activeSymbol || 'NIFTY').toUpperCase().includes(sym)) {
+            this.renderPcrChartCanvas(sym);
+        }
+    },
+
+    togglePcrChart() {
+        const cont = document.getElementById('pcr-chart-container');
+        if (!cont) return;
+        const visible = cont.style.display !== 'none';
+        cont.style.display = visible ? 'none' : 'block';
+        if (!visible) {
+            this.renderPcrChartCanvas();
+        }
+    },
+
+    renderPcrChartCanvas(targetSymbol) {
+        const container = document.getElementById('pcr-chart-canvas');
+        if (!container) return;
+
+        const sym = (targetSymbol || this.state.activeSymbol || 'NIFTY').replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
+
+        let data = [];
+        if (this.state.pcrHistory && typeof this.state.pcrHistory === 'object' && !Array.isArray(this.state.pcrHistory)) {
+            data = this.state.pcrHistory[sym] || [];
+        }
+
+        if (!data || data.length < 5) {
+            container.innerHTML = `<div style="color:var(--text-muted);font-size:0.8rem;text-align:center;padding-top:60px"><i class="fas fa-spinner fa-spin"></i> Loading 09:15 - 15:30 Intraday History for ${sym}...</div>`;
+            this.prefillIntradayPcrHistory(sym);
+            return;
+        }
+
+        const dpr = window.devicePixelRatio || 1;
+        const width = container.clientWidth || 340;
+        const height = container.clientHeight || 200;
+        container.innerHTML = `<canvas id="pcr-canvas-element" width="${Math.round(width * dpr)}" height="${Math.round(height * dpr)}" style="width:${width}px; height:${height}px; cursor:crosshair; touch-action:none"></canvas>`;
+        const canvas = document.getElementById('pcr-canvas-element');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+
+        const values = data.map(d => d.value);
+        const rawMin = Math.min(...values);
+        const rawMax = Math.max(...values);
+        const padding = Math.max(0.03, (rawMax - rawMin) * 0.18);
+        const minVal = Math.max(0.1, rawMin - padding);
+        const maxVal = rawMax + padding;
+
+        const spots = data.map(d => d.spot).filter(s => s > 0);
+        const hasSpot = spots.length > 5;
+        const spotMin = hasSpot ? Math.min(...spots) * 0.999 : 0;
+        const spotMax = hasSpot ? Math.max(...spots) * 1.001 : 1;
+
+        const paddingLeft = 42;
+        const paddingRight = hasSpot ? 55 : 45;
+        const paddingTop = 22;
+        const paddingBottom = 28;
+        const chartW = width - paddingLeft - paddingRight;
+        const chartH = height - paddingTop - paddingBottom;
+
+        const pts = data.map((d, i) => {
+            const x = paddingLeft + (i / (data.length - 1 || 1)) * chartW;
+            const y = paddingTop + chartH * (1 - (d.value - minVal) / (maxVal - minVal));
+            const spotY = hasSpot ? paddingTop + chartH * (1 - (d.spot - spotMin) / ((spotMax - spotMin) || 1)) : 0;
+            return { x, y, spotY, val: d.value, spot: d.spot, timeStr: d.timeStr };
+        });
+
+        let hoverIdx = null;
+
+        const drawChart = () => {
+            ctx.clearRect(0, 0, width, height);
+
+            // 1. Draw Horizontal Gridlines & Y-Axis Labels
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.lineWidth = 1;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+            ctx.font = '10px monospace';
+            ctx.textAlign = 'right';
+
+            const gridSteps = 4;
+            for (let g = 0; g <= gridSteps; g++) {
+                const ratio = g / gridSteps;
+                const y = paddingTop + chartH * (1 - ratio);
+                const val = (minVal + ratio * (maxVal - minVal)).toFixed(2);
+
+                ctx.beginPath();
+                ctx.moveTo(paddingLeft, y);
+                ctx.lineTo(width - paddingRight, y);
+                ctx.stroke();
+
+                ctx.fillText(val, paddingLeft - 6, y + 3);
+
+                if (hasSpot) {
+                    const spotVal = Math.round(spotMin + ratio * (spotMax - spotMin));
+                    ctx.textAlign = 'left';
+                    ctx.fillStyle = 'rgba(56, 189, 248, 0.7)';
+                    ctx.fillText('₹' + spotVal, width - paddingRight + 6, y + 3);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+                    ctx.textAlign = 'right';
+                }
+            }
+
+            // 2. Draw Spot Price Line (Subtle Cyan Overlay) if available
+            if (hasSpot) {
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([3, 3]);
+                ctx.moveTo(pts[0].x, pts[0].spotY);
+                for (let i = 1; i < pts.length; i++) {
+                    ctx.lineTo(pts[i].x, pts[i].spotY);
+                }
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // 3. Smooth Area Gradient Fill for PCR
+            const lastPt = pts[pts.length - 1];
+            const isBullish = lastPt.val >= 1.0;
+            const grad = ctx.createLinearGradient(0, paddingTop, 0, height - paddingBottom);
+            if (isBullish) {
+                grad.addColorStop(0, 'rgba(16, 185, 129, 0.28)');
+                grad.addColorStop(1, 'rgba(16, 185, 129, 0.01)');
+            } else {
+                grad.addColorStop(0, 'rgba(239, 68, 68, 0.28)');
+                grad.addColorStop(1, 'rgba(239, 68, 68, 0.01)');
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 0; i < pts.length - 1; i++) {
+                const xc = (pts[i].x + pts[i + 1].x) / 2;
+                const yc = (pts[i].y + pts[i + 1].y) / 2;
+                ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+            }
+            ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+            ctx.lineTo(pts[pts.length - 1].x, height - paddingBottom);
+            ctx.lineTo(pts[0].x, height - paddingBottom);
+            ctx.closePath();
+            ctx.fillStyle = grad;
+            ctx.fill();
+
+            // 4. Smooth Bezier Curved PCR Line Graph (Razor Sharp)
+            ctx.beginPath();
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = isBullish ? '#10b981' : '#ef4444';
+
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 0; i < pts.length - 1; i++) {
+                const xc = (pts[i].x + pts[i + 1].x) / 2;
+                const yc = (pts[i].y + pts[i + 1].y) / 2;
+                ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+            }
+            ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+            ctx.stroke();
+            ctx.shadowBlur = 0; // reset shadow
+
+            // 5. Live Endpoint Pulse Dot
+            ctx.beginPath();
+            ctx.arc(lastPt.x, lastPt.y, 4, 0, Math.PI * 2);
+            ctx.fillStyle = isBullish ? '#10b981' : '#ef4444';
+            ctx.fill();
+
+            ctx.fillStyle = isBullish ? '#10b981' : '#ef4444';
+            ctx.font = 'bold 10px monospace';
+            ctx.textAlign = 'left';
+            ctx.fillText(`PCR ${lastPt.val.toFixed(2)}`, lastPt.x + 6, lastPt.y + 3);
+
+            // 6. Interactive Crosshair & Tooltip Overlay
+            if (hoverIdx !== null && pts[hoverIdx]) {
+                const hp = pts[hoverIdx];
+
+                // Vertical Crosshair Line
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([2, 2]);
+                ctx.moveTo(hp.x, paddingTop);
+                ctx.lineTo(hp.x, height - paddingBottom);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Highlighted Data Point
+                ctx.beginPath();
+                ctx.arc(hp.x, hp.y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = hp.val >= 1.0 ? '#10b981' : '#ef4444';
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Floating Glass Tooltip Box
+                const tipText = `Time: ${hp.timeStr} | PCR: ${hp.val.toFixed(2)}${hp.spot ? ` | Spot: ₹${hp.spot.toLocaleString()}` : ''}`;
+                ctx.font = 'bold 10px sans-serif';
+                const textW = ctx.measureText(tipText).width + 16;
+                let tipX = hp.x - textW / 2;
+                if (tipX < paddingLeft) tipX = paddingLeft;
+                if (tipX + textW > width - paddingRight) tipX = width - paddingRight - textW;
+
+                const tipY = paddingTop + 4;
+
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+                ctx.strokeStyle = 'rgba(99, 102, 241, 0.5)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                if (ctx.roundRect) ctx.roundRect(tipX, tipY, textW, 22, 6);
+                else ctx.rect(tipX, tipY, textW, 22);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = '#f8fafc';
+                ctx.textAlign = 'left';
+                ctx.fillText(tipText, tipX + 8, tipY + 15);
+            }
+
+            // 7. Timeline Labels at Bottom (09:15 to 15:30)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.font = '9px monospace';
+            ctx.textAlign = 'left';
+            ctx.fillText(pts[0].timeStr || '09:15', paddingLeft, height - 6);
+            ctx.textAlign = 'center';
+            if (hasSpot) {
+                ctx.fillStyle = 'rgba(56, 189, 248, 0.7)';
+                ctx.fillText('── Spot Price Overlay', width / 2, height - 6);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            }
+            ctx.textAlign = 'right';
+            ctx.fillText(pts[pts.length - 1].timeStr || '15:30', width - paddingRight, height - 6);
+        };
+
+        const updateHover = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX);
+            if (!clientX) return;
+            const mouseX = clientX - rect.left;
+            if (mouseX >= paddingLeft && mouseX <= width - paddingRight) {
+                const ratio = (mouseX - paddingLeft) / chartW;
+                hoverIdx = Math.min(pts.length - 1, Math.max(0, Math.round(ratio * (pts.length - 1))));
+            } else {
+                hoverIdx = null;
+            }
+            drawChart();
+        };
+
+        canvas.onmousemove = updateHover;
+        canvas.ontouchmove = updateHover;
+        canvas.onmouseleave = () => { hoverIdx = null; drawChart(); };
+
+        drawChart();
+    },
+
+    async shareTradeSignal(symbol, type, strike, price, margin, roi) {
+        const text = `📊 *DESTRADE PRO SIGNAL*\n` +
+            `🔹 *Script:* ${symbol} ${type} ${strike}\n` +
+            `💰 *Option LTP:* ₹${price}\n` +
+            `🛡️ *Required Margin:* ₹${Number(margin).toLocaleString()}\n` +
+            `📈 *Est. Yield (ROI):* ${roi}%\n\n` +
+            `⚡ *Sent via Destrade Pro Trading Terminal*`;
+
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: `Destrade Signal: ${symbol} ${strike} ${type}`,
+                    text: text
+                });
+                return;
+            } catch (err) {
+                // Fallback to clipboard if user cancels share modal
+            }
+        }
+
+        // Clipboard fallback
+        try {
+            await navigator.clipboard.writeText(text);
+            alert('Trade Signal copied to clipboard!\n\n' + text);
+        } catch (e) {
+            alert(text);
+        }
+    },
+
+    // ===== OI CLOCK & RECOMMENDATIONS =====
+    async renderOIClock() {
+        const symbol = this.state.activeSymbol || 'NIFTY';
+        const cleanSym = symbol.replace('NIFTY 50', 'NIFTY');
+
+        const view = document.getElementById('view-oi-clock');
+        if (!view) return;
+
+        view.innerHTML = `
+            <div class="view-header">
+                <div class="view-title"><i class="fas fa-clock"></i> Options Intelligence</div>
+                <button class="back-btn" onclick="App.switchView('dashboard')"><i class="fas fa-arrow-left"></i> Back</button>
+            </div>
+            <div class="mode-tabs glass" style="margin-bottom: 1.5rem; display: flex; padding: 0.25rem; border-radius: 10px; width: fit-content;">
+                <button class="mode-tab ${this.state.oiMode !== 'recommendation' ? 'active' : ''}" data-mode="clock" onclick="App.switchOIMode('clock')">Symbol OI Gauge</button>
+                <button class="mode-tab ${this.state.oiMode === 'recommendation' ? 'active' : ''}" data-mode="recommendation" onclick="App.switchOIMode('recommendation')">Global Trade Recommendations</button>
+            </div>
+            <div id="oi-main-content">
+                <div class="skeleton-loader" style="height: 400px;"></div>
+            </div>
+        `;
+
+        this.switchOIMode(this.state.oiMode || 'clock', true);
+    },
+
+    // ===== MARKET DISCOVERY VIEW =====
+    async renderDiscovery() {
+        const view = document.getElementById('view-discovery');
+        if (!view) return;
+        let c = document.getElementById('discovery-content');
+        if (!c) {
+            c = document.createElement('div');
+            c.id = 'discovery-content';
+            view.appendChild(c);
+        }
+
+        if (!this.state.discoveryMode) this.state.discoveryMode = 'screener';
+        if (!this.state.screenerSubTab) this.state.screenerSubTab = 'longBuildup';
+        if (!this.state.oiFilter) this.state.oiFilter = 'ALL';
+
+        document.querySelectorAll('#view-discovery .mode-tab').forEach(b => {
+            b.classList.toggle('active', b.dataset.mode === this.state.discoveryMode);
+        });
+
+        c.innerHTML = '<div class="skeleton-loader" style="height: 350px; border-radius:12px;"></div>';
+
+        const data = await window.nseApi.getScreenerData().catch(() => null);
+
+        if (this.state.discoveryMode === 'screener') {
+            this.renderScreenerView(c, data);
+        } else {
+            this.renderOIInterpretationView(c, data);
+        }
+    },
+
+    switchOIInterpretationFilter(filter) {
+        this.state.oiFilter = filter;
+        this.renderDiscovery();
+    },
+
+    filterOIInterpretationSearch(val) {
+        this.state.oiSearch = val.toUpperCase().trim();
+        const container = document.getElementById('oi-interpretation-table-body');
+        if (container) {
+            this.renderOIInterpretationRows(container, this.state.screenerDataCache);
+        }
+    },
+
+    renderOIInterpretationView(container, data) {
+        this.state.screenerDataCache = data;
+        const activeFilter = this.state.oiFilter || 'ALL';
+        const searchQ = this.state.oiSearch || '';
+
+        container.innerHTML = `
+            <div class="card glass" style="padding: 1.25rem; margin-bottom: 1.5rem;">
+                <div class="movers-tabs" style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:1rem;">
+                    <button class="${activeFilter === 'ALL' ? 'active' : ''}" onclick="App.switchOIInterpretationFilter('ALL')">ALL</button>
+                    <button class="${activeFilter === 'Long Buildup' ? 'active' : ''}" onclick="App.switchOIInterpretationFilter('Long Buildup')">Long</button>
+                    <button class="${activeFilter === 'Short Buildup' ? 'active' : ''}" onclick="App.switchOIInterpretationFilter('Short Buildup')">Short</button>
+                    <button class="${activeFilter === 'Short Covering' ? 'active' : ''}" onclick="App.switchOIInterpretationFilter('Short Covering')">Short Covering</button>
+                    <button class="${activeFilter === 'Long Unwinding' ? 'active' : ''}" onclick="App.switchOIInterpretationFilter('Long Unwinding')">Long Unwinding</button>
+                </div>
+
+                <div style="position:relative; margin-bottom:1rem;">
+                    <input type="text" placeholder="Search Symbol (e.g. RELIANCE, TCS)..." value="${searchQ}" oninput="App.filterOIInterpretationSearch(this.value)" style="width:100%; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:var(--text-bright); padding:0.65rem 1rem; border-radius:8px; font-size:0.85rem; outline:none;">
+                </div>
+
+                <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; text-align:left; font-size:0.85rem;">
+                        <thead>
+                            <tr style="border-bottom:1px solid rgba(255,255,255,0.1); color:var(--text-muted);">
+                                <th style="padding:0.75rem">Symbol</th>
+                                <th style="padding:0.75rem; text-align:right">Price</th>
+                                <th style="padding:0.75rem; text-align:right">Price Chg %</th>
+                                <th style="padding:0.75rem; text-align:right">Traded Vol</th>
+                                <th style="padding:0.75rem; text-align:center">Buildup Tag</th>
+                            </tr>
+                        </thead>
+                        <tbody id="oi-interpretation-table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+
+        this.renderOIInterpretationRows(document.getElementById('oi-interpretation-table-body'), data);
+    },
+
+    renderOIInterpretationRows(tbody, data) {
+        if (!tbody) return;
+        const allStocks = data?.all || [];
+        const activeFilter = this.state.oiFilter || 'ALL';
+        const searchQ = this.state.oiSearch || '';
+
+        let filtered = allStocks;
+        if (activeFilter !== 'ALL') {
+            filtered = filtered.filter(s => s.tag === activeFilter);
+        }
+        if (searchQ) {
+            filtered = filtered.filter(s => s.symbol.toUpperCase().includes(searchQ));
+        }
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" style="text-align:center; padding:2.5rem; color:var(--text-muted);">
+                        No stocks matching "${activeFilter}" criteria.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = filtered.slice(0, 40).map(s => {
+            const tagStyle = s.tag === 'Long Buildup' ? 'tag-bullish' :
+                             s.tag === 'Short Buildup' ? 'tag-bearish' :
+                             s.tag === 'Short Covering' ? 'tag-bullish' :
+                             s.tag === 'Long Unwinding' ? 'tag-bearish' : 'tag-neutral';
+            return `
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.03); cursor:pointer;" onclick="App.showSymbolOverview('${s.symbol}')">
+                    <td style="padding:0.75rem; font-weight:700; color:var(--text-bright)">${s.symbol}</td>
+                    <td style="padding:0.75rem; text-align:right; font-family:var(--font-mono)">₹${(s.price || 0).toLocaleString()}</td>
+                    <td style="padding:0.75rem; text-align:right; font-family:var(--font-mono)" class="${s.pChange >= 0 ? 'up' : 'down'}">
+                        ${s.pChange >= 0 ? '+' : ''}${(s.pChange || 0).toFixed(2)}%
+                    </td>
+                    <td style="padding:0.75rem; text-align:right; font-family:var(--font-mono); color:var(--text-muted)">
+                        ${(s.volume || 0).toLocaleString()}
+                    </td>
+                    <td style="padding:0.75rem; text-align:center">
+                        <span class="tag ${tagStyle}">${s.tag}</span>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    },
+
+    showScriptManager() {
+        const modal = document.getElementById('script-manager-modal');
+        if (modal) modal.classList.add('active');
+    },
+
+    closeScriptManager() {
+        const modal = document.getElementById('script-manager-modal');
+        if (modal) modal.classList.remove('active');
+    },
+
+    switchDiscoveryMode(mode) {
+        this.state.discoveryMode = mode;
+        this.renderDiscovery();
+    },
+
+    switchScreenerSubTab(tab) {
+        this.state.screenerSubTab = tab;
+        this.renderDiscovery();
+    },
+
+    renderScreenerView(container, data) {
+        const activeTab = this.state.screenerSubTab || 'longBuildup';
+        const longB = data?.longBuildup || [];
+        const shortB = data?.shortBuildup || [];
+        const surges = data?.priceSurges || data?.all || [];
+        const vols = data?.volShockers || [];
+
+        let currentList = [];
+        if (activeTab === 'longBuildup') currentList = longB.length > 0 ? longB : surges.filter(s => s.pChange > 0);
+        else if (activeTab === 'shortBuildup') currentList = shortB.length > 0 ? shortB : surges.filter(s => s.pChange < 0);
+        else if (activeTab === 'surges') currentList = surges;
+        else if (activeTab === 'volume') currentList = vols;
+
+        container.innerHTML = `
+            <div class="card glass" style="padding: 1.25rem; margin-bottom: 1.5rem;">
+                <div class="movers-tabs" style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1.25rem;">
+                    <button class="${activeTab === 'longBuildup' ? 'active' : ''}" onclick="App.switchScreenerSubTab('longBuildup')">
+                        🔥 Long Buildup (${longB.length || surges.filter(s => s.pChange > 0).length})
+                    </button>
+                    <button class="${activeTab === 'shortBuildup' ? 'active' : ''}" onclick="App.switchScreenerSubTab('shortBuildup')">
+                        ❄️ Short Buildup (${shortB.length || surges.filter(s => s.pChange < 0).length})
+                    </button>
+                    <button class="${activeTab === 'surges' ? 'active' : ''}" onclick="App.switchScreenerSubTab('surges')">
+                        🚀 Price Surges (${surges.length})
+                    </button>
+                    <button class="${activeTab === 'volume' ? 'active' : ''}" onclick="App.switchScreenerSubTab('volume')">
+                        ⚡ Vol Shockers (${vols.length})
+                    </button>
+                </div>
+
+                ${currentList.length === 0 ? `
+                    <div style="text-align:center; padding:3rem 1rem; color:var(--text-muted);">
+                        <i class="fas fa-search" style="font-size:2rem; margin-bottom:1rem; opacity:0.5;"></i>
+                        <p>No matching stocks found for this buildup criteria in real-time stream.</p>
+                    </div>
+                ` : `
+                    <div style="overflow-x:auto;">
+                        <table style="width:100%; border-collapse:collapse; text-align:left; font-size:0.85rem;">
+                            <thead>
+                                <tr style="border-bottom:1px solid rgba(255,255,255,0.1); color:var(--text-muted);">
+                                    <th style="padding:0.75rem">Symbol</th>
+                                    <th style="padding:0.75rem; text-align:right">Price</th>
+                                    <th style="padding:0.75rem; text-align:right">Price Chg %</th>
+                                    <th style="padding:0.75rem; text-align:right">Traded Vol</th>
+                                    <th style="padding:0.75rem; text-align:center">Signal Tag</th>
+                                    <th style="padding:0.75rem; text-align:center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${currentList.slice(0, 25).map(s => `
+                                    <tr style="border-bottom:1px solid rgba(255,255,255,0.03); cursor:pointer;" onclick="App.showSymbolOverview('${s.symbol}')">
+                                        <td style="padding:0.75rem; font-weight:700; color:var(--text-bright)">${s.symbol}</td>
+                                        <td style="padding:0.75rem; text-align:right; font-family:var(--font-mono)">₹${(s.price || 0).toLocaleString()}</td>
+                                        <td style="padding:0.75rem; text-align:right; font-family:var(--font-mono)" class="${s.pChange >= 0 ? 'up' : 'down'}">
+                                            ${s.pChange >= 0 ? '+' : ''}${(s.pChange || 0).toFixed(2)}%
+                                        </td>
+                                        <td style="padding:0.75rem; text-align:right; font-family:var(--font-mono); color:var(--text-muted)">
+                                            ${(s.volume || 0).toLocaleString()}
+                                        </td>
+                                        <td style="padding:0.75rem; text-align:center">
+                                            <span class="tag ${s.pChange >= 0 ? 'tag-bullish' : 'tag-bearish'}">
+                                                ${s.tag || (s.pChange >= 0 ? 'Long Buildup' : 'Short Buildup')}
+                                            </span>
+                                        </td>
+                                        <td style="padding:0.75rem; text-align:center" onclick="event.stopPropagation();">
+                                            <button class="chart-action-btn" onclick="App.showSymbolOverview('${s.symbol}')" style="padding:0.3rem 0.6rem; font-size:0.75rem">
+                                                View
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `}
+            </div>
+        `;
+    },
+
+    switchOIMode(mode, force = false) {
+        if (this.state.oiMode === mode && !force) return;
+        this.state.oiMode = mode;
+
+        document.querySelectorAll('#view-oi-clock .mode-tab').forEach(t => t.classList.remove('active'));
+        const tab = document.querySelector(`#view-oi-clock .mode-tab[data-mode="${mode}"]`);
+        if (tab) tab.classList.add('active');
+
+        const content = document.getElementById('oi-main-content');
+        if (!content) return;
+
+        if (mode === 'clock') {
+            const sym = this.state.activeSymbol || 'NIFTY';
+            content.innerHTML = `
+                <div style="display:flex; justify-content:center; align-items:center; flex-direction:column; gap:1rem;">
+                    <div class="card glass" id="oi-gauge-standalone-container" style="padding: 2.5rem; min-height: 400px; width: 100%; display: flex; flex-direction: column; align-items: center; text-align:center">
+                        <div class="skeleton-loader" style="width:100%; height:300px"></div>
+                    </div>
+                </div>
+            `;
+            this._renderOIGauge('oi-gauge-standalone-container', sym);
+        } else if (mode === 'recommendation') {
+            this.renderTradeRecommendations(content);
+        }
+    },
+
+    async calculateMargin(spot, strike, premium, type, isIndex, lotSize, expiryDate = '', symbol = '', model = this.state.marginModel || 'zerodha_live') {
+        if (model === 'zerodha_live' && symbol && window.nseApi && window.nseApi.fetchZerodhaSpanMargin) {
+            const liveMargin = await window.nseApi.fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiryDate);
+            if (liveMargin) {
+                return {
+                    span: liveMargin.span,
+                    exposure: liveMargin.exposure,
+                    total: liveMargin.total,
+                    premiumReceivable: premium * lotSize,
+                    modelName: 'Zerodha Live SPAN'
+                };
+            }
+        }
+        if (model === 'zerodha_live' || model === 'zerodha') {
+            const contractValue = spot * lotSize;
+            const spanPercent = isIndex ? 0.12 : 0.20;
+            const expPercent = isIndex ? 0.02 : 0.035;
+
+            const spanBase = contractValue * spanPercent;
+            const expMargin = contractValue * expPercent;
+
+            let otmAmount = 0;
+            if (type === 'CE' && strike > spot) otmAmount = (strike - spot) * lotSize;
+            else if (type === 'PE' && strike < spot) otmAmount = (spot - strike) * lotSize;
+
+            const floorSpan = contractValue * (isIndex ? 0.05 : 0.08);
+            const finalSpan = Math.max(floorSpan, spanBase - (otmAmount * 0.5));
+
+            // Zerodha alternative option margin rule: (strike + premium) * lotSize * 0.025
+            const altMargin = (strike + premium) * lotSize * 0.025;
+            const totalMargin = Math.max(finalSpan + expMargin, altMargin);
+
+            return {
+                span: finalSpan,
+                exposure: expMargin,
+                total: totalMargin,
+                premiumReceivable: premium * lotSize,
+                modelName: 'Zerodha Formula'
+            };
+        } else {
+            // Backup Heuristic Model
+            const spanPercent = isIndex ? 0.12 : 0.23;
+            const expPercent = isIndex ? 0.02 : 0.035;
+            const minPercent = isIndex ? 0.05 : 0.10;
+
+            const contractValue = spot * lotSize;
+            let spanBase = contractValue * spanPercent;
+            let expMargin = contractValue * expPercent;
+
+            let otmAmount = 0;
+            if (type === 'CE' && strike > spot) otmAmount = (strike - spot) * lotSize;
+            else if (type === 'PE' && strike < spot) otmAmount = (spot - strike) * lotSize;
+
+            let finalSpan = spanBase - (otmAmount * 0.4);
+            const floorSpan = contractValue * minPercent;
+
+            finalSpan = Math.max(finalSpan, floorSpan);
+            let totalMargin = finalSpan + expMargin;
+
+            return {
+                span: finalSpan,
+                exposure: expMargin,
+                total: totalMargin,
+                premiumReceivable: premium * lotSize,
+                modelName: 'Backup SPAN'
+            };
+        }
+    },
+
+    changeMarginModel(model) {
+        this.state.marginModel = model;
+        localStorage.setItem('destrade_margin_model', model);
+        if (this.state.scannerCache && this.state.scannerCache.completed) {
+            this.runTradeScanner(true);
+        }
+    },
+
+    applyScannerFilters() {
+        const minEl = document.getElementById('scanner-capital-min');
+        const maxEl = document.getElementById('scanner-capital-max');
+        if (minEl) {
+            const valMin = parseFloat(minEl.value) || 0;
+            this.state.scannerCapitalMin = valMin > 0 ? valMin : null;
+            if (valMin > 0) {
+                localStorage.setItem('destrade_scanner_capital_min', valMin);
+            } else {
+                localStorage.removeItem('destrade_scanner_capital_min');
+            }
+        }
+        if (maxEl) {
+            const valMax = parseFloat(maxEl.value) || 0;
+            this.state.scannerCapitalMax = valMax > 0 ? valMax : null;
+            if (valMax > 0) {
+                localStorage.setItem('destrade_scanner_capital_max', valMax);
+            } else {
+                localStorage.removeItem('destrade_scanner_capital_max');
+            }
+        }
+
+        const minOtmEl = document.getElementById('scanner-otm-min');
+        const maxOtmEl = document.getElementById('scanner-otm-max');
+        if (minOtmEl) {
+            this.state.scannerOtmMin = parseFloat(minOtmEl.value) || 4;
+            localStorage.setItem('destrade_scanner_otm_min', this.state.scannerOtmMin);
+        }
+        if (maxOtmEl) {
+            this.state.scannerOtmMax = parseFloat(maxOtmEl.value) || 10;
+            localStorage.setItem('destrade_scanner_otm_max', this.state.scannerOtmMax);
+        }
+
+        if (this.state.scannerCache && this.state.scannerCache.completed) {
+            this._renderScannerResults(this.state.scannerCache.sell, this.state.scannerCache.buy);
+        }
+    },
+
+    renderTradeRecommendations(container) {
+        container.innerHTML = `
+            <div class="card glass" style="padding: 1.5rem; margin-bottom: 1.5rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem">
+                    <div>
+                        <h3 style="margin-bottom:0.5rem"><i class="fas fa-robot"></i> AI Options Scanner</h3>
+                        <p style="color:var(--text-muted); font-size:0.9rem">
+                            Scans active F&O scripts to find the best Selling and Buying opportunities based on premium yields and momentum.
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="scanner-controls-container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-top:1.25rem; padding-top:1.25rem; border-top:1px solid rgba(255,255,255,0.05)">
+                    <!-- Scanner Controls -->
+                    <div class="scanner-controls-row" style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap">
+                        <select id="scanner-margin-model" onchange="App.changeMarginModel(this.value)" style="background:var(--bg-glass); color:var(--text-bright); border:1px solid rgba(255,255,255,0.2); padding:0.75rem 1rem; border-radius:8px; font-size:0.85rem; cursor:pointer; outline:none">
+                            <option value="zerodha_live" ${(this.state.marginModel || 'zerodha_live') === 'zerodha_live' ? 'selected' : ''}>Model: Zerodha Live SPAN API</option>
+                            <option value="zerodha" ${this.state.marginModel === 'zerodha' ? 'selected' : ''}>Model: Zerodha Formula</option>
+                            <option value="heuristic" ${this.state.marginModel === 'heuristic' ? 'selected' : ''}>Model: Backup SPAN</option>
+                        </select>
+                        <select id="scanner-expiry-mode" style="background:var(--bg-glass); color:var(--text-bright); border:1px solid rgba(255,255,255,0.2); padding:0.75rem 1rem; border-radius:8px; font-size:0.85rem; cursor:pointer; outline:none">
+                            <option value="current" ${this.state.scannerExpiryMode === 'current' ? 'selected' : ''}>Current Expiry (Near Month)</option>
+                            <option value="next" ${this.state.scannerExpiryMode === 'next' ? 'selected' : ''}>Next Expiry (Next Month)</option>
+                            <option value="far" ${this.state.scannerExpiryMode === 'far' ? 'selected' : ''}>Far Expiry (Far Month)</option>
+                        </select>
+                        <button class="btn chart-action-btn" id="btn-run-scanner" onclick="App.runTradeScanner(true)" style="background:var(--primary); color:white; padding:0.8rem 1.5rem">
+                            <i class="fas fa-play"></i> Start Full Scan
+                        </button>
+                    </div>
+
+                    <!-- Dynamic Filters Input panel -->
+                    <div class="scanner-filters-row" style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap">
+                        <!-- Capital Range Inputs -->
+                        <div style="display:flex; align-items:center; gap:0.5rem; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); padding:0.45rem 0.8rem; border-radius:8px">
+                            <label style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0">Capital Range: ₹</label>
+                            <input type="number" id="scanner-capital-min" placeholder="Min" value="${this.state.scannerCapitalMin || ''}" oninput="App.applyScannerFilters()" style="background:transparent; border:none; color:var(--text-bright); font-size:0.85rem; width:80px; outline:none; text-align:center">
+                            <span style="color:var(--text-muted); font-size:0.8rem">to</span>
+                            <input type="number" id="scanner-capital-max" placeholder="Max" value="${this.state.scannerCapitalMax || ''}" oninput="App.applyScannerFilters()" style="background:transparent; border:none; color:var(--text-bright); font-size:0.85rem; width:80px; outline:none; text-align:center">
+                        </div>
+                        
+                        <!-- OTM Selector -->
+                        <div style="display:flex; align-items:center; gap:0.5rem; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); padding:0.45rem 0.8rem; border-radius:8px">
+                            <label style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0">OTM Range:</label>
+                            <input type="number" id="scanner-otm-min" placeholder="Min %" value="${this.state.scannerOtmMin}" onchange="App.applyScannerFilters()" style="background:transparent; border:none; color:var(--text-bright); font-size:0.85rem; width:45px; outline:none; text-align:center">%
+                            <span style="color:var(--text-muted); font-size:0.8rem">to</span>
+                            <input type="number" id="scanner-otm-max" placeholder="Max %" value="${this.state.scannerOtmMax}" onchange="App.applyScannerFilters()" style="background:transparent; border:none; color:var(--text-bright); font-size:0.85rem; width:45px; outline:none; text-align:center">%
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="scanner-progress-container" style="display:none; margin-top:2rem">
+                    <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:0.8rem; color:var(--text-bright)">
+                        <span id="scanner-status">Fetching scripts...</span>
+                        <span id="scanner-progress-text">0 / 0</span>
+                    </div>
+                    <div style="width:100%; height:8px; background:rgba(255,255,255,0.05); border-radius:4px; overflow:hidden;">
+                        <div id="scanner-progress-bar" style="width:0%; height:100%; background:var(--primary); transition:width 0.2s ease;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="scanner-results" style="display:none;">
+                <div class="movers-tabs" style="margin-bottom:1rem">
+                    <button class="active" onclick="App.switchScannerTab('sell')">Best to Sell (Yield)</button>
+                    <button onclick="App.switchScannerTab('buy')">Best to Buy (Momentum)</button>
+                </div>
+                
+                <div id="scanner-sell-results" class="scanner-tab-target active"></div>
+                <div id="scanner-buy-results" class="scanner-tab-target" style="display:none;"></div>
+            </div>
+        `;
+
+        // Auto-show cached data if we switch views back
+        if (this.state.scannerCache && this.state.scannerCache.completed) {
+            setTimeout(() => this.runTradeScanner(false), 10);
+        } else if (this.state.scannerCache && this.state.scannerCache.status === 'scanning') {
+            document.getElementById('scanner-progress-container').style.display = 'block';
+            document.getElementById('scanner-status').textContent = "Scan in progress locally...";
+        }
+    },
+
+    switchScannerTab(tab) {
+        document.querySelectorAll('#scanner-results .movers-tabs button').forEach((b, i) => {
+            if ((tab === 'sell' && i === 0) || (tab === 'buy' && i === 1)) b.classList.add('active');
+            else b.classList.remove('active');
+        });
+        document.getElementById('scanner-sell-results').style.display = tab === 'sell' ? 'block' : 'none';
+        document.getElementById('scanner-buy-results').style.display = tab === 'buy' ? 'block' : 'none';
+    },
+
+    async runTradeScanner(force = true, isBackground = false) {
+        const btn = document.getElementById('btn-run-scanner');
+        const progCont = document.getElementById('scanner-progress-container');
+        const pText = document.getElementById('scanner-progress-text');
+        const pBar = document.getElementById('scanner-progress-bar');
+        const sStatus = document.getElementById('scanner-status');
+        const resultsBox = document.getElementById('scanner-results');
+
+        const expiryModeEl = document.getElementById('scanner-expiry-mode');
+        const targetExpiryMode = expiryModeEl ? expiryModeEl.value : (this.state.scannerExpiryMode || 'current');
+        this.state.scannerExpiryMode = targetExpiryMode;
+
+        const marginModelEl = document.getElementById('scanner-margin-model');
+        if (marginModelEl) this.state.marginModel = marginModelEl.value;
+
+        // If just loading from cache
+        if (!force && this.state.scannerCache.completed) {
+            if (resultsBox) resultsBox.style.display = 'block';
+            this._renderScannerResults(this.state.scannerCache.sell, this.state.scannerCache.buy);
+            return;
+        }
+
+        // Prevent multiple simultaneous scans
+        if (this.state.scannerCache.status === 'scanning') return;
+        this.state.scannerCache.status = 'scanning';
+
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Scanning...`;
+        }
+        if (progCont) progCont.style.display = 'block';
+        if (resultsBox) resultsBox.style.display = 'none';
+
+        // Pre-fetch Screener Data to populate fnoSymbols if missing
+        if (!window.nseApi.fnoSymbols || window.nseApi.fnoSymbols.length === 0) {
+            await window.nseApi.getScreenerData();
+        }
+
+        let symbols = window.nseApi.fnoSymbols || [];
+        if (symbols.length === 0) {
+            sStatus.textContent = "Error: F&O Symbol list unavailable.";
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fas fa-play"></i> Retry Scan`;
+            return;
+        }
+
+        const buyCandidates = [];
+        const sellCandidates = [];
+        let completed = 0;
+        const total = symbols.length;
+
+        // Process in batches of 4 to prevent rate limiting (429)
+        for (let i = 0; i < total; i += 4) {
+            const batch = symbols.slice(i, i + 4);
+            if (sStatus) sStatus.textContent = `Analyzing ${batch[0]} and others (${targetExpiryMode.toUpperCase()} expiry)...`;
+
+            const promises = batch.map(async (sym) => {
+                try {
+                    const oi = await window.nseApi.getOIClock(sym, targetExpiryMode);
+                    if (!oi || !oi.data || oi.data.length === 0) return;
+
+                    const lotSize = oi.lotSize || (typeof window.nseApi._getLotSize === 'function' ? window.nseApi._getLotSize(sym) : 100);
+                    const spot = oi.underlying;
+                    if (!spot || spot === 0) return;
+
+                    const isIndex = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'].some(idx => sym.includes(idx));
+
+                    const minOtmVal = parseFloat(document.getElementById('scanner-otm-min')?.value) || App.state.scannerOtmMin;
+                    const maxOtmVal = parseFloat(document.getElementById('scanner-otm-max')?.value) || App.state.scannerOtmMax;
+
+                    // Proportional scaling for indices (indices are less volatile than individual stocks)
+                    const finalMinOtm = isIndex ? Math.max(0.5, minOtmVal * 0.4) : minOtmVal;
+                    const finalMaxOtm = isIndex ? Math.max(1.5, maxOtmVal * 0.8) : maxOtmVal;
+
+                    const ceMinDist = 1 + (finalMinOtm / 100);
+                    const ceMaxDist = 1 + (finalMaxOtm / 100);
+
+                    const peMaxDist = 1 - (finalMinOtm / 100);
+                    const peMinDist = 1 - (finalMaxOtm / 100);
+
+                    for (const row of oi.data) {
+                        const strike = row.strikePrice;
+
+                        // CE Sell (Near OTM with user selected parameters & Daily OI Change > 0)
+                        if (strike >= spot * ceMinDist && strike <= spot * ceMaxDist && row.CE && row.CE.lastPrice > 0 && (row.CE.openInterest || 0) > 0 && (row.CE.changeinOpenInterest || 0) > 0) {
+                            const premiumValue = row.CE.lastPrice * lotSize;
+                            const estMargin = await this.calculateMargin(spot, strike, row.CE.lastPrice, 'CE', isIndex, lotSize, oi.currentExpiry || '', sym);
+
+                            const roi = (premiumValue / estMargin.total) * 100;
+                            if (roi > 0.5 && roi < 50) { // filter out absurd outliers
+                                sellCandidates.push({
+                                    symbol: sym, type: 'CE', strike, spot, premium: row.CE.lastPrice, lotSize,
+                                    margin: estMargin, value: premiumValue, roi, iv: row.CE.impliedVolatility || 0,
+                                    oiChg: row.CE.changeinOpenInterest, expiry: oi.currentExpiry || ''
+                                });
+                            }
+                        }
+                        // PE Sell (Near OTM with user selected parameters & Daily OI Change > 0)
+                        if (strike <= spot * peMaxDist && strike >= spot * peMinDist && row.PE && row.PE.lastPrice > 0 && (row.PE.openInterest || 0) > 0 && (row.PE.changeinOpenInterest || 0) > 0) {
+                            const premiumValue = row.PE.lastPrice * lotSize;
+                            const estMargin = await this.calculateMargin(spot, strike, row.PE.lastPrice, 'PE', isIndex, lotSize, oi.currentExpiry || '', sym);
+
+                            const roi = (premiumValue / estMargin.total) * 100;
+                            if (roi > 0.5 && roi < 50) {
+                                sellCandidates.push({
+                                    symbol: sym, type: 'PE', strike, spot, premium: row.PE.lastPrice, lotSize,
+                                    margin: estMargin, value: premiumValue, roi, iv: row.PE.impliedVolatility || 0,
+                                    oiChg: row.PE.changeinOpenInterest, expiry: oi.currentExpiry || ''
+                                });
+                            }
+                        }
+
+                        // Buy Logic: ATM options with active Price & Daily OI Change > 0
+                        if (Math.abs(strike - spot) / spot <= 0.025) {
+                            if (row.CE && row.CE.lastPrice > 0 && row.CE.pChange > 0 && (row.CE.changeinOpenInterest || 0) > 0 && (row.CE.openInterest || 0) > 0) {
+                                const buyMargin = isIndex ? (row.CE.lastPrice * lotSize * 0.70) : (row.CE.lastPrice * lotSize);
+                                buyCandidates.push({
+                                    symbol: sym, type: 'CE', strike, spot, premium: row.CE.lastPrice, lotSize,
+                                    margin: buyMargin,
+                                    pChange: row.CE.pChange,
+                                    oiChg: row.CE.changeinOpenInterest, oi: row.CE.openInterest,
+                                    score: row.CE.pChange * (row.CE.changeinOpenInterest / (row.CE.openInterest || 1)) * 100,
+                                    expiry: oi.currentExpiry || ''
+                                });
+                            }
+                            if (row.PE && row.PE.lastPrice > 0 && row.PE.pChange > 0 && (row.PE.changeinOpenInterest || 0) > 0 && (row.PE.openInterest || 0) > 0) {
+                                const buyMargin = isIndex ? (row.PE.lastPrice * lotSize * 0.70) : (row.PE.lastPrice * lotSize);
+                                buyCandidates.push({
+                                    symbol: sym, type: 'PE', strike, spot, premium: row.PE.lastPrice, lotSize,
+                                    margin: buyMargin,
+                                    pChange: row.PE.pChange,
+                                    oiChg: row.PE.changeinOpenInterest, oi: row.PE.openInterest,
+                                    score: row.PE.pChange * (row.PE.changeinOpenInterest / (row.PE.openInterest || 1)) * 100,
+                                    expiry: oi.currentExpiry || ''
+                                });
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Fail silently for bad scripts
+                }
+            });
+
+            await Promise.all(promises);
+            completed += batch.length;
+            if (pText) pText.textContent = `${completed} / ${total}`;
+            if (pBar) pBar.style.width = `${(completed / total) * 100}%`;
+
+            await new Promise(r => setTimeout(r, 120)); // Rate-limit safe buffer
+        }
+        this.state.scannerCache = {
+            sell: sellCandidates,
+            buy: buyCandidates,
+            status: 'idle',
+            completed: true
+        };
+
+        if (sStatus) sStatus.textContent = "Scan Complete!";
+
+        // Render Results if view is active
+        if (resultsBox) {
+            this._renderScannerResults(sellCandidates, buyCandidates);
+            resultsBox.style.display = 'block';
+        }
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fas fa-play"></i> Re-Scan`;
+        }
+        if (progCont) setTimeout(() => { progCont.style.display = 'none'; }, 2000);
+    },
+
+    _renderScannerResults(sell, buy) {
+        const minCap = this.state.scannerCapitalMin || 0;
+        const maxCap = this.state.scannerCapitalMax || Infinity;
+
+        let filteredSell = sell;
+        let filteredBuy = buy;
+
+        if (minCap > 0 || maxCap !== Infinity) {
+            filteredSell = sell.filter(d => {
+                const margin = d.margin?.total || 0;
+                return margin >= minCap && margin <= maxCap;
+            });
+            filteredBuy = buy.filter(d => {
+                const reqMargin = typeof d.margin === 'number' ? d.margin : (d.margin?.total || 0);
+                return reqMargin >= minCap && reqMargin <= maxCap;
+            });
+        }
+
+        const ceSell = filteredSell.filter(d => d.type === 'CE').sort((a, b) => b.roi - a.roi).slice(0, 30);
+        const peSell = filteredSell.filter(d => d.type === 'PE').sort((a, b) => b.roi - a.roi).slice(0, 30);
+        const topBuy = filteredBuy.sort((a, b) => b.score - a.score).slice(0, 50);
+
+        const renderTable = (data, isSell, title) => {
+            const emptyMsg = `<div class="card glass" style="padding:2rem;text-align:center;color:var(--text-muted)">No ${title || 'options'} matched the scanning criteria.</div>`;
+            if (data.length === 0) return emptyMsg;
+
+            return `
+                ${title ? `<div style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.05); display:flex; align-items:center; gap:0.75rem">
+                    <i class="fas ${isSell ? (title.includes('Call') ? 'fa-arrow-down' : 'fa-arrow-up') : 'fa-bolt'}" style="color:${isSell ? (title.includes('Call') ? 'var(--down)' : 'var(--up)') : 'var(--primary)'}"></i>
+                    <b style="font-size:0.9rem; letter-spacing:0.05em; text-transform:uppercase">${title}</b>
+                    <span style="margin-left:auto; font-size:0.7rem; color:var(--text-muted)">Showing Top ${data.length}</span>
+                </div>` : ''}
+                <table class="pro-table" style="width:100%; text-align:left; font-size:0.85rem">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Expiry</th>
+                            <th>Action</th>
+                            <th>Strike</th>
+                            <th>Lot</th>
+                            <th>Premium</th>
+                            ${isSell ? '<th>Est. Margin</th><th>Est. ROI</th>' : '<th>Est. Margin</th><th>Price Chg %</th><th>Score</th>'}
+                            <th style="text-align:center">Share</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.map(d => `
+                            <tr style="cursor:pointer" onclick="App.showOptionChain('${d.symbol}', '${d.expiry || ''}')">
+                                <td><b>${d.symbol}</b> <span style="color:var(--text-muted);font-size:0.7rem">(Spot: ${d.spot.toFixed(1)})</span></td>
+                                <td class="mono" style="color:var(--primary); font-size:0.75rem">${d.expiry || '---'}</td>
+                                <td class="${d.type === 'CE' ? (isSell ? 'down' : 'up') : (isSell ? 'up' : 'down')}">
+                                    <span class="tag ${d.type === 'CE' ? (isSell ? 'tag-bearish' : 'tag-bullish') : (isSell ? 'tag-bullish' : 'tag-bearish')}">${isSell ? 'SELL' : 'BUY'} ${d.type}</span>
+                                </td>
+                                <td class="mono" style="color:var(--primary)">${d.strike}</td>
+                                <td class="mono" style="color:var(--text-muted)">${d.lotSize}</td>
+                                <td class="mono">₹${parseFloat(d.premium).toFixed(2)}</td>
+                                ${isSell ? `
+                                    <td class="mono">
+                                        <div style="font-weight:600; color:var(--text-bright); margin-bottom:2px">₹${Math.round(d.margin.total).toLocaleString()}</div>
+                                        <div style="font-size:0.65rem; color:var(--text-muted); line-height:1.2">
+                                            Span: ₹${Math.round(d.margin.span).toLocaleString()}<br>
+                                            Exp: ₹${Math.round(d.margin.exposure).toLocaleString()}
+                                        </div>
+                                        <div style="font-size:0.65rem; color:var(--up); margin-top:2px; font-weight:600">
+                                            Rec: ₹${Math.round(d.margin.premiumReceivable).toLocaleString()}
+                                        </div>
+                                    </td>
+                                    <td class="up mono" style="font-weight:bold">${d.roi.toFixed(1)}%</td>
+                                ` : `
+                                    <td class="mono" style="color:var(--text-muted)">₹${Math.round(d.margin).toLocaleString()}</td>
+                                    <td class="up mono">+${d.pChange.toFixed(1)}%</td>
+                                    <td class="mono" style="color:var(--primary); font-weight:bold">${d.score.toFixed(1)}</td>
+                                `}
+                                <td style="text-align:center">
+                                    <button class="chart-action-btn" onclick="event.stopPropagation(); App.shareTradeSignal('${d.symbol}', '${d.type}', ${d.strike}, ${parseFloat(d.premium).toFixed(2)}, ${Math.round(d.margin?.total || d.margin || 0)}, ${(d.roi || 0).toFixed(1)})" style="padding:0.3rem 0.6rem; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3)" title="Share Trade Signal">
+                                        <i class="fas fa-share-alt"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        };
+
+        document.getElementById('scanner-sell-results').innerHTML = `
+            <div class="card glass" style="padding:0; overflow:hidden; margin-bottom: 2rem;">${renderTable(ceSell, true, 'Call Options (CE) Yields')}</div>
+            <div class="card glass" style="padding:0; overflow:hidden">${renderTable(peSell, true, 'Put Options (PE) Yields')}</div>
+        `;
+        document.getElementById('scanner-buy-results').innerHTML = `<div class="card glass" style="padding:0; overflow:hidden">${renderTable(topBuy, false, 'Momentum Buying Opportunities')}</div>`;
+    },
+
+    async _renderOIGauge(containerId, symbol) {
+        const c = document.getElementById(containerId);
+        const oi = await window.nseApi.getOIClock(symbol);
+        if (!oi) { c.innerHTML = '<p style="color:var(--text-muted)">Data unavailable</p>'; return; }
+
+        const total = oi.totalCEOI + oi.totalPEOI || 1;
+        const cePercent = ((oi.totalCEOI / total) * 100).toFixed(0);
+        const pePercent = ((oi.totalPEOI / total) * 100).toFixed(0);
+        const sentColor = oi.sentiment === 'BULLISH' ? 'var(--up)' : oi.sentiment === 'BEARISH' ? 'var(--down)' : 'var(--amber)';
+        const sentClass = oi.sentiment === 'BULLISH' ? 'tag-bullish' : oi.sentiment === 'BEARISH' ? 'tag-bearish' : 'tag-neutral';
+        const summary = window.nseApi.getMarketAnalysisAndRecommendation(oi, symbol);
+
+        c.innerHTML = `
+            <h3 style="margin-bottom:1.5rem;color:var(--text-bright)">${symbol}</h3>
+            <div class="oi-gauge" style="background:conic-gradient(var(--down) 0% ${cePercent}%, var(--up) ${cePercent}% 100%)">
+                <div class="oi-gauge-inner">
+                    <div class="oi-gauge-value" style="color:${sentColor}">${oi.pcr}</div>
+                    <div class="oi-gauge-label">PCR</div>
+                </div>
+            </div>
+            <div style="display:flex;justify-content:center;gap:2rem;margin-bottom:1rem;font-size:0.75rem">
+                <span><span class="down">●</span> CE: ${cePercent}%</span>
+                <span><span class="up">●</span> PE: ${pePercent}%</span>
+            </div>
+            <span class="tag ${sentClass}">${oi.sentiment}</span>
+            <div class="oi-stats" style="margin-top:2rem">
+                <div class="oi-stat"><div class="oi-stat-label">Max CE OI</div><div class="oi-stat-value">${oi.maxCEStrike}</div></div>
+                <div class="oi-stat"><div class="oi-stat-label">Max PE OI</div><div class="oi-stat-value">${oi.maxPEStrike}</div></div>
+                <div class="oi-stat"><div class="oi-stat-label">Max Pain</div><div class="oi-stat-value up">${oi.maxPainStrike}</div></div>
+            </div>
+
+            <!-- Option Chain Analysis Card -->
+            ${summary ? `
+            <div class="ai-advisor-card glass" style="margin-top:2rem; padding:1.25rem; border:1px solid rgba(99, 102, 241, 0.3); background:rgba(15, 23, 42, 0.6); border-radius:12px; text-align:left;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.25rem; flex-wrap:wrap; gap:0.5rem">
+                    <div style="display:flex; align-items:center; gap:0.5rem">
+                        <i class="fas fa-brain" style="color:var(--primary); font-size:1.2rem"></i>
+                        <b style="font-size:1rem; letter-spacing:0.05em; color:var(--text-bright)">QUANTITATIVE MARKET ANALYSIS</b>
+                    </div>
+                    <div style="display:inline-flex; align-items:center; justify-content:center; gap:0.35rem; background:${summary.biasColor}18; border:1.5px solid ${summary.biasColor}; color:${summary.biasColor}; padding:0.35rem 0.85rem; border-radius:20px; font-weight:800; font-size:0.82rem; white-space:nowrap; box-shadow:0 0 12px ${summary.biasColor}30; width:fit-content;">
+                        <i class="fas ${parseFloat(summary.pcr) >= 1.0 ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down'}" style="font-size:0.75rem"></i> ${summary.marketType} (${summary.confidence})
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:1rem; margin-bottom:1.25rem;">
+                    <div style="background:rgba(0,0,0,0.25); padding:0.85rem; border-radius:8px; border:1px solid rgba(255,255,255,0.05)">
+                        <div style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem; font-weight:700">Context & PCR</div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.3rem"><span style="font-size:0.8rem; color:var(--text-muted)">Spot Price</span><span class="mono" style="font-size:0.85rem; color:var(--text-bright); font-weight:600">₹${summary.spot}</span></div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.3rem"><span style="font-size:0.8rem; color:var(--text-muted)">PCR Sentiment</span><span class="mono" style="font-size:0.85rem; color:${summary.biasColor}; font-weight:bold">${summary.pcr}</span></div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.3rem"><span style="font-size:0.8rem; color:var(--text-muted)">Max Pain</span><span class="mono" style="font-size:0.85rem; color:var(--text-bright)">${summary.maxPain}</span></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="font-size:0.8rem; color:var(--text-muted)">Pain Distance</span><span class="mono" style="font-size:0.8rem; color:${parseFloat(summary.maxPainDiff) >= 0 ? 'var(--up)' : 'var(--down)'}">${parseFloat(summary.maxPainDiff) > 0 ? '+' : ''}${summary.maxPainDiff} pts</span></div>
+                    </div>
+
+                    <div style="background:rgba(0,0,0,0.25); padding:0.85rem; border-radius:8px; border:1px solid rgba(255,255,255,0.05)">
+                        <div style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem; font-weight:700">Key Levels (OI)</div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.3rem"><span style="font-size:0.8rem; color:var(--text-muted)">Max Support</span><span class="mono" style="font-size:0.85rem; color:var(--up); font-weight:bold">${summary.strongSupport}</span></div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.3rem"><span style="font-size:0.8rem; color:var(--text-muted)">Max Resistance</span><span class="mono" style="font-size:0.85rem; color:var(--down); font-weight:bold">${summary.strongResistance}</span></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="font-size:0.8rem; color:var(--text-muted)">Expected Range</span><span class="mono" style="font-size:0.8rem; color:var(--text-bright)">${summary.marketRange}</span></div>
+                    </div>
+
+                    <div style="background:rgba(0,0,0,0.25); padding:0.85rem; border-radius:8px; border:1px solid rgba(255,255,255,0.05)">
+                        <div style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.5rem; font-weight:700">Intraday Build-up</div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.3rem"><span style="font-size:0.8rem; color:var(--text-muted)">PE Build-up</span><span class="mono" style="font-size:0.85rem; color:var(--up); font-weight:600">${summary.supportBuilding}</span></div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.3rem"><span style="font-size:0.8rem; color:var(--text-muted)">CE Build-up</span><span class="mono" style="font-size:0.85rem; color:var(--down); font-weight:600">${summary.resistanceBuilding}</span></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="font-size:0.8rem; color:var(--text-muted)">Lot Size</span><span class="mono" style="font-size:0.8rem; color:var(--text-bright)">${summary.lotSize}</span></div>
+                    </div>
+                </div>
+
+                <div style="background:rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.35); padding:1.1rem; border-radius:10px; display:flex; flex-direction:column; gap:0.5rem">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem">
+                        <div style="font-size:0.75rem; color:var(--primary); text-transform:uppercase; font-weight:800; letter-spacing:0.05em"><i class="fas fa-bolt"></i> RECOMMENDED TRADE SETUP</div>
+                        <div style="font-size:0.75rem; color:var(--text-muted)">Target: <b style="color:var(--up)">${summary.target}</b> | StopLoss: <b style="color:var(--down)">${summary.stopLoss}</b></div>
+                    </div>
+                    <div class="mono" style="font-size:1.1rem; color:var(--text-bright); font-weight:800">${summary.tradeAction}</div>
+                    <div style="font-size:0.8rem; color:var(--text-muted); line-height:1.4">${summary.tradeDetails}</div>
+                </div>
+            </div>
+            ` : ''}
+        `;
+    },
+
+    // ===== MARKET DISCOVERY (Unified) =====
+    renderDiscovery() {
+        const content = document.getElementById('discovery-content');
+        if (!content) return;
+        if (this.state.discoveryMode === 'screener') this.renderScreener(content);
+        else this.renderAnalysis(content);
+
+        document.querySelectorAll('.mode-tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.mode === this.state.discoveryMode);
+        });
+    },
+
+    switchDiscoveryMode(mode) {
+        this.state.discoveryMode = mode;
+        this.renderDiscovery();
+    },
+
+    async renderScreener(mountPoint) {
+        const c = mountPoint || document.getElementById('discovery-content');
+        if (!c) return;
+
+        c.innerHTML = `
+            <div class="screener-tabs">
+                ${['longBuildup', 'shortBuildup', 'high52w', 'low52w', 'volShockers', 'priceSurges'].map(t => `
+                    <button class="screener-tab ${this.state.screenerTab === t ? 'active' : ''}" onclick="App.switchScreenerTab('${t}')">${t.replace(/([A-Z])/g, ' $1').replace('vol', 'Volume')}</button>
+                `).join('')}
+            </div>
+            <div class="card glass" style="padding:0;overflow:auto;max-height:calc(100vh - 300px)">
+                <table class="pro-table">
+                    <thead>
+                        <tr>
+                            <th onclick="App.setScreenerSort('symbol')">Symbol ${this._getSortIcon('symbol')}</th>
+                            <th onclick="App.setScreenerSort('price')">Price ${this._getSortIcon('price')}</th>
+                            <th onclick="App.setScreenerSort('pChange')">Chg % ${this._getSortIcon('pChange')}</th>
+                            <th onclick="App.setScreenerSort('volume')">Vol ${this._getSortIcon('volume')}</th>
+                            <th onclick="App.setScreenerSort('oiChange')">OI Chg ${this._getSortIcon('oiChange')}</th>
+                            <th onclick="App.setScreenerSort('oiValue')">OI Val ${this._getSortIcon('oiValue')}</th>
+                            <th>Signal</th>
+                        </tr>
+                    </thead>
+                    <tbody id="screener-body"></tbody>
+                </table>
+            </div>
+        `;
+        const data = await window.nseApi.getScreenerData();
+        this._renderScreenerTable(data[this.state.screenerTab] || []);
+    },
+
+    switchScreenerTab(tab) {
+        this.state.screenerTab = tab;
+        this.renderDiscovery();
+    },
+
+    setScreenerSort(key) {
+        if (this.state.screenerSort.key === key) this.state.screenerSort.dir = this.state.screenerSort.dir === 'asc' ? 'desc' : 'asc';
+        else { this.state.screenerSort.key = key; this.state.screenerSort.dir = 'desc'; }
+        this.renderDiscovery();
+    },
+
+    _getSortIcon(key, isAnalysis = false) {
+        const sort = isAnalysis ? this.state.analysisSort : this.state.screenerSort;
+        if (sort.key !== key) return '<i class="fas fa-sort" style="opacity:0.3"></i>';
+        return sort.dir === 'asc' ? '<i class="fas fa-sort-up"></i>' : '<i class="fas fa-sort-down"></i>';
+    },
+
+    _renderScreenerTable(stocks) {
+        const body = document.getElementById('screener-body');
+        if (!body) return;
+        const sorted = [...stocks].sort((a, b) => {
+            const { key, dir } = this.state.screenerSort;
+            if (typeof a[key] === 'string') return dir === 'asc' ? a[key].localeCompare(b[key]) : b[key].localeCompare(a[key]);
+            return dir === 'asc' ? a[key] - b[key] : b[key] - a[key];
+        });
+
+        body.innerHTML = sorted.map(s => `
+            <tr data-symbol="${s.symbol}">
+                <td onclick="App.showSymbolOverview('${s.symbol}')">
+                    <div style="display:flex; align-items:center; gap:0.5rem">
+                        <b>${s.symbol}</b>
+                        <i class="fas fa-stream" style="font-size:0.75rem; color:var(--primary); cursor:pointer; opacity:0.6" onclick="event.stopPropagation(); App.showOptionChain('${s.symbol}')" title="Option Chain"></i>
+                    </div>
+                </td>
+                <td class="mono">₹${s.price.toLocaleString()}</td>
+                <td class="mono ${s.pChange >= 0 ? 'up' : 'down'}">${s.pChange.toFixed(2)}%</td>
+                <td class="mono">${this.formatNumber(s.volume)}</td>
+                <td class="mono ${s.oiChange >= 0 ? 'up' : 'down'}">${s.oiChange.toFixed(1)}%</td>
+                <td class="mono">${this.formatNumber(s.oiValue)}</td>
+                <td><span class="tag ${s.tag.includes('Long Buildup') || s.tag.includes('Short Covering') ? 'tag-bullish' : s.tag === 'Neutral' ? 'tag-neutral' : 'tag-bearish'}">${s.tag}</span></td>
+            </tr>
+        `).join('');
+    },
+
+    formatNumber(num) {
+        if (!num || num === 0) return '0';
+        const abs = Math.abs(num);
+        const sign = num < 0 ? '-' : '';
+        let res = abs.toString();
+
+        if (abs >= 10000000) res = (abs / 10000000).toFixed(2) + 'Cr';
+        else if (abs >= 100000) res = (abs / 100000).toFixed(2) + 'L';
+        else if (abs >= 1000) res = (abs / 1000).toFixed(1) + 'K';
+
+        return sign + res;
+    },
+
+    // ===== SECTORS =====
+    async renderSectors() {
+        const view = document.getElementById('view-sectors');
+        if (!view) return;
+        const sectors = await window.nseApi.getSectors();
+        view.innerHTML = `
+            <div class="view-header">
+                <div class="view-title"><i class="fas fa-layer-group"></i> Sector Scope</div>
+                <button class="back-btn" onclick="App.switchView('dashboard')"><i class="fas fa-arrow-left"></i> Back</button>
+            </div>
+            <div class="sector-grid">
+                ${sectors.map(s => `
+                    <div class="sector-card ${s.change >= 0 ? 'positive' : 'negative'}" onclick="App.showSectorStocks('${s.name}')">
+                        <div class="sector-name">${s.label}</div>
+                        <div class="sector-change ${s.change >= 0 ? 'up' : 'down'}">${s.change >= 0 ? '+' : ''}${s.change.toFixed(2)}%</div>
+                        <div class="sector-price">₹${s.price.toLocaleString()}</div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    },
+
+    async showSectorStocks(sector) {
+        this.state.activeSector = sector;
+        this.state.discoveryMode = 'analysis';
+        this.switchView('discovery');
+    },
+
+    async renderAnalysis(mountPoint) {
+        const c = mountPoint || document.getElementById('discovery-content');
+        if (!c) return;
+
+        const sector = this.state.activeSector;
+
+        c.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;gap:1rem">
+                <div class="view-subtitle" style="font-size: 0.9rem; color: var(--primary); font-weight: 800;">
+                    ${sector ? `<i class="fas fa-layer-group"></i> ${sector} Scope` : `<i class="fas fa-brain"></i> OI Interpretation`}
+                    ${sector ? `<button class="close-btn" style="font-size:0.6rem; margin-left:0.5rem" onclick="App.clearActiveSector()">✕ Clear</button>` : ''}
+                </div>
+                <div class="screener-tabs" style="margin:0;flex:1;max-width:500px">
+                    ${['ALL', 'Long Buildup', 'Short Buildup', 'Short Covering', 'Long Unwinding', 'Neutral'].map(t => `
+                        <button class="screener-tab ${this.state.analysisBuildup === t ? 'active' : ''}" onclick="App.setAnalysisBuildup('${t}')">${t.replace(' Buildup', '')}</button>
+                    `).join('')}
+                </div>
+                <div class="global-search glass" style="max-width:200px;margin:0">
+                    <i class="fas fa-search"></i>
+                    <input type="text" placeholder="Filter symbol..." id="analysis-search-input" value="${this.state.analysisSearch}" oninput="App.handleAnalysisSearch(this.value)">
+                </div>
+            </div>
+            <div class="card glass" style="padding:0;overflow:auto;max-height:calc(100vh - 300px)">
+                <table class="pro-table">
+                    <thead>
+                        <tr>
+                            <th onclick="App.setAnalysisSort('symbol')">Symbol ${this._getSortIcon('symbol', true)}</th>
+                            <th onclick="App.setAnalysisSort('price')">Price ${this._getSortIcon('price', true)}</th>
+                            <th onclick="App.setAnalysisSort('pChange')">Chg % ${this._getSortIcon('pChange', true)}</th>
+                            <th onclick="App.setAnalysisSort('volume')">Vol ${this._getSortIcon('volume', true)}</th>
+                            <th onclick="App.setAnalysisSort('oiChange')">OI Chg % ${this._getSortIcon('oiChange', true)}</th>
+                            <th onclick="App.setAnalysisSort('oiValue')">OI Val ${this._getSortIcon('oiValue', true)}</th>
+                            <th>Sentiment</th>
+                        </tr>
+                    </thead>
+                    <tbody id="analysis-body"></tbody>
+                </table>
+            </div>
+        `;
+        this.renderAnalysisList();
+    },
+
+    clearActiveSector() {
+        this.state.activeSector = null;
+        this.renderDiscovery();
+    },
+
+    handleAnalysisSearch(val) {
+        this.state.analysisSearch = val.toUpperCase();
+        this.renderAnalysisList();
+    },
+
+    async renderAnalysisList() {
+        const data = await window.nseApi.getScreenerData();
+        let list = data.all || [];
+        if (this.state.activeSector) {
+            const sh = this.state.activeSector.replace('NIFTY ', '');
+            const components = this.state.sectorMapping[this.state.activeSector] || this.state.sectorMapping[sh] || [];
+            list = list.filter(s => components.includes(s.symbol));
+        }
+        this._renderAnalysisTable(list);
+    },
+
+    setAnalysisBuildup(val) {
+        this.state.analysisBuildup = val;
+        this.renderDiscovery();
+    },
+
+    _renderAnalysisTable(data) {
+        const body = document.getElementById('analysis-body');
+        if (!body) return;
+        const { key, dir } = this.state.analysisSort;
+        const search = this.state.analysisSearch;
+        const buildup = this.state.analysisBuildup;
+
+        const filtered = data.filter(s => {
+            const matchSearch = s.symbol.includes(search);
+            const matchBuildup = buildup === 'ALL' || s.tag === buildup;
+            return matchSearch && matchBuildup;
+        });
+
+        const sorted = [...filtered].sort((a, b) => {
+            if (typeof a[key] === 'string') return dir === 'asc' ? a[key].localeCompare(b[key]) : b[key].localeCompare(a[key]);
+            return dir === 'asc' ? a[key] - b[key] : b[key] - a[key];
+        });
+
+        body.innerHTML = sorted.map(s => `
+            <tr data-symbol="${s.symbol}">
+                <td onclick="App.showSymbolOverview('${s.symbol}')">
+                    <div style="display:flex; align-items:center; gap:0.5rem">
+                        <b>${s.symbol}</b>
+                        <i class="fas fa-stream" style="font-size:0.75rem; color:var(--primary); cursor:pointer; opacity:0.6" onclick="event.stopPropagation(); App.showOptionChain('${s.symbol}')" title="Option Chain"></i>
+                    </div>
+                </td>
+                <td class="mono">₹${s.price.toLocaleString()}</td>
+                <td class="mono ${s.pChange >= 0 ? 'up' : 'down'}">${s.pChange.toFixed(2)}%</td>
+                <td class="mono">${this.formatNumber(s.volume)}</td>
+                <td class="mono ${s.oiChange >= 0 ? 'up' : 'down'}">${s.oiChange.toFixed(1)}%</td>
+                <td class="mono">${this.formatNumber(s.oiValue)}</td>
+                <td><span class="tag ${s.tag.includes('Long Buildup') || s.tag.includes('Short Covering') ? 'tag-bullish' : s.tag === 'Neutral' ? 'tag-neutral' : 'tag-bearish'}">${s.tag}</span></td>
+            </tr>
+        `).join('');
+    },
+
+    setAnalysisSort(key) {
+        if (this.state.analysisSort.key === key) this.state.analysisSort.dir = this.state.analysisSort.dir === 'asc' ? 'desc' : 'asc';
+        else { this.state.analysisSort.key = key; this.state.analysisSort.dir = 'desc'; }
+        this.renderDiscovery();
+    },
+
+    // ===== SCRIPT MANAGER (Pool) =====
+    showScriptManager() {
+        const modal = document.getElementById('script-manager-modal');
+        if (modal) { this.renderScriptList(); modal.classList.add('active'); }
+    },
+
+    renderScriptList(filter = '') {
+        const container = document.getElementById('script-list-container');
+        if (!container) return;
+        const activeBatch = JSON.parse(localStorage.getItem('destrade_active_scripts') || '[]');
+        const symbols = window.nseApi.fnoSymbols || [];
+        const filtered = symbols.filter(s => s.includes(filter.toUpperCase())).sort();
+        container.innerHTML = filtered.map(s => `
+            <div class="script-toggle-item ${activeBatch.includes(s) ? 'active' : ''}" onclick="App.toggleScriptInPool('${s}')">
+                <span>${s}</span>
+                <i class="fas ${activeBatch.includes(s) ? 'fa-check-circle' : 'fa-circle'}"></i>
+            </div>
+        `).join('');
+    },
+
+    toggleScriptInPool(symbol) {
+        let batch = JSON.parse(localStorage.getItem('destrade_active_scripts') || '[]');
+        batch = batch.includes(symbol) ? batch.filter(s => s !== symbol) : [...batch, symbol];
+        localStorage.setItem('destrade_active_scripts', JSON.stringify(batch));
+        this.renderScriptList(document.getElementById('script-manager-search')?.value || '');
+    },
+
+    toggleAllScripts(selectAll) {
+        const batch = selectAll ? (window.nseApi.fnoSymbols || []) : [];
+        localStorage.setItem('destrade_active_scripts', JSON.stringify(batch));
+        this.renderScriptList();
+    },
+
+    closeScriptManager() {
+        document.getElementById('script-manager-modal').classList.remove('active');
+        this.fetchData();
+    },
+
+    // ===== INTRADAY SNAPSHOT HEARTBEAT =====
+    startIntradayHearts() {
+        this.runIntradaySnapshot();
+        const delay = (5 - (new Date().getMinutes() % 5)) * 60000;
+        setTimeout(() => {
+            this.runIntradaySnapshot();
+            setInterval(() => this.runIntradaySnapshot(), 300000);
+        }, delay);
+    },
+
+    async runIntradaySnapshot() {
+        if (!window.db) return;
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+        const timeKey = now.getHours().toString().padStart(2, '0') + ':' + (Math.floor(now.getMinutes() / 5) * 5).toString().padStart(2, '0');
+
+        const meta = await db.ref('intraday_meta').once('value');
+        if (meta.val()?.date !== today) {
+            await db.ref('intraday').set(null);
+            await db.ref('intraday_meta').set({ date: today });
+        }
+
+        const data = await window.nseApi.getScreenerData();
+        const all = data.all || [];
+        const updates = {};
+        all.forEach(s => {
+            updates[`intraday/${s.symbol}/${timeKey}`] = { price: s.price, vol: s.volume, oi: s.oiValue, time: timeKey };
+        });
+        await db.ref().update(updates);
+    }
+};
+
+document.addEventListener('DOMContentLoaded', () => App.init());

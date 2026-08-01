@@ -7,13 +7,36 @@ const https = require('https');
 
 const FIREBASE_HOST = 'destrade-default-rtdb.firebaseio.com';
 const INDICES = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
-const FO_STOCKS = [
-    'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK', 'SBIN', 'BHARTIARTL', 'AXISBANK', 
-    'KOTAKBANK', 'LT', 'ITC', 'HINDUNILVR', 'BAJFINANCE', 'MARUTI', 'SUNPHARMA', 'TATASTEEL', 
-    'NTPC', 'POWERGRID', 'TATAMOTORS', 'WIPRO', 'TITAN', 'ULTRACEMCO', 'ADANIENT', 'HEROMOTOCO', 
-    'ONGC', 'COALINDIA', 'COFORGE', 'DIVISLAB', 'EICHERMOT', 'GRASIM', 'HCLTECH', 'HDFCLIFE'
+const ALL_FO_SYMBOLS = [
+    ...INDICES,
+    'AARTIIND', 'ABB', 'ABBOTINDIA', 'ABCAPITAL', 'ABFRL', 'ACC', 'ADANIENSOL', 'ADANIENT', 
+    'ADANIPORTS', 'ALKEM', 'AMBUJACEM', 'APOLLOHOSP', 'APOLLOTYRE', 'ASHOKLEY', 'ASIANPAINT', 
+    'ASTRAL', 'ATUL', 'AUBANK', 'AUROPHARMA', 'AXISBANK', 'BAJAJ-AUTO', 'BAJAJFINSV', 
+    'BAJFINANCE', 'BALKRISIND', 'BALRAMCHIN', 'BANDHANBNK', 'BANKBARODA', 'BATAINDIA', 
+    'BEL', 'BERGEPAINT', 'BHARATFORG', 'BHARTIARTL', 'BHEL', 'BIOCON', 'BOSCHLTD', 
+    'BPCL', 'BRITANNIA', 'BSOFT', 'CANBK', 'CANFINHOME', 'CHAMBLFERT', 'CHOLAFIN', 
+    'CIPLA', 'COALINDIA', 'COFORGE', 'COLPAL', 'CONCOR', 'COROMANDEL', 'CROMPTON', 
+    'CUMMINSIND', 'CYIENT', 'DABUR', 'DALBHARAT', 'DEEPAKNTR', 'DIVISLAB', 'DIXON', 
+    'DLF', 'DRREDDY', 'EICHERMOT', 'ESCORTS', 'EXIDEIND', 'FEDERALBNK', 'GAIL', 
+    'GLENMARK', 'GMMPFAUDLR', 'GMRINFRA', 'GNFC', 'GODREJCP', 'GODREJPROP', 'GRANULES', 
+    'GRASIM', 'GUJGASLTD', 'HAL', 'HAVELLS', 'HCLTECH', 'HDFCAMC', 'HDFCBANK', 
+    'HDFCLIFE', 'HEROMOTOCO', 'HINDALCO', 'HINDCOPPER', 'HINDPETRO', 'HINDUNILVR', 
+    'ICICIBANK', 'ICICIGI', 'ICICIPRULI', 'IDEA', 'IDFC', 'IDFCFIRSTB', 'IEX', 
+    'IGL', 'INDHOTEL', 'INDIACEM', 'INDIAMART', 'INDIGO', 'INDUSINDBK', 'INDUSTOWER', 
+    'INFY', 'IOC', 'IPCALAB', 'IRCTC', 'ITC', 'JINDALSTEL', 'JKCEMENT', 'JSWSTEEL', 
+    'JUBLFOOD', 'KALYANKJIL', 'KEI', 'KOTAKBANK', 'LALPATHLAB', 'LAURUSLABS', 
+    'LICHSGFIN', 'LTIM', 'LT', 'LTF', 'LUPIN', 'M&M', 'M&MFIN', 'MANAPPURAM', 
+    'MARICO', 'MARUTI', 'MCDOWELL-N', 'MCX', 'METROPOLIS', 'MFSL', 'MGL', 
+    'MOTHERSON', 'MPHASIS', 'MRF', 'MUTHOOTFIN', 'NATIONALUM', 'NAVINFLUOR', 
+    'NESTLEIND', 'NMDC', 'NTPC', 'OBEROIRLTY', 'OFSS', 'OIL', 'ONGC', 'PAGEIND', 
+    'PERSISTENT', 'PETRONET', 'PFC', 'PIDILITIND', 'PIIND', 'PNB', 'POLYCAB', 
+    'POWERGRID', 'PRESTIGE', 'PVRINOX', 'RAMCOCEM', 'RBLBANK', 'RECLTD', 'RELIANCE', 
+    'SAIL', 'SBICARD', 'SBILIFE', 'SBIN', 'SHREECEM', 'SHRIRAMFIN', 'SIEMENS', 
+    'SRF', 'SUNPHARMA', 'SUNTV', 'SYNGENE', 'TATACOMM', 'TATACONSUM', 'TATELXSI', 
+    'TATAMOTORS', 'TATAPOWER', 'TATASTEEL', 'TCS', 'TECHM', 'TIINDIA', 'TITAN', 
+    'TORNTPHARM', 'TORNTPOWER', 'TRENT', 'TVSMOTOR', 'UBL', 'ULTRACEMCO', 'UPL', 
+    'VEDL', 'VOLTAS', 'WIPRO', 'YESBANK', 'ZEEL'
 ];
-const SYMBOLS = [...INDICES, ...FO_STOCKS];
 
 function getISTDate() {
     const d = new Date();
@@ -22,7 +45,7 @@ function getISTDate() {
 }
 
 function fetchUrl(url) {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         const req = https.get(url, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -32,14 +55,10 @@ function fetchUrl(url) {
             let body = '';
             res.on('data', chunk => body += chunk);
             res.on('end', () => {
-                try {
-                    resolve(JSON.parse(body));
-                } catch (e) {
-                    resolve(null);
-                }
+                try { resolve(JSON.parse(body)); } catch (e) { resolve(null); }
             });
         });
-        req.on('error', reject);
+        req.on('error', () => resolve(null));
         req.setTimeout(8000, () => { req.destroy(); resolve(null); });
     });
 }
@@ -79,7 +98,7 @@ function firebasePut(path, data) {
 }
 
 async function fetchOptionChainPCR(symbol) {
-    const isIdx = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'].includes(symbol);
+    const isIdx = INDICES.includes(symbol);
     const type = isIdx ? 'INDICES' : 'STOCKS';
     const url = `https://groww.in/v1/api/option_chain_service/v1/option_chain/exchange/NSE/segment/CASH/${symbol}?type=${type}`;
     
@@ -120,7 +139,8 @@ async function runCloudWorker() {
         await firebasePut('/cron_status.json', {
             lastRun: ist.toISOString(),
             status: 'Market Closed (Weekend)',
-            dateStr: dateStr
+            dateStr: dateStr,
+            symbolCount: ALL_FO_SYMBOLS.length
         });
         return;
     }
@@ -134,57 +154,55 @@ async function runCloudWorker() {
         await firebasePut('/cron_status.json', {
             lastRun: ist.toISOString(),
             status: 'Outside Market Hours',
-            dateStr: dateStr
+            dateStr: dateStr,
+            symbolCount: ALL_FO_SYMBOLS.length
         });
         return;
     }
 
-    console.log('⚡ Market Live! Fetching PCR data for symbols...');
+    console.log(`⚡ Market Live! Parallel processing ${ALL_FO_SYMBOLS.length} F&O symbols...`);
 
     const summary = {};
+    const batchSize = 15;
 
-    for (const sym of SYMBOLS) {
-        try {
-            const data = await fetchOptionChainPCR(sym);
-            if (data && data.pcr > 0) {
-                summary[sym] = data;
+    for (let i = 0; i < ALL_FO_SYMBOLS.length; i += batchSize) {
+        const batch = ALL_FO_SYMBOLS.slice(i, i + batchSize);
+        await Promise.all(batch.map(async sym => {
+            try {
+                const data = await fetchOptionChainPCR(sym);
+                if (data && data.pcr > 0) {
+                    summary[sym] = data;
 
-                // 1. Fetch current PCR list from Firebase
-                const path = `/pcr_history/${sym}/${dateStr}.json`;
-                const existing = await firebaseGet(path);
-                const list = Array.isArray(existing) ? existing : (existing ? Object.values(existing) : []);
+                    const path = `/pcr_history/${sym}/${dateStr}.json`;
+                    const existing = await firebaseGet(path);
+                    const list = Array.isArray(existing) ? existing : (existing ? Object.values(existing) : []);
 
-                // 2. Prevent duplicate entries for exact same minute
-                const lastEntry = list[list.length - 1];
-                if (!lastEntry || lastEntry.timeStr !== timeStr) {
-                    list.push({
-                        time: Math.floor(Date.now() / 1000),
-                        timeStr: timeStr,
-                        value: data.pcr,
-                        spot: data.spot
-                    });
+                    const lastEntry = list[list.length - 1];
+                    if (!lastEntry || lastEntry.timeStr !== timeStr) {
+                        list.push({
+                            time: Math.floor(Date.now() / 1000),
+                            timeStr: timeStr,
+                            value: data.pcr,
+                            spot: data.spot
+                        });
 
-                    // Keep last 150 points for fast chart rendering
-                    const trimmed = list.slice(-150);
-                    await firebasePut(path, trimmed);
-                    console.log(`  ✅ ${sym}: PCR ${data.pcr} (Spot: ₹${data.spot}) saved to Firebase!`);
-                } else {
-                    console.log(`  ℹ️ ${sym}: Skipping duplicate tick for minute ${timeStr}`);
+                        await firebasePut(path, list.slice(-150));
+                        console.log(`  ✅ ${sym}: PCR ${data.pcr} (Spot: ₹${data.spot}) saved!`);
+                    }
                 }
-            }
-        } catch (err) {
-            console.error(`  ❌ Error processing ${sym}:`, err.message);
-        }
+            } catch (err) {}
+        }));
     }
 
     await firebasePut('/cron_status.json', {
         lastRun: ist.toISOString(),
         status: 'Active (Live Market Sync)',
         dateStr: dateStr,
+        symbolsSynced: Object.keys(summary).length,
         summary: summary
     });
 
-    console.log('🎉 Cloud Worker Run Completed Successfully!');
+    console.log(`🎉 Cloud Worker Completed! Synced ${Object.keys(summary).length}/${ALL_FO_SYMBOLS.length} F&O symbols!`);
 }
 
 runCloudWorker().catch(console.error);

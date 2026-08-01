@@ -6,7 +6,14 @@
 const https = require('https');
 
 const FIREBASE_HOST = 'destrade-default-rtdb.firebaseio.com';
-const SYMBOLS = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
+const INDICES = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
+const FO_STOCKS = [
+    'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK', 'SBIN', 'BHARTIARTL', 'AXISBANK', 
+    'KOTAKBANK', 'LT', 'ITC', 'HINDUNILVR', 'BAJFINANCE', 'MARUTI', 'SUNPHARMA', 'TATASTEEL', 
+    'NTPC', 'POWERGRID', 'TATAMOTORS', 'WIPRO', 'TITAN', 'ULTRACEMCO', 'ADANIENT', 'HEROMOTOCO', 
+    'ONGC', 'COALINDIA', 'COFORGE', 'DIVISLAB', 'EICHERMOT', 'GRASIM', 'HCLTECH', 'HDFCLIFE'
+];
+const SYMBOLS = [...INDICES, ...FO_STOCKS];
 
 function getISTDate() {
     const d = new Date();

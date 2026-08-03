@@ -984,65 +984,21 @@ const App = {
             } catch(e) {}
         }
 
-        // 3. On Saturdays/Sundays: Do NOT generate synthetic demo data if no history exists!
-        if (isWknd) {
-            const container = document.getElementById('pcr-chart-canvas');
-            if (container) {
-                container.innerHTML = `
-                    <div style="padding: 2.5rem 1rem; text-align:center; color:var(--text-bright); background:rgba(15, 23, 42, 0.4); border-radius:10px; border:1px dashed rgba(245, 158, 11, 0.3)">
-                        <div style="font-size: 1.3rem; color:var(--amber); margin-bottom:0.5rem; font-weight:700">
-                            <i class="fas fa-calendar-times"></i> Market Closed (Weekend)
-                        </div>
-                        <div style="font-size: 0.85rem; color:var(--text-muted)">Options market is closed on Saturdays and Sundays.</div>
-                        <div style="font-size: 0.8rem; color:var(--primary); margin-top:0.75rem; font-weight:600">
-                            <i class="fas fa-satellite-dish fa-spin"></i> Live Multi-Device PCR Streaming resumes Monday at 09:15 AM IST.
-                        </div>
+        // 3. On Trading Days: Render placeholder status if no live ticks have accumulated yet
+        const container = document.getElementById('pcr-chart-canvas');
+        if (container) {
+            container.innerHTML = `
+                <div style="padding: 2.5rem 1rem; text-align:center; color:var(--text-bright); background:rgba(15, 23, 42, 0.4); border-radius:10px; border:1px dashed rgba(99, 102, 241, 0.3)">
+                    <div style="font-size: 1.1rem; color:var(--primary); margin-bottom:0.5rem; font-weight:700">
+                        <i class="fas fa-satellite-dish fa-spin"></i> Live Market Streaming Active
                     </div>
-                `;
-            }
-            return;
+                    <div style="font-size: 0.85rem; color:var(--text-muted)">Accumulating live PCR ticks for ${cleanSym}...</div>
+                    <div style="font-size: 0.8rem; color:var(--text-bright); margin-top:0.75rem;">
+                        Real-time PCR ticks update automatically every minute during trading hours.
+                    </div>
+                </div>
+            `;
         }
-
-        // 4. On Trading Days (Mon-Fri) Live Baseline Timeline Setup
-        const oi = await window.nseApi.getOIClock(cleanSym);
-        if (!oi || !oi.pcr) return;
-
-        const currentPcr = parseFloat(oi.pcr) || 1.0;
-        const underlying = parseFloat(oi.underlying) || 0;
-
-        const now = istDate;
-        let endMinTotal = (now.getHours() * 60) + now.getMinutes();
-        const startMinTotal = 9 * 60 + 15; // 09:15 AM
-
-        if (endMinTotal < startMinTotal) endMinTotal = startMinTotal + 60;
-        if (endMinTotal > 15 * 60 + 30) endMinTotal = 15 * 60 + 30;
-
-        const totalMins = Math.max(30, endMinTotal - startMinTotal);
-        const steps = 45;
-        const intervalMins = totalMins / steps;
-
-        const synthetic = [];
-        const startTime = new Date(now.getTime());
-        startTime.setHours(9, 15, 0, 0);
-
-        for (let i = 0; i <= steps; i++) {
-            const t = new Date(startTime.getTime() + (i * intervalMins * 60 * 1000));
-            const timeStr = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-            const progress = i / steps;
-            const wave = Math.sin(i * 0.45) * 0.06 * (1 - progress);
-            const val = parseFloat(Math.max(0.4, Math.min(2.2, currentPcr + wave)).toFixed(2));
-
-            synthetic.push({
-                time: Math.floor(t.getTime() / 1000),
-                timeStr: timeStr,
-                value: val,
-                spot: underlying
-            });
-        }
-
-        this.state.pcrHistory[cleanSym] = synthetic;
-        this.renderPcrChartCanvas(cleanSym);
     },
 
     recordPcr(symbol, pcrVal, underlying = 0) {

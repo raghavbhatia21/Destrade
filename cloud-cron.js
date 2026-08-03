@@ -6,37 +6,22 @@
 const https = require('https');
 
 const FIREBASE_HOST = 'destrade-default-rtdb.firebaseio.com';
-const INDICES = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
-const ALL_FO_SYMBOLS = [
-    ...INDICES,
-    'AARTIIND', 'ABB', 'ABBOTINDIA', 'ABCAPITAL', 'ABFRL', 'ACC', 'ADANIENSOL', 'ADANIENT', 
-    'ADANIPORTS', 'ALKEM', 'AMBUJACEM', 'APOLLOHOSP', 'APOLLOTYRE', 'ASHOKLEY', 'ASIANPAINT', 
-    'ASTRAL', 'ATUL', 'AUBANK', 'AUROPHARMA', 'AXISBANK', 'BAJAJ-AUTO', 'BAJAJFINSV', 
-    'BAJFINANCE', 'BALKRISIND', 'BALRAMCHIN', 'BANDHANBNK', 'BANKBARODA', 'BATAINDIA', 
-    'BEL', 'BERGEPAINT', 'BHARATFORG', 'BHARTIARTL', 'BHEL', 'BIOCON', 'BOSCHLTD', 
-    'BPCL', 'BRITANNIA', 'BSOFT', 'CANBK', 'CANFINHOME', 'CHAMBLFERT', 'CHOLAFIN', 
-    'CIPLA', 'COALINDIA', 'COFORGE', 'COLPAL', 'CONCOR', 'COROMANDEL', 'CROMPTON', 
-    'CUMMINSIND', 'CYIENT', 'DABUR', 'DALBHARAT', 'DEEPAKNTR', 'DIVISLAB', 'DIXON', 
-    'DLF', 'DRREDDY', 'EICHERMOT', 'ESCORTS', 'EXIDEIND', 'FEDERALBNK', 'GAIL', 
-    'GLENMARK', 'GMMPFAUDLR', 'GMRINFRA', 'GNFC', 'GODREJCP', 'GODREJPROP', 'GRANULES', 
-    'GRASIM', 'GUJGASLTD', 'HAL', 'HAVELLS', 'HCLTECH', 'HDFCAMC', 'HDFCBANK', 
-    'HDFCLIFE', 'HEROMOTOCO', 'HINDALCO', 'HINDCOPPER', 'HINDPETRO', 'HINDUNILVR', 
-    'ICICIBANK', 'ICICIGI', 'ICICIPRULI', 'IDEA', 'IDFC', 'IDFCFIRSTB', 'IEX', 
-    'IGL', 'INDHOTEL', 'INDIACEM', 'INDIAMART', 'INDIGO', 'INDUSINDBK', 'INDUSTOWER', 
-    'INFY', 'IOC', 'IPCALAB', 'IRCTC', 'ITC', 'JINDALSTEL', 'JKCEMENT', 'JSWSTEEL', 
-    'JUBLFOOD', 'KALYANKJIL', 'KEI', 'KOTAKBANK', 'LALPATHLAB', 'LAURUSLABS', 
-    'LICHSGFIN', 'LTIM', 'LT', 'LTF', 'LUPIN', 'M&M', 'M&MFIN', 'MANAPPURAM', 
-    'MARICO', 'MARUTI', 'MCDOWELL-N', 'MCX', 'METROPOLIS', 'MFSL', 'MGL', 
-    'MOTHERSON', 'MPHASIS', 'MRF', 'MUTHOOTFIN', 'NATIONALUM', 'NAVINFLUOR', 
-    'NESTLEIND', 'NMDC', 'NTPC', 'OBEROIRLTY', 'OFSS', 'OIL', 'ONGC', 'PAGEIND', 
-    'PERSISTENT', 'PETRONET', 'PFC', 'PIDILITIND', 'PIIND', 'PNB', 'POLYCAB', 
-    'POWERGRID', 'PRESTIGE', 'PVRINOX', 'RAMCOCEM', 'RBLBANK', 'RECLTD', 'RELIANCE', 
-    'SAIL', 'SBICARD', 'SBILIFE', 'SBIN', 'SHREECEM', 'SHRIRAMFIN', 'SIEMENS', 
-    'SRF', 'SUNPHARMA', 'SUNTV', 'SYNGENE', 'TATACOMM', 'TATACONSUM', 'TATELXSI', 
-    'TATAMOTORS', 'TATAPOWER', 'TATASTEEL', 'TCS', 'TECHM', 'TIINDIA', 'TITAN', 
-    'TORNTPHARM', 'TORNTPOWER', 'TRENT', 'TVSMOTOR', 'UBL', 'ULTRACEMCO', 'UPL', 
-    'VEDL', 'VOLTAS', 'WIPRO', 'YESBANK', 'ZEEL'
+
+const SLUG_MAP = {
+    'NIFTY': { slug: 'nifty', type: 'INDICES' },
+    'BANKNIFTY': { slug: 'nifty-bank', type: 'INDICES' },
+    'FINNIFTY': { slug: 'nifty-financial-services', type: 'INDICES' },
+    'MIDCPNIFTY': { slug: 'nifty-midcap-select', type: 'INDICES' }
+};
+
+const FO_STOCKS = [
+    'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK', 'SBIN', 'BHARTIARTL', 'AXISBANK', 
+    'KOTAKBANK', 'LT', 'ITC', 'HINDUNILVR', 'BAJFINANCE', 'MARUTI', 'SUNPHARMA', 'TATASTEEL', 
+    'NTPC', 'POWERGRID', 'TATAMOTORS', 'WIPRO', 'TITAN', 'ULTRACEMCO', 'ADANIENT', 'HEROMOTOCO', 
+    'ONGC', 'COALINDIA', 'COFORGE', 'DIVISLAB', 'EICHERMOT', 'GRASIM', 'HCLTECH', 'HDFCLIFE', 'PAGEIND'
 ];
+
+const SYMBOLS = [...Object.keys(SLUG_MAP), ...FO_STOCKS];
 
 function getISTDate() {
     const d = new Date();
@@ -49,7 +34,8 @@ function fetchUrl(url) {
         const req = https.get(url, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                'Accept': 'application/json'
+                'Accept': 'application/json',
+                'Referer': 'https://groww.in/'
             }
         }, (res) => {
             let body = '';
@@ -98,9 +84,8 @@ function firebasePut(path, data) {
 }
 
 async function fetchOptionChainPCR(symbol) {
-    const isIdx = INDICES.includes(symbol);
-    const type = isIdx ? 'INDICES' : 'STOCKS';
-    const url = `https://groww.in/v1/api/option_chain_service/v1/option_chain/exchange/NSE/segment/CASH/${symbol}?type=${type}`;
+    const info = SLUG_MAP[symbol] || { slug: symbol.toLowerCase().replace(/[^a-z0-9]/g, '-'), type: 'STOCKS' };
+    const url = `https://groww.in/v1/api/option_chain_service/v1/option_chain/${info.slug}?type=${info.type}`;
     
     const d = await fetchUrl(url);
     if (!d || !d.optionChain) return null;
@@ -129,7 +114,7 @@ async function runCloudWorker() {
     const totalMin = (hour * 60) + min;
 
     const dateStr = ist.toISOString().split('T')[0];
-    const timeStr = ist.toLocaleTimeString('en-IN', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    const timeStr = ist.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
     console.log(`⏱️ [Cloud Worker] IST Time: ${dateStr} ${timeStr} (Day: ${day})`);
 
@@ -139,8 +124,7 @@ async function runCloudWorker() {
         await firebasePut('/cron_status.json', {
             lastRun: ist.toISOString(),
             status: 'Market Closed (Weekend)',
-            dateStr: dateStr,
-            symbolCount: ALL_FO_SYMBOLS.length
+            dateStr: dateStr
         });
         return;
     }
@@ -154,19 +138,18 @@ async function runCloudWorker() {
         await firebasePut('/cron_status.json', {
             lastRun: ist.toISOString(),
             status: 'Outside Market Hours',
-            dateStr: dateStr,
-            symbolCount: ALL_FO_SYMBOLS.length
+            dateStr: dateStr
         });
         return;
     }
 
-    console.log(`⚡ Market Live! Parallel processing ${ALL_FO_SYMBOLS.length} F&O symbols...`);
+    console.log(`⚡ Market Live! Fetching PCR data for ${SYMBOLS.length} symbols...`);
 
     const summary = {};
-    const batchSize = 15;
+    const batchSize = 10;
 
-    for (let i = 0; i < ALL_FO_SYMBOLS.length; i += batchSize) {
-        const batch = ALL_FO_SYMBOLS.slice(i, i + batchSize);
+    for (let i = 0; i < SYMBOLS.length; i += batchSize) {
+        const batch = SYMBOLS.slice(i, i + batchSize);
         await Promise.all(batch.map(async sym => {
             try {
                 const data = await fetchOptionChainPCR(sym);
@@ -202,7 +185,7 @@ async function runCloudWorker() {
         summary: summary
     });
 
-    console.log(`🎉 Cloud Worker Completed! Synced ${Object.keys(summary).length}/${ALL_FO_SYMBOLS.length} F&O symbols!`);
+    console.log(`🎉 Cloud Worker Completed! Synced ${Object.keys(summary).length}/${SYMBOLS.length} symbols!`);
 }
 
 runCloudWorker().catch(console.error);

@@ -511,63 +511,80 @@ class NSEApi {
         return await this.getLiveQuoteGroww(up);
     }
 
-    // ===== OPTION CHAIN (Discovery + v3 Fetch) =====
+    getGrowwSlug(symbol) {
+        const s = (symbol || 'NIFTY').toUpperCase().replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY');
+        const map = {
+            'NIFTY': { slug: 'nifty', type: 'INDICES' },
+            'BANKNIFTY': { slug: 'nifty-bank', type: 'INDICES' },
+            'FINNIFTY': { slug: 'nifty-financial-services', type: 'INDICES' },
+            'MIDCPNIFTY': { slug: 'nifty-midcap-select', type: 'INDICES' }
+        };
+        if (map[s]) return map[s];
+        return { slug: s.toLowerCase().replace(/[^a-z0-9]/g, '-'), type: 'STOCKS' };
+    }
+
+    // ===== OPTION CHAIN (100% Live Groww Direct Stream) =====
     async getOptionChain(symbol = 'NIFTY') {
-        let clean = symbol.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY');
-        const isIdx = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'].includes(clean);
-
+        const info = this.getGrowwSlug(symbol);
+        const url = `/v1/api/option_chain_service/v1/option_chain/${info.slug}?type=${info.type}`;
+        
         try {
-            // Step 1: Discover Expiry Dates
-            console.log(`[API] Discovery: Fetching contract-info for ${clean}`);
-            const contract = await this._fetch(`/option-chain-contract-info?symbol=${clean}`);
-            const expiries = contract?.expiryDates || [];
-
-            if (expiries.length > 0) {
-                const nearest = expiries[0];
-                const type = isIdx ? 'Indices' : 'Equities';
-                const v3ep = `/option-chain-v3?type=${type}&symbol=${clean}&expiry=${nearest}`;
-
-                console.log(`[API] Discovery Success: Nearest Expiry ${nearest}. Fetching v3...`);
-                const v3 = await this._fetch(v3ep);
-
-                // Robust normalization for v3 structure
-                let rows = v3?.records?.data || v3?.filtered?.data || v3?.data || [];
-                if (rows.length > 0) {
-                    // Multi-layer fallback for underlying price
-                    let uv = v3.underlyingValue ||
-                        v3.records?.underlyingValue ||
-                        v3.filtered?.underlyingValue ||
-                        v3.metadata?.lastPrice ||
-                        rows[0]?.CE?.underlyingValue ||
-                        rows[0]?.PE?.underlyingValue || 0;
-
-                    if (uv === 0) {
-                        const q = await this.getQuote(clean);
-                        if (q) uv = q.lastPrice;
-                    }
-
-                    return {
-                        records: {
-                            data: rows,
-                            expiryDates: v3?.records?.expiryDates || v3?.filtered?.expiryDates || v3?.expiryDates || [nearest],
-                            underlyingValue: uv,
-                            timestamp: v3.timestamp || v3?.records?.timestamp || new Date().toLocaleTimeString()
-                        }
-                    };
+            const d = await this._fetchGroww(url);
+            if (d && d.optionChain) {
+                const oc = d.optionChain;
+                let uv = oc.underlyingValue || oc.lastPrice || 0;
+                if (uv === 0) {
+                    const q = await this.getQuote(symbol);
+                    if (q) uv = q.lastPrice || 0;
                 }
+
+                const rawRows = oc.optionChains || [];
+                const data = rawRows.map(r => {
+                    const strike = (r.strikePrice > 100000) ? (r.strikePrice / 100) : r.strikePrice;
+                    return {
+                        strikePrice: strike,
+                        CE: r.callOption ? {
+                            strikePrice: strike,
+                            underlyingValue: uv,
+                            openInterest: r.callOption.openInterest || 0,
+                            changeinOpenInterest: r.callOption.changeInOpenInterest || 0,
+                            pchangeinOpenInterest: r.callOption.pchangeInOpenInterest || 0,
+                            totalTradedVolume: r.callOption.totalTradedVolume || 0,
+                            impliedVolatility: r.callOption.impliedVolatility || 0,
+                            lastPrice: r.callOption.ltp || 0,
+                            change: r.callOption.dayChange || 0,
+                            pChange: r.callOption.dayChangePerc || 0
+                        } : null,
+                        PE: r.putOption ? {
+                            strikePrice: strike,
+                            underlyingValue: uv,
+                            openInterest: r.putOption.openInterest || 0,
+                            changeinOpenInterest: r.putOption.changeInOpenInterest || 0,
+                            pchangeinOpenInterest: r.putOption.pchangeInOpenInterest || 0,
+                            totalTradedVolume: r.putOption.totalTradedVolume || 0,
+                            impliedVolatility: r.putOption.impliedVolatility || 0,
+                            lastPrice: r.putOption.ltp || 0,
+                            change: r.putOption.dayChange || 0,
+                            pChange: r.putOption.dayChangePerc || 0
+                        } : null
+                    };
+                });
+
+                return {
+                    records: {
+                        data: data,
+                        expiryDates: oc.expiries || [],
+                        underlyingValue: uv,
+                        timestamp: new Date().toLocaleTimeString()
+                    }
+                };
             }
         } catch (e) {
-            console.warn(`[API] Discovery Step Failed for ${clean}:`, e.message);
+            console.warn(`[API] Groww Option Chain error for ${symbol}:`, e.message);
         }
 
-        // Fallback sequence if Discovery/v3 fails
-        const legacyCandidates = [
-            isIdx ? `/option-chain-indices?symbol=${clean}` : `/option-chain-equities?symbol=${encodeURIComponent(clean)}`,
-            `/option-chain-v3?type=${isIdx ? 'Indices' : 'Equities'}&symbol=${clean}`, // Try v3 without expiry as last resort
-            `/json/option-chain/option-chain-v2.json`
-        ];
-
-        for (const ep of legacyCandidates) {
+        return null;
+    }
             console.log(`[API] Fallback: Attempting Legacy Source: ${ep}`);
             const d = await this._fetch(ep);
             if (d?.records?.data?.length > 0) return d;

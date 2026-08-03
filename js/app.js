@@ -871,8 +871,8 @@ const App = {
     },
 
     getISTDate() {
-        const nowMs = Date.now() + (this._fbTimeOffset || 0);
-        const d = new Date(nowMs);
+        // Use device clock directly (Firebase offset was causing wrong timestamps)
+        const d = new Date();
         const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
         return new Date(utc + (5.5 * 60 * 60 * 1000));
     },
@@ -954,12 +954,12 @@ const App = {
         const cacheKey = 'destrade_pcr_hist_' + targetDateStr;
 
         // 1. Try loading from local persistent cache
-        if (!this.state.pcrHistory[cleanSym] || this.state.pcrHistory[cleanSym].length < 5) {
+        if (!this.state.pcrHistory[cleanSym] || this.state.pcrHistory[cleanSym].length < 2) {
             try {
                 const saved = localStorage.getItem(cacheKey);
                 if (saved) {
                     const parsed = JSON.parse(saved);
-                    if (parsed[cleanSym] && parsed[cleanSym].length >= 5) {
+                    if (parsed[cleanSym] && parsed[cleanSym].length >= 2) {
                         this.state.pcrHistory[cleanSym] = parsed[cleanSym];
                         this.renderPcrChartCanvas(cleanSym);
                         return;
@@ -1064,7 +1064,7 @@ const App = {
             data = this.state.pcrHistory[sym] || [];
         }
 
-        if (!data || data.length < 5) {
+        if (!data || data.length < 2) {
             container.innerHTML = `<div style="color:var(--text-muted);font-size:0.8rem;text-align:center;padding-top:60px"><i class="fas fa-spinner fa-spin"></i> Loading 09:15 - 15:30 Intraday History for ${sym}...</div>`;
             this.prefillIntradayPcrHistory(sym);
             return;

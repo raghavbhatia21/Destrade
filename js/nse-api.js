@@ -585,22 +585,6 @@ class NSEApi {
 
         return null;
     }
-            console.log(`[API] Fallback: Attempting Legacy Source: ${ep}`);
-            const d = await this._fetch(ep);
-            if (d?.records?.data?.length > 0) return d;
-            if (d?.filtered?.data?.length > 0) {
-                return {
-                    records: {
-                        data: d.filtered.data,
-                        expiryDates: d.records?.expiryDates || d.filtered?.expiryDates || [],
-                        underlyingValue: d.records?.underlyingValue || d.filtered?.underlyingValue || 0
-                    }
-                };
-            }
-        }
-
-        return null;
-    }
 
     // ===== OI CLOCK & PCR =====
     async getOIClock(symbol = 'NIFTY', expiryDate = '') {

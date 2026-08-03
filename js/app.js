@@ -871,10 +871,15 @@ const App = {
     },
 
     getISTDate() {
-        // Use device clock directly (Firebase offset was causing wrong timestamps)
-        const d = new Date();
-        const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
-        return new Date(utc + (5.5 * 60 * 60 * 1000));
+        return new Date();
+    },
+
+    getISTDateStr() {
+        return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    },
+
+    getISTTimeString() {
+        return new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
     },
 
     isWeekend(istDate = this.getISTDate()) {
@@ -882,31 +887,21 @@ const App = {
         return day === 0 || day === 6; // 0 = Sunday, 6 = Saturday
     },
 
-    getLastTradingDateStr(istDate = this.getISTDate()) {
-        const d = new Date(istDate.getTime());
+    getLastTradingDateStr() {
+        const d = new Date();
         const day = d.getDay();
         if (day === 0) d.setDate(d.getDate() - 2); // Sunday -> Friday
         else if (day === 6) d.setDate(d.getDate() - 1); // Saturday -> Friday
-        return d.toISOString().split('T')[0];
+        return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     },
 
     initFirebaseTimeEngine(sym) {
         try {
             if (!window.firebase || typeof window.firebase.database !== 'function') return;
 
-            // 1. Sync Server Time Offset for 100% precise cross-device alignment
-            if (!this._fbTimeEngineInitialized) {
-                this._fbTimeEngineInitialized = true;
-                const db = window.firebase.database();
-                db.ref('.info/serverTimeOffset').on('value', (snap) => {
-                    this._fbTimeOffset = snap.val() || 0;
-                    console.log(`⏱️ Firebase Time Engine Synced. Offset: ${this._fbTimeOffset}ms`);
-                }, () => {});
-            }
-
-            // 2. Real-time Multi-Device PCR Stream Listener
+            // Real-time Multi-Device PCR Stream Listener
             const cleanSym = (sym || this.state.activeSymbol || 'NIFTY').replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
-            const dateStr = this.isWeekend() ? this.getLastTradingDateStr() : this.getISTDate().toISOString().split('T')[0];
+            const dateStr = this.isWeekend() ? this.getLastTradingDateStr() : this.getISTDateStr();
             const streamPath = `pcr_history/${cleanSym}/${dateStr}`;
 
             if (this._fbActiveStreamPath === streamPath) return;
@@ -926,7 +921,15 @@ const App = {
                         if (typeof this.state.pcrHistory !== 'object' || Array.isArray(this.state.pcrHistory)) {
                             this.state.pcrHistory = {};
                         }
-                        this.state.pcrHistory[cleanSym] = list;
+                        // Merge intelligently without losing existing ticks
+                        const current = this.state.pcrHistory[cleanSym] || [];
+                        const mergedMap = new Map();
+                        [...list, ...current].forEach(item => {
+                            if (item && item.time) mergedMap.set(item.time, item);
+                        });
+                        const sortedList = Array.from(mergedMap.values()).sort((a, b) => a.time - b.time);
+                        this.state.pcrHistory[cleanSym] = sortedList;
+
                         if ((this.state.activeView === 'oi-clock' || this.state.activeView === 'option-chain' || this.state.activeView === 'symbol-overview') && (this.state.activeSymbol || 'NIFTY').toUpperCase().includes(cleanSym)) {
                             this.renderPcrChartCanvas(cleanSym);
                         }
@@ -944,9 +947,7 @@ const App = {
             this.state.pcrHistory = {};
         }
 
-        const istDate = this.getISTDate();
-        const isWknd = this.isWeekend(istDate);
-        const targetDateStr = isWknd ? this.getLastTradingDateStr(istDate) : istDate.toISOString().split('T')[0];
+        const targetDateStr = this.isWeekend() ? this.getLastTradingDateStr() : this.getISTDateStr();
 
         // Initialize Firebase Time Engine & Live Multi-Device Sync
         this.initFirebaseTimeEngine(cleanSym);
@@ -1018,22 +1019,22 @@ const App = {
 
         const list = this.state.pcrHistory[sym];
         const nowSec = Math.floor(Date.now() / 1000);
-        const now = this.getISTDate();
-        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const timeStr = this.getISTTimeString();
         const lastEntry = list[list.length - 1];
 
         if (!lastEntry || (nowSec - lastEntry.time) >= 1) {
             list.push({ time: nowSec, timeStr: timeStr, value: parseFloat(pcrVal), spot: parseFloat(underlying) || 0 });
             if (list.length > 2500) list.shift();
 
-            const todayKey = 'destrade_pcr_hist_' + now.toISOString().split('T')[0];
+            const dateStr = this.getISTDateStr();
+            const todayKey = 'destrade_pcr_hist_' + dateStr;
             try {
                 localStorage.setItem(todayKey, JSON.stringify(this.state.pcrHistory));
             } catch(e) {}
 
+            // Save tick safely to Firebase without overwriting existing historical data
             if (window.firebase && window.firebase.database && (!this._lastFbPush || Date.now() - this._lastFbPush > 2000)) {
                 this._lastFbPush = Date.now();
-                const dateStr = now.toISOString().split('T')[0];
                 window.firebase.database().ref(`pcr_history/${sym}/${dateStr}`).set(list).catch(() => {});
             }
         }

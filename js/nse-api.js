@@ -529,7 +529,7 @@ class NSEApi {
         const url = `/v1/api/option_chain_service/v1/option_chain/${info.slug}?type=${info.type}`;
         
         try {
-            const d = await this._fetchGroww(url);
+            const d = await this._fetch(`/groww${url}`);
             if (d && d.optionChain) {
                 const oc = d.optionChain;
                 let uv = oc.underlyingValue || oc.lastPrice || 0;

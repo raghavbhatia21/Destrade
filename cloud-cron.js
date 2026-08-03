@@ -11,17 +11,43 @@ const SLUG_MAP = {
     'NIFTY': { slug: 'nifty', type: 'INDICES' },
     'BANKNIFTY': { slug: 'nifty-bank', type: 'INDICES' },
     'FINNIFTY': { slug: 'nifty-financial-services', type: 'INDICES' },
-    'MIDCPNIFTY': { slug: 'nifty-midcap-select', type: 'INDICES' }
+    'MIDCPNIFTY': { slug: 'nifty-midcap-select', type: 'INDICES' },
+    'RELIANCE': { slug: 'reliance-industries-ltd', type: 'STOCKS' },
+    'TCS': { slug: 'tata-consultancy-services-ltd', type: 'STOCKS' },
+    'HDFCBANK': { slug: 'hdfc-bank-ltd', type: 'STOCKS' },
+    'INFY': { slug: 'infosys-ltd', type: 'STOCKS' },
+    'ICICIBANK': { slug: 'icici-bank-ltd', type: 'STOCKS' },
+    'SBIN': { slug: 'state-bank-of-india', type: 'STOCKS' },
+    'BHARTIARTL': { slug: 'bharti-airtel-ltd', type: 'STOCKS' },
+    'AXISBANK': { slug: 'axis-bank-ltd', type: 'STOCKS' },
+    'KOTAKBANK': { slug: 'kotak-mahindra-bank-ltd', type: 'STOCKS' },
+    'LT': { slug: 'larsen-toubro-ltd', type: 'STOCKS' },
+    'ITC': { slug: 'itc-ltd', type: 'STOCKS' },
+    'HINDUNILVR': { slug: 'hindustan-unilever-ltd', type: 'STOCKS' },
+    'BAJFINANCE': { slug: 'bajaj-finance-ltd', type: 'STOCKS' },
+    'MARUTI': { slug: 'maruti-suzuki-india-ltd', type: 'STOCKS' },
+    'SUNPHARMA': { slug: 'sun-pharmaceutical-industries-ltd', type: 'STOCKS' },
+    'TATASTEEL': { slug: 'tata-steel-ltd', type: 'STOCKS' },
+    'NTPC': { slug: 'ntpc-ltd', type: 'STOCKS' },
+    'POWERGRID': { slug: 'power-grid-corporation-of-india-ltd', type: 'STOCKS' },
+    'TATAMOTORS': { slug: 'tata-motors-ltd', type: 'STOCKS' },
+    'WIPRO': { slug: 'wipro-ltd', type: 'STOCKS' },
+    'TITAN': { slug: 'titan-company-ltd', type: 'STOCKS' },
+    'ULTRACEMCO': { slug: 'ultratech-cement-ltd', type: 'STOCKS' },
+    'ADANIENT': { slug: 'adani-enterprises-ltd', type: 'STOCKS' },
+    'HEROMOTOCO': { slug: 'hero-motocorp-ltd', type: 'STOCKS' },
+    'ONGC': { slug: 'oil-natural-gas-corporation-ltd', type: 'STOCKS' },
+    'COALINDIA': { slug: 'coal-india-ltd', type: 'STOCKS' },
+    'COFORGE': { slug: 'niit-technologies-ltd', type: 'STOCKS' },
+    'DIVISLAB': { slug: 'divis-laboratories-ltd', type: 'STOCKS' },
+    'EICHERMOT': { slug: 'eicher-motors-ltd', type: 'STOCKS' },
+    'GRASIM': { slug: 'grasim-industries-ltd', type: 'STOCKS' },
+    'HCLTECH': { slug: 'hcl-technologies-ltd', type: 'STOCKS' },
+    'HDFCLIFE': { slug: 'hdfc-standard-life-insurance-co-ltd', type: 'STOCKS' },
+    'PAGEIND': { slug: 'page-industries-ltd', type: 'STOCKS' }
 };
 
-const FO_STOCKS = [
-    'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK', 'SBIN', 'BHARTIARTL', 'AXISBANK', 
-    'KOTAKBANK', 'LT', 'ITC', 'HINDUNILVR', 'BAJFINANCE', 'MARUTI', 'SUNPHARMA', 'TATASTEEL', 
-    'NTPC', 'POWERGRID', 'TATAMOTORS', 'WIPRO', 'TITAN', 'ULTRACEMCO', 'ADANIENT', 'HEROMOTOCO', 
-    'ONGC', 'COALINDIA', 'COFORGE', 'DIVISLAB', 'EICHERMOT', 'GRASIM', 'HCLTECH', 'HDFCLIFE', 'PAGEIND'
-];
-
-const SYMBOLS = [...Object.keys(SLUG_MAP), ...FO_STOCKS];
+const SYMBOLS = Object.keys(SLUG_MAP);
 
 function getISTDate() {
     const d = new Date();
@@ -83,8 +109,16 @@ function firebasePut(path, data) {
     });
 }
 
+async function fetchSpotPrice(symbol, isIndex) {
+    const ep = isIndex 
+        ? `https://groww.in/v1/api/stocks_data/v1/tr_live_indices/exchange/NSE/segment/CASH/${symbol}/latest`
+        : `https://groww.in/v1/api/stocks_data/v1/tr_live_prices/exchange/NSE/segment/CASH/${symbol}/latest`;
+    const d = await fetchUrl(ep);
+    return d ? (d.ltp || d.value || 0) : 0;
+}
+
 async function fetchOptionChainPCR(symbol) {
-    const info = SLUG_MAP[symbol] || { slug: symbol.toLowerCase().replace(/[^a-z0-9]/g, '-'), type: 'STOCKS' };
+    const info = SLUG_MAP[symbol] || { slug: symbol.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-ltd', type: 'STOCKS' };
     const url = `https://groww.in/v1/api/option_chain_service/v1/option_chain/${info.slug}?type=${info.type}`;
     
     const d = await fetchUrl(url);
@@ -93,6 +127,10 @@ async function fetchOptionChainPCR(symbol) {
     const oc = d.optionChain;
     let totalCE = 0, totalPE = 0;
     let spot = oc.underlyingValue || oc.lastPrice || 0;
+
+    if (spot === 0) {
+        spot = await fetchSpotPrice(symbol, info.type === 'INDICES');
+    }
 
     if (oc.optionChains && Array.isArray(oc.optionChains)) {
         oc.optionChains.forEach(row => {

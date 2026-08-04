@@ -233,6 +233,9 @@ const App = {
             const el = document.getElementById('clock-time');
             if (el) el.textContent = t;
 
+            const lastUpEl = document.getElementById('last-update');
+            if (lastUpEl) lastUpEl.textContent = t;
+
             const h = now.getHours();
             const m = now.getMinutes();
             const mins = h * 60 + m;

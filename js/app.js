@@ -1022,7 +1022,8 @@ const App = {
         const timeStr = this.getISTTimeString();
         const lastEntry = list[list.length - 1];
 
-        if (!lastEntry || (nowSec - lastEntry.time) >= 1) {
+        // Record ticks strictly every 5 minutes (300 seconds)
+        if (!lastEntry || (nowSec - lastEntry.time) >= 300) {
             list.push({ time: nowSec, timeStr: timeStr, value: parseFloat(pcrVal), spot: parseFloat(underlying) || 0 });
             if (list.length > 2500) list.shift();
 
@@ -1033,7 +1034,7 @@ const App = {
             } catch(e) {}
 
             // Save tick safely to Firebase without overwriting existing historical data
-            if (window.firebase && window.firebase.database && (!this._lastFbPush || Date.now() - this._lastFbPush > 2000)) {
+            if (window.firebase && window.firebase.database && (!this._lastFbPush || Date.now() - this._lastFbPush > 5000)) {
                 this._lastFbPush = Date.now();
                 window.firebase.database().ref(`pcr_history/${sym}/${dateStr}`).set(list).catch(() => {});
             }

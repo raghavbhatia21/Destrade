@@ -209,10 +209,11 @@ async function runCloudWorker() {
                     const existing = await firebaseGet(path);
                     const list = Array.isArray(existing) ? existing : (existing ? Object.values(existing) : []);
 
+                    const nowSec = Math.floor(Date.now() / 1000);
                     const lastEntry = list[list.length - 1];
-                    if (!lastEntry || lastEntry.timeStr !== timeStr) {
+                    if (!lastEntry || (nowSec - lastEntry.time) >= 300) {
                         list.push({
-                            time: Math.floor(Date.now() / 1000),
+                            time: nowSec,
                             timeStr: timeStr,
                             value: data.pcr,
                             spot: data.spot

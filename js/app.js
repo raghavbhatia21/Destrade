@@ -1066,8 +1066,8 @@ const App = {
         // Sanitize data array to eliminate any invalid/undefined ticks
         let data = (rawList || []).filter(d => d && typeof d === 'object' && typeof d.value === 'number' && !isNaN(d.value) && d.value > 0);
 
-        if (!data || data.length < 2) {
-            container.innerHTML = `<div style="color:var(--text-muted);font-size:0.8rem;text-align:center;padding-top:60px"><i class="fas fa-spinner fa-spin"></i> Loading 09:15 - 15:30 Intraday History for ${sym}...</div>`;
+        if (!data || data.length < 1) {
+            container.innerHTML = `<div style="color:var(--text-muted);font-size:0.8rem;text-align:center;padding-top:60px"><i class="fas fa-spinner fa-spin"></i> Synchronizing intraday stream for ${sym}...</div>`;
             this.prefillIntradayPcrHistory(sym);
             return;
         }
@@ -1086,7 +1086,7 @@ const App = {
         const rawMax = Math.max(...values);
         const padding = Math.max(0.03, (rawMax - rawMin) * 0.18);
         const minVal = Math.max(0.1, rawMin - padding);
-        const maxVal = rawMax + padding;
+        const maxVal = (rawMax === rawMin) ? (rawMax + 0.1) : (rawMax + padding);
 
         const spots = data.map(d => parseFloat(d.spot) || 0).filter(s => s > 0);
         const hasSpot = spots.length > 1;
@@ -1101,7 +1101,7 @@ const App = {
         const chartH = height - paddingTop - paddingBottom;
 
         const pts = data.map((d, i) => {
-            const x = paddingLeft + (i / (data.length - 1 || 1)) * chartW;
+            const x = (data.length === 1) ? (paddingLeft + chartW / 2) : (paddingLeft + (i / (data.length - 1)) * chartW);
             const y = paddingTop + chartH * (1 - (d.value - minVal) / (maxVal - minVal || 1));
             const spotY = hasSpot ? paddingTop + chartH * (1 - ((parseFloat(d.spot) || 0) - spotMin) / ((spotMax - spotMin) || 1)) : 0;
             return { x, y, spotY, val: d.value, spot: parseFloat(d.spot) || 0, timeStr: d.timeStr || '--' };

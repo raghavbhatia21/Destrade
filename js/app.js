@@ -610,6 +610,9 @@ const App = {
         this.state.activeSymbol = symbol;
         const clean = symbol.replace('NIFTY 50', 'NIFTY');
 
+        const view = document.getElementById('view-option-chain');
+        if (!view) return;
+
         view.innerHTML = `
             <div class="view-header">
                 <div class="view-title" style="display:flex; align-items:center; gap:1rem">

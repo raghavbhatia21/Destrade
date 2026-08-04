@@ -248,6 +248,14 @@ const App = {
         setInterval(update, 1000);
     },
 
+    isLiveMarketHours() {
+        const now = this.getISTDate();
+        const day = now.getDay();
+        if (day === 0 || day === 6) return false; // Weekend
+        const mins = now.getHours() * 60 + now.getMinutes();
+        return mins >= 555 && mins < 930; // 09:15 AM to 03:30 PM IST
+    },
+
     async startDataPolling() {
         if (this._isPolling) return;
         this._isPolling = true;
@@ -255,7 +263,9 @@ const App = {
             if (!this._stopPolling) {
                 await this.fetchData();
             }
-            setTimeout(poll, 1000); // 1s high-speed real-time polling
+            // Live market hours: 2s poll. Outside market hours: 60s background check
+            const delay = this.isLiveMarketHours() ? 2000 : 60000;
+            setTimeout(poll, delay);
         };
         poll();
     },
@@ -265,6 +275,12 @@ const App = {
             const alive = await window.nseApi.checkProxy();
             this.updateProxyBadge(alive);
 
+            // Outside market hours: if closing snapshot loaded, freeze data to prevent post-market settlement fluctuations
+            const isLive = this.isLiveMarketHours();
+            if (!isLive && this._hasLoadedPostMarketData) {
+                return;
+            }
+
             // Batch 1: Essential Dashboard Info
             const [indices, screenerData, status] = await Promise.all([
                 window.nseApi.getAllIndices().catch(() => []),
@@ -273,10 +289,15 @@ const App = {
             ]);
 
             this.state.indices = indices || [];
-            this.state.movers = {
-                gainers: [...(screenerData?.all || [])].sort((a, b) => b.pChange - a.pChange).slice(0, 10),
-                losers: [...(screenerData?.all || [])].sort((a, b) => a.pChange - b.pChange).slice(0, 10)
-            };
+            if (screenerData && screenerData.all && screenerData.all.length > 0) {
+                this.state.movers = {
+                    gainers: [...(screenerData.all || [])].sort((a, b) => b.pChange - a.pChange).slice(0, 10),
+                    losers: [...(screenerData.all || [])].sort((a, b) => a.pChange - b.pChange).slice(0, 10)
+                };
+                if (!isLive) {
+                    this._hasLoadedPostMarketData = true; // Lock static closing values
+                }
+            }
             this.state.marketStatus = status;
 
             this.render();

@@ -607,14 +607,7 @@ const App = {
 
     async showOptionChain(symbol = 'NIFTY', expiryDate = '') {
         this.switchView('option-chain');
-        if (this.state.activeSymbol !== symbol) {
-            this.state.activeSymbol = symbol;
-            this.state.activeExpiry = expiryDate || '';
-        } else if (expiryDate) {
-            this.state.activeExpiry = expiryDate;
-        }
-
-        const view = document.getElementById('view-option-chain');
+        this.state.activeSymbol = symbol;
         const clean = symbol.replace('NIFTY 50', 'NIFTY');
 
         view.innerHTML = `
@@ -668,7 +661,7 @@ const App = {
                     <span style="color:var(--text-muted)">Max Pain: <b style="color:var(--primary)">${oi.maxPainStrike || '-'}</b></span>
                 </div>
                 <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
-                    <button class="chart-action-btn" onclick="App.togglePcrChart()" style="padding:0.35rem 0.75rem; font-size:0.75rem; background:rgba(99,102,241,0.15); color:var(--primary); border:1px solid rgba(99,102,241,0.3); border-radius:6px; font-weight:600">
+                    <button class="chart-action-btn" onclick="App.togglePcrChart('${clean}')" style="padding:0.35rem 0.75rem; font-size:0.75rem; background:rgba(99,102,241,0.15); color:var(--primary); border:1px solid rgba(99,102,241,0.3); border-radius:6px; font-weight:600">
                         <i class="fas fa-chart-line"></i> Intraday PCR Trend
                     </button>
                     <span style="color:var(--text-muted);font-size:0.7rem"><i class="far fa-clock"></i> ${oi.timestamp}</span>
@@ -774,7 +767,7 @@ const App = {
             }
         }, 100);
 
-        // Start 1s auto-refresh for live option chain data
+        // Start 5s auto-refresh for live option chain data
         this._startOCAutoRefresh(clean);
     },
 
@@ -784,13 +777,13 @@ const App = {
             this._ocTimer = null;
         }
         this._ocTimer = setInterval(() => {
-            if (this.state.activeView === 'oi-clock') {
+            if (this.state.activeView === 'option-chain') {
                 this.silentlyUpdateOptionChain(symbol);
             } else {
                 clearInterval(this._ocTimer);
                 this._ocTimer = null;
             }
-        }, 1000);
+        }, 5000);
     },
 
     async silentlyUpdateOptionChain(symbol = 'NIFTY') {
@@ -1045,13 +1038,14 @@ const App = {
         }
     },
 
-    togglePcrChart() {
+    togglePcrChart(targetSymbol) {
         const cont = document.getElementById('pcr-chart-container');
         if (!cont) return;
         const visible = cont.style.display !== 'none';
         cont.style.display = visible ? 'none' : 'block';
         if (!visible) {
-            this.renderPcrChartCanvas();
+            const sym = targetSymbol || this.state.activeSymbol || 'NIFTY';
+            this.renderPcrChartCanvas(sym);
         }
     },
 

@@ -927,6 +927,19 @@ const App = {
         }
     },
 
+    sanitize5MinPcrList(rawList) {
+        if (!Array.isArray(rawList)) return [];
+        const clean = [];
+        for (const item of rawList) {
+            if (!item || typeof item !== 'object' || typeof item.value !== 'number' || isNaN(item.value) || item.value <= 0) continue;
+            const last = clean[clean.length - 1];
+            if (!last || (item.time - last.time) >= 240) {
+                clean.push(item);
+            }
+        }
+        return clean;
+    },
+
     async prefillIntradayPcrHistory(sym) {
         const cleanSym = sym.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
         if (typeof this.state.pcrHistory !== 'object' || Array.isArray(this.state.pcrHistory)) {
@@ -941,15 +954,18 @@ const App = {
         const cacheKey = 'destrade_pcr_hist_' + targetDateStr;
 
         // 1. Try loading from local persistent cache
-        if (!this.state.pcrHistory[cleanSym] || this.state.pcrHistory[cleanSym].length < 2) {
+        if (!this.state.pcrHistory[cleanSym] || this.state.pcrHistory[cleanSym].length < 1) {
             try {
                 const saved = localStorage.getItem(cacheKey);
                 if (saved) {
                     const parsed = JSON.parse(saved);
-                    if (parsed[cleanSym] && parsed[cleanSym].length >= 2) {
-                        this.state.pcrHistory[cleanSym] = parsed[cleanSym];
-                        this.renderPcrChartCanvas(cleanSym);
-                        return;
+                    if (parsed[cleanSym]) {
+                        const cleanList = this.sanitize5MinPcrList(parsed[cleanSym]);
+                        if (cleanList.length >= 1) {
+                            this.state.pcrHistory[cleanSym] = cleanList;
+                            this.renderPcrChartCanvas(cleanSym);
+                            return;
+                        }
                     }
                 }
             } catch(e) {}
@@ -961,7 +977,7 @@ const App = {
                 const snapshot = await window.firebase.database().ref(`pcr_history/${cleanSym}/${targetDateStr}`).once('value');
                 if (snapshot.exists()) {
                     const val = snapshot.val();
-                    const list = Array.isArray(val) ? val : Object.values(val);
+                    const list = this.sanitize5MinPcrList(Array.isArray(val) ? val : Object.values(val));
                     if (list && list.length > 0) {
                         this.state.pcrHistory[cleanSym] = list;
                         this.renderPcrChartCanvas(cleanSym);
@@ -981,7 +997,7 @@ const App = {
                     </div>
                     <div style="font-size: 0.85rem; color:var(--text-muted)">Accumulating live PCR ticks for ${cleanSym}...</div>
                     <div style="font-size: 0.8rem; color:var(--text-bright); margin-top:0.75rem;">
-                        Real-time PCR ticks update automatically every minute during trading hours.
+                        Real-time PCR ticks update automatically every 5 minutes during trading hours.
                     </div>
                 </div>
             `;
@@ -1003,7 +1019,7 @@ const App = {
             this.state.pcrHistory[sym] = [];
         }
 
-        const list = this.state.pcrHistory[sym];
+        let list = this.sanitize5MinPcrList(this.state.pcrHistory[sym]);
         const nowSec = Math.floor(Date.now() / 1000);
         const timeStr = this.getISTTimeString();
         const lastEntry = list[list.length - 1];
@@ -1012,6 +1028,8 @@ const App = {
         if (!lastEntry || (nowSec - lastEntry.time) >= 300) {
             list.push({ time: nowSec, timeStr: timeStr, value: parseFloat(pcrVal), spot: parseFloat(underlying) || 0 });
             if (list.length > 2500) list.shift();
+
+            this.state.pcrHistory[sym] = list;
 
             const dateStr = this.getISTDateStr();
             const todayKey = 'destrade_pcr_hist_' + dateStr;
@@ -1053,8 +1071,9 @@ const App = {
             rawList = this.state.pcrHistory[sym] || [];
         }
 
-        // Sanitize data array to eliminate any invalid/undefined ticks
-        let data = (rawList || []).filter(d => d && typeof d === 'object' && typeof d.value === 'number' && !isNaN(d.value) && d.value > 0);
+        // Sanitize & deduplicate to strict 5-minute ticks
+        let data = this.sanitize5MinPcrList(rawList);
+        this.state.pcrHistory[sym] = data;
 
         if (!data || data.length < 1) {
             container.innerHTML = `<div style="color:var(--text-muted);font-size:0.8rem;text-align:center;padding-top:60px"><i class="fas fa-spinner fa-spin"></i> Synchronizing intraday stream for ${sym}...</div>`;

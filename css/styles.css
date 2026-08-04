@@ -1727,43 +1727,46 @@ kbd {
     border-collapse: separate !important;
     border-spacing: 0 !important;
     width: 100%;
+/* ===== OPTION CHAIN TABLE PRO STYLING ===== */
+.oc-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.oc-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: #0f172a !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .oc-table thead tr.oc-main-header th {
-    position: sticky;
-    top: 0;
-    z-index: 15;
     background: #0f172a !important;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 0.6rem 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
 }
 
 .oc-table thead tr.oc-sub-header th {
-    position: sticky;
-    top: 32px;
-    z-index: 14;
     background: #1e293b !important;
-    border-bottom: 2px solid var(--border);
+    border-bottom: 2px solid rgba(255, 255, 255, 0.12);
+    padding: 0.45rem 0.5rem;
+    font-size: 0.72rem;
+    color: var(--text-muted);
 }
 
-.oc-table .oc-header-strike {
-    position: sticky;
-    left: 0;
-    z-index: 16 !important;
-    background: #1e293b !important;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
-}
-
+.oc-table .oc-header-strike,
 .oc-table .strike-cell {
-    position: sticky;
-    left: 0;
-    z-index: 11;
     background: #0f172a !important;
     font-weight: 800 !important;
     color: var(--primary) !important;
     text-align: center;
-    border-left: 1px solid rgba(99, 102, 241, 0.2);
-    border-right: 1px solid rgba(99, 102, 241, 0.2);
-    box-shadow: 0 0 8px rgba(0, 0, 0, 0.3);
+    border-left: 1px solid rgba(99, 102, 241, 0.25);
+    border-right: 1px solid rgba(99, 102, 241, 0.25);
 }
 
 .oc-table tr.atm-row .strike-cell {

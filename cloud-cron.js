@@ -7,7 +7,10 @@ const https = require('https');
 
 const FIREBASE_HOST = 'destrade-default-rtdb.firebaseio.com';
 
-const SLUG_MAP = {
+const fs = require('fs');
+const path = require('path');
+
+let SLUG_MAP = {
     'NIFTY': { slug: 'nifty', type: 'INDICES' },
     'BANKNIFTY': { slug: 'nifty-bank', type: 'INDICES' },
     'FINNIFTY': { slug: 'nifty-financial-services', type: 'INDICES' },
@@ -46,6 +49,14 @@ const SLUG_MAP = {
     'HDFCLIFE': { slug: 'hdfc-standard-life-insurance-co-ltd', type: 'STOCKS' },
     'PAGEIND': { slug: 'page-industries-ltd', type: 'STOCKS' }
 };
+
+try {
+    const jsonPath = path.join(__dirname, 'scratch', 'slug_map.json');
+    if (fs.existsSync(jsonPath)) {
+        const fullMap = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+        SLUG_MAP = { ...SLUG_MAP, ...fullMap };
+    }
+} catch(e) {}
 
 const SYMBOLS = Object.keys(SLUG_MAP);
 

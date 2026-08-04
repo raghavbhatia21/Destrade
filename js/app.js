@@ -1285,9 +1285,55 @@ const App = {
 
         canvas.onmousemove = updateHover;
         canvas.ontouchmove = updateHover;
-        canvas.onmouseleave = () => { hoverIdx = null; drawChart(); };
-
         drawChart();
+
+        // 8. Render NiftyTrader-style Intraday History Table below chart
+        let tableEl = document.getElementById('pcr-intraday-table-container');
+        if (!tableEl) {
+            const parent = container.parentElement;
+            if (parent) {
+                tableEl = document.createElement('div');
+                tableEl.id = 'pcr-intraday-table-container';
+                tableEl.style.cssText = 'margin-top:1.25rem; overflow-x:auto; border-top:1px solid rgba(255,255,255,0.08); padding-top:1rem;';
+                parent.appendChild(tableEl);
+            }
+        }
+        if (tableEl) {
+            const reversedData = [...data].reverse();
+            tableEl.innerHTML = `
+                <div style="font-size:0.85rem; font-weight:700; color:var(--text-bright); margin-bottom:0.75rem; display:flex; justify-content:space-between; align-items:center;">
+                    <span><i class="fas fa-list-alt" style="color:var(--primary)"></i> Intraday PCR History Snapshots</span>
+                    <span style="font-size:0.75rem; font-weight:400; color:var(--text-muted)">${data.length} snapshots recorded today</span>
+                </div>
+                <table class="pro-table" style="width:100%; font-size:0.78rem; border-collapse:collapse;">
+                    <thead>
+                        <tr style="background:rgba(15, 23, 42, 0.6); color:var(--text-muted); text-align:left;">
+                            <th style="padding:0.5rem 0.75rem;">Time (IST)</th>
+                            <th style="padding:0.5rem 0.75rem; text-align:right;">OI PCR</th>
+                            <th style="padding:0.5rem 0.75rem; text-align:center;">Sentiment</th>
+                            <th style="padding:0.5rem 0.75rem; text-align:right;">Spot Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${reversedData.map(d => {
+                            const isBull = d.value >= 1.0;
+                            return `
+                                <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+                                    <td style="padding:0.5rem 0.75rem; font-family:monospace; color:var(--text-bright)">${d.timeStr || '--'}</td>
+                                    <td style="padding:0.5rem 0.75rem; text-align:right; font-weight:700; color:${isBull ? '#10b981' : '#ef4444'}">${d.value.toFixed(2)}</td>
+                                    <td style="padding:0.5rem 0.75rem; text-align:center;">
+                                        <span class="badge ${isBull ? 'up' : 'down'}" style="font-size:0.7rem; padding:0.15rem 0.5rem;">
+                                            ${isBull ? 'Bullish (Put Higher)' : 'Bearish (Call Higher)'}
+                                        </span>
+                                    </td>
+                                    <td style="padding:0.5rem 0.75rem; text-align:right; font-family:monospace; color:var(--primary)">${d.spot ? '₹' + d.spot.toLocaleString() : '---'}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
     },
 
     async shareTradeSignal(symbol, type, strike, price, margin, roi) {

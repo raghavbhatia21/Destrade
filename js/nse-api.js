@@ -586,6 +586,44 @@ class NSEApi {
         return { slug: s.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-ltd', type: 'STOCKS' };
     }
 
+    // ===== DIRECT PCR & OI SUMMARY (Groww top endpoint) =====
+    async getTopPCR(symbol = 'NIFTY') {
+        const info = this.getGrowwSlug(symbol);
+        const url = `/groww/v1/api/stocks_fo_data/v1/contracts/${info.slug}/top`;
+        
+        try {
+            const d = await this._fetch(url);
+            let spot = 0;
+            const q = await this.getQuote(symbol);
+            if (q) spot = q.lastPrice || 0;
+
+            if (d && typeof d.pcr === 'number') {
+                return {
+                    pcr: parseFloat(d.pcr.toFixed(2)),
+                    callOI: d.callOI || 0,
+                    putOI: d.putOI || 0,
+                    spot: spot,
+                    timestamp: new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+                };
+            }
+        } catch (e) {
+            console.warn(`[API] getTopPCR error for ${symbol}:`, e.message);
+        }
+
+        // Fallback to getOIClock if top endpoint is unreachable
+        const oi = await this.getOIClock(symbol);
+        if (oi) {
+            return {
+                pcr: parseFloat(oi.pcr || 0),
+                callOI: oi.totalCEOI || 0,
+                putOI: oi.totalPEOI || 0,
+                spot: oi.underlying || 0,
+                timestamp: new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+            };
+        }
+        return null;
+    }
+
     // ===== OPTION CHAIN (100% Live Groww Direct Stream) =====
     async getOptionChain(symbol = 'NIFTY') {
         const info = this.getGrowwSlug(symbol);

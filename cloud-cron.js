@@ -234,7 +234,34 @@ async function runCloudWorker() {
         summary: summary
     });
 
-    console.log(`🎉 Cloud Worker Completed! Synced ${Object.keys(summary).length}/${SYMBOLS.length} symbols!`);
+    console.log(`🎉 Cloud Worker Pass Completed! Synced ${Object.keys(summary).length}/${SYMBOLS.length} symbols!`);
 }
 
-runCloudWorker().catch(console.error);
+async function startAutonomousWorker() {
+    console.log('🚀 Autonomous Cloud Market Worker Started!');
+    const startTime = Date.now();
+    const DURATION_MS = 4.5 * 60 * 1000; // 4.5 minutes continuous loop per job run
+
+    let pass = 0;
+    while (Date.now() - startTime < DURATION_MS) {
+        pass++;
+        console.log(`\n⏱️ --- Starting Continuous Market Sync Pass #${pass} ---`);
+        try {
+            await runCloudWorker();
+        } catch (e) {
+            console.error('Market sync error:', e.message);
+        }
+
+        const elapsed = Date.now() - startTime;
+        if (elapsed < DURATION_MS - 60000) {
+            console.log('⏳ Waiting 60 seconds for next live tick pass...');
+            await new Promise(r => setTimeout(r, 60000));
+        } else {
+            break;
+        }
+    }
+    console.log('\n🏁 4.5-Minute Continuous Execution Complete. Exiting cleanly.');
+}
+
+startAutonomousWorker().catch(console.error);
+

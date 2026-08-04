@@ -1060,10 +1060,13 @@ const App = {
 
         const sym = (targetSymbol || this.state.activeSymbol || 'NIFTY').replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
 
-        let data = [];
+        let rawList = [];
         if (this.state.pcrHistory && typeof this.state.pcrHistory === 'object' && !Array.isArray(this.state.pcrHistory)) {
-            data = this.state.pcrHistory[sym] || [];
+            rawList = this.state.pcrHistory[sym] || [];
         }
+
+        // Sanitize data array to eliminate any invalid/undefined ticks
+        let data = (rawList || []).filter(d => d && typeof d === 'object' && typeof d.value === 'number' && !isNaN(d.value) && d.value > 0);
 
         if (!data || data.length < 2) {
             container.innerHTML = `<div style="color:var(--text-muted);font-size:0.8rem;text-align:center;padding-top:60px"><i class="fas fa-spinner fa-spin"></i> Loading 09:15 - 15:30 Intraday History for ${sym}...</div>`;
@@ -1087,8 +1090,8 @@ const App = {
         const minVal = Math.max(0.1, rawMin - padding);
         const maxVal = rawMax + padding;
 
-        const spots = data.map(d => d.spot).filter(s => s > 0);
-        const hasSpot = spots.length > 5;
+        const spots = data.map(d => parseFloat(d.spot) || 0).filter(s => s > 0);
+        const hasSpot = spots.length > 1;
         const spotMin = hasSpot ? Math.min(...spots) * 0.999 : 0;
         const spotMax = hasSpot ? Math.max(...spots) * 1.001 : 1;
 
@@ -1101,9 +1104,9 @@ const App = {
 
         const pts = data.map((d, i) => {
             const x = paddingLeft + (i / (data.length - 1 || 1)) * chartW;
-            const y = paddingTop + chartH * (1 - (d.value - minVal) / (maxVal - minVal));
-            const spotY = hasSpot ? paddingTop + chartH * (1 - (d.spot - spotMin) / ((spotMax - spotMin) || 1)) : 0;
-            return { x, y, spotY, val: d.value, spot: d.spot, timeStr: d.timeStr };
+            const y = paddingTop + chartH * (1 - (d.value - minVal) / (maxVal - minVal || 1));
+            const spotY = hasSpot ? paddingTop + chartH * (1 - ((parseFloat(d.spot) || 0) - spotMin) / ((spotMax - spotMin) || 1)) : 0;
+            return { x, y, spotY, val: d.value, spot: parseFloat(d.spot) || 0, timeStr: d.timeStr || '--' };
         });
 
         let hoverIdx = null;
@@ -1142,7 +1145,7 @@ const App = {
             }
 
             // 2. Draw Spot Price Line (Subtle Cyan Overlay) if available
-            if (hasSpot) {
+            if (hasSpot && pts.length > 1) {
                 ctx.beginPath();
                 ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
                 ctx.lineWidth = 1.5;
@@ -1244,7 +1247,7 @@ const App = {
                 ctx.strokeStyle = 'rgba(99, 102, 241, 0.5)';
                 ctx.lineWidth = 1;
                 ctx.beginPath();
-                if (ctx.roundRect) ctx.roundRect(tipX, tipY, textW, 22, 6);
+                if (typeof ctx.roundRect === 'function') ctx.roundRect(tipX, tipY, textW, 22, 6);
                 else ctx.rect(tipX, tipY, textW, 22);
                 ctx.fill();
                 ctx.stroke();
@@ -1316,17 +1319,20 @@ const App = {
                     </thead>
                     <tbody>
                         ${reversedData.map(d => {
-                            const isBull = d.value >= 1.0;
+                            const valNum = (d && typeof d.value === 'number' && !isNaN(d.value)) ? d.value : 0;
+                            const isBull = valNum >= 1.0;
+                            const valStr = valNum ? valNum.toFixed(2) : '0.00';
+                            const spotNum = parseFloat(d.spot) || 0;
                             return `
                                 <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
                                     <td style="padding:0.5rem 0.75rem; font-family:monospace; color:var(--text-bright)">${d.timeStr || '--'}</td>
-                                    <td style="padding:0.5rem 0.75rem; text-align:right; font-weight:700; color:${isBull ? '#10b981' : '#ef4444'}">${d.value.toFixed(2)}</td>
+                                    <td style="padding:0.5rem 0.75rem; text-align:right; font-weight:700; color:${isBull ? '#10b981' : '#ef4444'}">${valStr}</td>
                                     <td style="padding:0.5rem 0.75rem; text-align:center;">
                                         <span class="badge ${isBull ? 'up' : 'down'}" style="font-size:0.7rem; padding:0.15rem 0.5rem;">
                                             ${isBull ? 'Bullish (Put Higher)' : 'Bearish (Call Higher)'}
                                         </span>
                                     </td>
-                                    <td style="padding:0.5rem 0.75rem; text-align:right; font-family:monospace; color:var(--primary)">${d.spot ? '₹' + d.spot.toLocaleString() : '---'}</td>
+                                    <td style="padding:0.5rem 0.75rem; text-align:right; font-family:monospace; color:var(--primary)">${spotNum ? '₹' + spotNum.toLocaleString() : '---'}</td>
                                 </tr>
                             `;
                         }).join('')}

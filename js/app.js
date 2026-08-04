@@ -265,12 +265,11 @@ const App = {
             const alive = await window.nseApi.checkProxy();
             this.updateProxyBadge(alive);
 
-            // Batch 1: Essential Dashboard Info & Live PCR
-            const [indices, screenerData, status, niftyOI] = await Promise.all([
+            // Batch 1: Essential Dashboard Info
+            const [indices, screenerData, status] = await Promise.all([
                 window.nseApi.getAllIndices().catch(() => []),
                 window.nseApi.getScreenerData().catch(() => ({ all: [] })),
-                window.nseApi.getMarketStatus().catch(() => ({ marketStatus: 'Closed' })),
-                window.nseApi.getOIClock('NIFTY').catch(() => null)
+                window.nseApi.getMarketStatus().catch(() => ({ marketStatus: 'Closed' }))
             ]);
 
             this.state.indices = indices || [];
@@ -280,20 +279,11 @@ const App = {
             };
             this.state.marketStatus = status;
 
-            // Record Live PCR History
-            if (niftyOI && niftyOI.pcr) {
-                this.recordPcr('NIFTY', parseFloat(niftyOI.pcr));
-            }
-
             this.render();
 
             // Batch 2: View-Specific Deep Dives (Conditional)
-            if (this.state.activeSymbol) {
-                if (this.state.activeView === 'symbol-overview') {
-                    this.updateLivePrice();
-                } else if (this.state.activeView === 'option-chain') {
-                    this.silentlyUpdateOptionChain(this.state.activeSymbol);
-                }
+            if (this.state.activeSymbol && this.state.activeView === 'symbol-overview') {
+                this.updateLivePrice();
             }
 
             // Batch 3: Background tasks (Lower priority)
@@ -786,7 +776,7 @@ const App = {
                 clearInterval(this._ocTimer);
                 this._ocTimer = null;
             }
-        }, 5000);
+        }, 300000); // 5-minute auto refresh for option chain
     },
 
     async silentlyUpdateOptionChain(symbol = 'NIFTY') {

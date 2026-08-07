@@ -261,4 +261,10 @@ server.listen(PORT, () => {
     setInterval(() => {
         executeMarketSync().catch(console.error);
     }, 2 * 60 * 1000);
+
+    // Self-ping every 5 minutes to prevent Render free instance from sleeping
+    const selfUrl = process.env.RENDER_EXTERNAL_URL || 'https://destrade-market-worker.onrender.com';
+    setInterval(() => {
+        https.get(`${selfUrl}/`, () => {}).on('error', () => {});
+    }, 5 * 60 * 1000);
 });

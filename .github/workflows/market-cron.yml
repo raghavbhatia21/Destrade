@@ -5,6 +5,8 @@ on:
     # Run every 5 minutes Monday to Friday from 03:30 UTC to 10:30 UTC (09:00 AM to 04:00 PM IST)
     - cron: '*/5 3-10 * * 1-5'
     - cron: '*/10 3-10 * * 1-5'
+  repository_dispatch:
+    types: [market_tick]
   workflow_dispatch:
 
 concurrency:

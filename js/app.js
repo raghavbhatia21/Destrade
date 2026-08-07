@@ -259,9 +259,38 @@ const App = {
         return mins >= 555 && mins < 930; // 09:15 AM to 03:30 PM IST
     },
 
+    startLivePcrCloudRelay() {
+        if (this._pcrRelayStarted) return;
+        this._pcrRelayStarted = true;
+
+        const runRelay = async () => {
+            if (this.isLiveMarketHours()) {
+                const mainSymbols = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
+                if (this.state.activeSymbol) {
+                    const cleanActive = this.state.activeSymbol.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
+                    if (!mainSymbols.includes(cleanActive)) mainSymbols.push(cleanActive);
+                }
+
+                for (const sym of mainSymbols) {
+                    try {
+                        const topData = await window.nseApi.getTopPCR(sym);
+                        if (topData && topData.pcr) {
+                            this.recordPcr(sym, parseFloat(topData.pcr), parseFloat(topData.spot) || 0);
+                        }
+                    } catch(e) {}
+                }
+            }
+        };
+
+        runRelay();
+        setInterval(runRelay, 300000); // 5-minute background sync for Firebase PCR history
+    },
+
     async startDataPolling() {
         if (this._isPolling) return;
         this._isPolling = true;
+        this.startLivePcrCloudRelay();
+
         const poll = async () => {
             if (!this._stopPolling) {
                 await this.fetchData();

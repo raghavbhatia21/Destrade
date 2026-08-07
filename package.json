@@ -1,0 +1,21 @@
+{
+  "name": "destrade-cloud-worker",
+  "version": "1.0.0",
+  "description": "Destrade Pro Autonomous 24/7 Cloud Market Worker",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "trading",
+    "stock-market",
+    "pcr-engine",
+    "firebase"
+  ],
+  "author": "Destrade Pro",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

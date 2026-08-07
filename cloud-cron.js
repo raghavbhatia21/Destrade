@@ -239,6 +239,13 @@ function getISTDate() {
     return new Date(utc + (5.5 * 60 * 60 * 1000));
 }
 
+function getISTDateStr(d) {
+    const year = d.getUTCFullYear();
+    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 function fetchUrl(url) {
     return new Promise((resolve) => {
         const req = https.get(url, {
@@ -335,7 +342,7 @@ async function runCloudWorker() {
     const min = ist.getMinutes();
     const totalMin = (hour * 60) + min;
 
-    const dateStr = ist.toISOString().split('T')[0];
+    const dateStr = getISTDateStr(ist);
     const timeStr = ist.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
     console.log(`⏱️ [Cloud Worker] IST Time: ${dateStr} ${timeStr} (Day: ${day})`);

@@ -419,22 +419,40 @@ const App = {
     async renderMarketPulse() {
         const c = document.getElementById('market-overview');
         if (!c) return;
-        const p = await window.nseApi.getMarketPulse();
-        const trendClass = p.trend === 'BULLISH' ? 'tag-bullish' : p.trend === 'BEARISH' ? 'tag-bearish' : 'tag-neutral';
-        c.innerHTML = `
-            <div class="pulse-grid">
-                <div class="pulse-stat"><div class="stat-label">Sentiment</div><div class="stat-value"><span class="tag ${trendClass}">${p.trend}</span></div></div>
-                <div class="pulse-stat"><div class="stat-label">Advances</div><div class="stat-value up">${p.advances}</div></div>
-                <div class="pulse-stat"><div class="stat-label">Declines</div><div class="stat-value down">${p.declines}</div></div>
-                <div class="pulse-stat"><div class="stat-label">L. Buildup</div><div class="stat-value up">${p.longBuildups || 0}</div></div>
-                <div class="pulse-stat"><div class="stat-label">S. Buildup</div><div class="stat-value down">${p.shortBuildups || 0}</div></div>
-                <div class="pulse-stat"><div class="stat-label">A/D Ratio</div><div class="stat-value">${p.ratio}</div></div>
-                <div class="pulse-stat"><div class="stat-label">Vol Shockers</div><div class="stat-value" style="color:var(--primary)">${p.volShockers || 0}</div></div>
-                <div class="pulse-stat"><div class="stat-label">52W High</div><div class="stat-value up">${p.newHighs}</div></div>
-                <div class="pulse-stat"><div class="stat-label">52W Low</div><div class="stat-value down">${p.newLows}</div></div>
-                <div class="pulse-stat"><div class="stat-label">Unchanged</div><div class="stat-value">${p.unchanged}</div></div>
-            </div>
-        `;
+        try {
+            const p = await window.nseApi.getMarketPulse().catch(() => null);
+            const pData = p || { trend: 'NEUTRAL', advances: 0, declines: 0, unchanged: 0, ratio: '1.00', newHighs: 0, newLows: 0, volShockers: 0, longBuildups: 0, shortBuildups: 0 };
+            const trendClass = pData.trend === 'BULLISH' ? 'tag-bullish' : pData.trend === 'BEARISH' ? 'tag-bearish' : 'tag-neutral';
+            c.innerHTML = `
+                <div class="pulse-grid">
+                    <div class="pulse-stat"><div class="stat-label">Sentiment</div><div class="stat-value"><span class="tag ${trendClass}">${pData.trend}</span></div></div>
+                    <div class="pulse-stat"><div class="stat-label">Advances</div><div class="stat-value up">${pData.advances}</div></div>
+                    <div class="pulse-stat"><div class="stat-label">Declines</div><div class="stat-value down">${pData.declines}</div></div>
+                    <div class="pulse-stat"><div class="stat-label">L. Buildup</div><div class="stat-value up">${pData.longBuildups || 0}</div></div>
+                    <div class="pulse-stat"><div class="stat-label">S. Buildup</div><div class="stat-value down">${pData.shortBuildups || 0}</div></div>
+                    <div class="pulse-stat"><div class="stat-label">A/D Ratio</div><div class="stat-value">${pData.ratio}</div></div>
+                    <div class="pulse-stat"><div class="stat-label">Vol Shockers</div><div class="stat-value" style="color:var(--primary)">${pData.volShockers || 0}</div></div>
+                    <div class="pulse-stat"><div class="stat-label">52W High</div><div class="stat-value up">${pData.newHighs}</div></div>
+                    <div class="pulse-stat"><div class="stat-label">52W Low</div><div class="stat-value down">${pData.newLows}</div></div>
+                    <div class="pulse-stat"><div class="stat-label">Unchanged</div><div class="stat-value">${pData.unchanged}</div></div>
+                </div>
+            `;
+        } catch (e) {
+            c.innerHTML = `
+                <div class="pulse-grid">
+                    <div class="pulse-stat"><div class="stat-label">Sentiment</div><div class="stat-value"><span class="tag tag-neutral">NEUTRAL</span></div></div>
+                    <div class="pulse-stat"><div class="stat-label">Advances</div><div class="stat-value up">0</div></div>
+                    <div class="pulse-stat"><div class="stat-label">Declines</div><div class="stat-value down">0</div></div>
+                    <div class="pulse-stat"><div class="stat-label">L. Buildup</div><div class="stat-value up">0</div></div>
+                    <div class="pulse-stat"><div class="stat-label">S. Buildup</div><div class="stat-value down">0</div></div>
+                    <div class="pulse-stat"><div class="stat-label">A/D Ratio</div><div class="stat-value">1.00</div></div>
+                    <div class="pulse-stat"><div class="stat-label">Vol Shockers</div><div class="stat-value" style="color:var(--primary)">0</div></div>
+                    <div class="pulse-stat"><div class="stat-label">52W High</div><div class="stat-value up">0</div></div>
+                    <div class="pulse-stat"><div class="stat-label">52W Low</div><div class="stat-value down">0</div></div>
+                    <div class="pulse-stat"><div class="stat-label">Unchanged</div><div class="stat-value">0</div></div>
+                </div>
+            `;
+        }
     },
 
     async renderSectorQuickLook() {

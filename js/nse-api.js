@@ -239,6 +239,10 @@ class NSEApi {
 
     // ===== ROBUST STOCK DATA FETCH & MERGE =====
     async _getRawStockDataAndOI() {
+        if (this._rawStockCache && (Date.now() - (this._rawStockCacheTime || 0) < 10000)) {
+            return this._rawStockCache;
+        }
+
         const growwGainersEp = '/v1/api/stocks_fo_data/v1/live-aggregations/explore/market_trends/instrument/STOCKS?exchange=NSE&interval=ONE_DAY&limit=300&marketTrendFactor=PRICE&type=GAINERS';
         const growwLosersEp = '/v1/api/stocks_fo_data/v1/live-aggregations/explore/market_trends/instrument/STOCKS?exchange=NSE&interval=ONE_DAY&limit=300&marketTrendFactor=PRICE&type=LOSERS';
 
@@ -336,10 +340,13 @@ class NSEApi {
             }
         }
 
-        return {
+        const result = {
             stocks: Array.from(stockMap.values()),
             oiData: oiData?.data || []
         };
+        this._rawStockCache = result;
+        this._rawStockCacheTime = Date.now();
+        return result;
     }
 
     // ===== SCREENER & ANALYSIS DATA =====

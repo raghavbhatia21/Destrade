@@ -206,42 +206,7 @@ class NSEApi {
         return d?.marketState?.[0] || { marketStatus: 'Closed', market: 'Capital Market' };
     }
 
-    // ===== ALL INDICES =====
-    async getAllIndices() {
-        if (!this.proxyUrl) {
-            // Netlify fallback: query Groww for F&O indices to bypass WAF 403
-            const symbols = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
-            try {
-                const results = await Promise.all(symbols.map(async (sym) => {
-                    const ep = `/v1/api/stocks_data/v1/tr_live_indices/exchange/NSE/segment/CASH/${sym}/latest`;
-                    const d = await this._fetchGroww(ep);
-                    if (!d) return null;
-                    return {
-                        index: sym === 'NIFTY' ? 'NIFTY 50' : sym === 'BANKNIFTY' ? 'NIFTY BANK' : sym === 'FINNIFTY' ? 'NIFTY FINANCIAL SERVICES' : sym,
-                        last: d.value || d.lastPrice || 0,
-                        change: d.dayChange || 0,
-                        pChange: d.dayChangePerc || 0,
-                        open: d.open || 0,
-                        high: d.high || 0,
-                        low: d.low || 0,
-                        previousClose: d.close || 0
-                    };
-                }));
-                return results.filter(Boolean);
-            } catch (e) {
-                console.warn("Failed to fetch indices from Groww:", e.message);
-                return [];
-            }
-        }
-        
-        const d = await this._fetch('/allIndices');
-        if (!d?.data) return [];
-        return d.data.map(i => ({
-            index: i.index, last: i.last || i.lastPrice || 0,
-            change: i.variation || 0, pChange: i.percentChange || i.pChange || 0,
-            open: i.open || 0, high: i.high || 0, low: i.low || 0, previousClose: i.previousClose || 0
-        }));
-    }
+
 
     // ===== ROBUST STOCK DATA FETCH & MERGE =====
     async _getRawStockDataAndOI() {

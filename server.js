@@ -239,10 +239,37 @@ async function executeMarketSync() {
     console.log(`🎉 24/7 Market Sync Pass Completed! Synced ${Object.keys(summary).length}/${SYMBOLS.length} symbols!`);
 }
 
-// Start HTTP Server for Render / Railway Healthcheck & Manual Trigger
-const server = http.createServer((req, res) => {
+// Start HTTP Server for Render / Railway Healthcheck, Proxy & Manual Trigger
+const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+
+    if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+    }
+
+    if (req.url.startsWith('/api/proxy')) {
+        try {
+            const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
+            const targetUrl = parsedUrl.searchParams.get('url');
+            if (!targetUrl) {
+                res.writeHead(400);
+                res.end(JSON.stringify({ error: 'Missing target url parameter' }));
+                return;
+            }
+            const data = await fetchUrl(targetUrl);
+            res.writeHead(200);
+            res.end(JSON.stringify(data || {}));
+        } catch (e) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: e.message }));
+        }
+        return;
+    }
 
     if (req.url === '/trigger') {
         executeMarketSync().catch(console.error);
@@ -251,7 +278,7 @@ const server = http.createServer((req, res) => {
     } else {
         res.writeHead(200);
         res.end(JSON.stringify({
-            app: 'Destrade Pro Autonomous 24/7 Cloud Market Worker',
+            app: 'Destrade Pro Autonomous 24/7 Cloud Market Worker & CORS Proxy',
             uptime: Math.floor(process.uptime()) + ' seconds',
             status: lastSyncStatus
         }, null, 2));

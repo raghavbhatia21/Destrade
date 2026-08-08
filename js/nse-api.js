@@ -124,25 +124,26 @@ class NSEApi {
     async _fetchGroww(path) {
         const rawUrl = path.startsWith('http') ? path : `https://groww.in${path.startsWith('/') ? '' : '/'}${path}`;
         
-        // Direct fetch for Capacitor mobile / standalone localhost without dev-proxy
-        const isStandaloneMobile = typeof window !== 'undefined' && (
-            window.Capacitor ||
-            window.location.protocol === 'file:' ||
-            window.location.protocol === 'capacitor:' ||
-            window.location.hostname === 'localhost' ||
-            window.location.hostname === '127.0.0.1'
-        );
+        // 1. Direct Fetch (Fastest on native mobile apps)
+        try {
+            const res = await fetch(rawUrl, { cache: 'no-store' });
+            if (res.ok) {
+                const data = await res.json();
+                if (data) return data;
+            }
+        } catch (e) {}
 
-        if (isStandaloneMobile) {
-            try {
-                const res = await fetch(rawUrl, { cache: 'no-store' });
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data) return data;
-                }
-            } catch (e) {}
-        }
+        // 2. Cloud CORS Proxy Fallback (Guaranteed for desktop browsers, DevTools, & web clients)
+        try {
+            const cloudUrl = `https://destrade-market-worker.onrender.com/api/proxy?url=${encodeURIComponent(rawUrl)}`;
+            const res = await fetch(cloudUrl, { cache: 'no-store' });
+            if (res.ok) {
+                const data = await res.json();
+                if (data && !data.error) return data;
+            }
+        } catch (e) {}
 
+        // 3. Local Node Proxy Fallback (if dev-proxy.js running locally)
         const cleanPath = rawUrl.replace('https://groww.in', '');
         const endpoint = `/groww${cleanPath.startsWith('/') ? '' : '/'}${cleanPath}`;
         return this._fetch(endpoint);

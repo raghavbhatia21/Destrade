@@ -84,22 +84,23 @@ class NSEApi {
                     signal: AbortSignal.timeout(isOC ? 4000 : 15 * 1000)
                 });
 
-                if (!res.ok) {
-                    if (res.status === 403 || res.status === 429 || res.status >= 500) {
-                        if (effectiveRetries > 0) {
-                            console.warn(`[API RETRY] ${url} Status: ${res.status}. Retrying in ${backoff}ms...`);
-                            await new Promise(r => setTimeout(r, backoff));
-                            return this._fetch(endpoint, effectiveRetries - 1, backoff * 2);
-                        }
+                const contentType = res.headers.get('content-type') || '';
+                if (!res.ok || contentType.includes('text/html')) {
+                    if (effectiveRetries > 0 && res.status !== 404 && !contentType.includes('text/html')) {
+                        console.warn(`[API RETRY] ${url} Status: ${res.status}. Retrying in ${backoff}ms...`);
+                        await new Promise(r => setTimeout(r, backoff));
+                        return this._fetch(endpoint, effectiveRetries - 1, backoff * 2);
                     }
-                    if (!isOC) {
-                        console.error(`[API ERROR] ${url} Status: ${res.status}`);
-                    }
-                    this.proxyDetails.lastError = `Status ${res.status} on ${endpoint}`;
+                    this.proxyDetails.lastError = `Unreachable endpoint ${endpoint}`;
                     return null;
                 }
 
-                const data = await res.json();
+                const text = await res.text();
+                if (!text || text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
+                    return null;
+                }
+
+                const data = JSON.parse(text);
                 this._cache.set(endpoint, { d: data, t: Date.now() });
                 this.proxyDetails.lastError = null;
                 return data;
@@ -517,6 +518,40 @@ class NSEApi {
             yearLow: d.yearLowPrice || 0,
             volume: d.volume || 0
         };
+    }
+
+    async getAllIndices() {
+        const d = await this._fetch('/allIndices');
+        if (d && d.data && Array.isArray(d.data) && d.data.length > 0) {
+            return d.data;
+        }
+
+        // Resilient fallback via Groww live index prices
+        const mainIndices = [
+            { index: 'NIFTY 50', symbol: 'NIFTY' },
+            { index: 'NIFTY BANK', symbol: 'BANKNIFTY' },
+            { index: 'NIFTY FINANCIAL SERVICES', symbol: 'FINNIFTY' },
+            { index: 'NIFTY MIDCAP 100', symbol: 'MIDCPNIFTY' }
+        ];
+
+        const results = await Promise.all(mainIndices.map(async item => {
+            try {
+                const q = await this.getLiveQuoteGroww(item.symbol);
+                if (q && q.lastPrice > 0) {
+                    return {
+                        index: item.index,
+                        last: q.lastPrice,
+                        pChange: q.pChange,
+                        open: q.open || q.lastPrice,
+                        high: q.high || q.lastPrice,
+                        low: q.low || q.lastPrice
+                    };
+                }
+            } catch (e) {}
+            return null;
+        }));
+
+        return results.filter(Boolean);
     }
 
     // ===== QUOTE =====

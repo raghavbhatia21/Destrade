@@ -30,21 +30,27 @@ class NSEApi {
     }
 
     async checkProxy() {
-        try {
-            const res = await fetch(`${this.proxyUrl}/api/health`, { signal: AbortSignal.timeout(2500) });
-            const data = await res.json();
-            if (data.status === 'ok') {
-                this.proxyDetails = {
-                    status: 'Connected',
-                    session: data.session || 'unknown',
-                    cached: data.cached || 0,
-                    lastError: null
-                };
-                return true;
-            }
-        } catch (e) {}
+        if (this.proxyUrl) {
+            try {
+                const res = await fetch(`${this.proxyUrl}/api/health`, { signal: AbortSignal.timeout(2500) });
+                const text = await res.text();
+                // Guard: if health endpoint returns HTML (e.g. SPA fallback), proxy is not running
+                if (text.trim().startsWith('<')) throw new Error('HTML response');
+                const data = JSON.parse(text);
+                if (data.status === 'ok') {
+                    this.proxyDetails = {
+                        status: 'Connected',
+                        session: data.session || 'unknown',
+                        cached: data.cached || 0,
+                        lastError: null
+                    };
+                    return true;
+                }
+            } catch (e) {}
+        }
 
-        // Resilient fallback for direct browser / mobile mode
+        // Local proxy is NOT available — clear proxyUrl so _fetch() and runNse skip dead localhost calls
+        this.proxyUrl = '';
         this.proxyDetails = { status: 'Direct Stream (Groww)', session: 'direct', cached: 0, lastError: null };
         this.config.source = 'groww';
         return true;

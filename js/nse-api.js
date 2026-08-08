@@ -124,17 +124,19 @@ class NSEApi {
 
     async _fetchGroww(path) {
         const rawUrl = path.startsWith('http') ? path : `https://groww.in${path.startsWith('/') ? '' : '/'}${path}`;
-        
-        // 1. Direct Fetch (Fastest on native mobile apps)
-        try {
-            const res = await fetch(rawUrl, { cache: 'no-store' });
-            if (res.ok) {
-                const data = await res.json();
-                if (data) return data;
-            }
-        } catch (e) {}
 
-        // 2. Cloud CORS Proxy Fallback (Guaranteed for desktop browsers, DevTools, & web clients)
+        // 1. Native Mobile App (Capacitor Android/iOS APK): Direct Fetch
+        if (typeof window !== 'undefined' && window.Capacitor) {
+            try {
+                const res = await fetch(rawUrl, { cache: 'no-store' });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data) return data;
+                }
+            } catch (e) {}
+        }
+
+        // 2. Web Browsers / DevTools / localhost: Prioritize Cloud CORS Proxy to eliminate browser CORS errors
         try {
             const cloudUrl = `https://destrade-market-worker.onrender.com/api/proxy?url=${encodeURIComponent(rawUrl)}`;
             const res = await fetch(cloudUrl, { cache: 'no-store' });
@@ -144,7 +146,7 @@ class NSEApi {
             }
         } catch (e) {}
 
-        // 3. Local Node Proxy Fallback (if dev-proxy.js running locally)
+        // 3. Fallback: Local Node Dev-Proxy (if running locally on port)
         const cleanPath = rawUrl.replace('https://groww.in', '');
         const endpoint = `/groww${cleanPath.startsWith('/') ? '' : '/'}${cleanPath}`;
         return this._fetch(endpoint);

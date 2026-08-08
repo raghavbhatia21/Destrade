@@ -2600,4 +2600,8 @@ const App = {
     }
 };
 
-document.addEventListener('DOMContentLoaded', () => App.init());
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(() => App.init(), 1);
+} else {
+    document.addEventListener('DOMContentLoaded', () => App.init());
+}

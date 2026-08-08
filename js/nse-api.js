@@ -122,7 +122,29 @@ class NSEApi {
     }
 
     async _fetchGroww(path) {
-        const endpoint = `/groww${path.startsWith('/') ? '' : '/'}${path}`;
+        const rawUrl = path.startsWith('http') ? path : `https://groww.in${path.startsWith('/') ? '' : '/'}${path}`;
+        
+        // Direct fetch for Capacitor mobile / standalone localhost without dev-proxy
+        const isStandaloneMobile = typeof window !== 'undefined' && (
+            window.Capacitor ||
+            window.location.protocol === 'file:' ||
+            window.location.protocol === 'capacitor:' ||
+            window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1'
+        );
+
+        if (isStandaloneMobile) {
+            try {
+                const res = await fetch(rawUrl, { cache: 'no-store' });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data) return data;
+                }
+            } catch (e) {}
+        }
+
+        const cleanPath = rawUrl.replace('https://groww.in', '');
+        const endpoint = `/groww${cleanPath.startsWith('/') ? '' : '/'}${cleanPath}`;
         return this._fetch(endpoint);
     }
 

@@ -440,8 +440,11 @@ const App = {
     async renderSectorQuickLook() {
         const c = document.getElementById('sector-quick-look');
         if (!c) return;
-        const sectors = await window.nseApi.getSectors();
-        if (!sectors.length) return;
+        const sectors = await window.nseApi.getSectors().catch(() => []);
+        if (!sectors || !sectors.length) {
+            c.innerHTML = '<p style="color:var(--text-muted);font-size:0.8rem;text-align:center;padding:1rem;width:100%">Sector data unavailable</p>';
+            return;
+        }
         c.innerHTML = sectors.slice(0, 8).map(s => `
             <div class="sector-card ${s.change >= 0 ? 'positive' : 'negative'}" onclick="App.showSectorStocks('${s.name}')">
                 <div class="sector-name">${s.label}</div>
@@ -455,6 +458,10 @@ const App = {
         const c = document.getElementById('top-movers-list');
         if (!c) return;
         const data = this.state.movers[this.state.activeMoverTab] || [];
+        if (!data || !data.length) {
+            c.innerHTML = '<p style="color:var(--text-muted);font-size:0.8rem;text-align:center;padding:1rem">No market movers data</p>';
+            return;
+        }
         c.innerHTML = data.map(m => `
             <div class="mover-row" data-symbol="${m.symbol}">
                 <span class="mover-symbol">${m.symbol}</span>

@@ -135,6 +135,7 @@ const App = {
         if (viewId === 'oi-clock') this.renderOIClock();
         if (viewId === 'discovery') this.renderDiscovery();
         if (viewId === 'sectors') this.renderSectors();
+        if (viewId === 'pcr-analytics') this.renderPcrAnalyticsView();
         if (viewId === 'symbol-overview' && !this.state.activeSymbol) this.showSymbolOverview('NIFTY 50');
     },
 
@@ -1444,6 +1445,332 @@ const App = {
                 </table>
             `;
         }
+    },
+
+    // ===== FULL-SCREEN PCR ANALYTICS & OI TREND WORKSPACE =====
+    statePcrMode: 'pcr',
+
+    setPcrChartMode(mode) {
+        this.statePcrMode = mode || 'pcr';
+        document.querySelectorAll('.pcr-radio-label').forEach(lbl => lbl.classList.remove('active'));
+        const activeLbl = document.getElementById(mode === 'chg_pcr' ? 'lbl-pcr-mode-chg' : 'lbl-pcr-mode-pcr');
+        if (activeLbl) activeLbl.classList.add('active');
+        const sym = this.state.pcrAnalyticsSymbol || this.state.activeSymbol || 'NIFTY';
+        this.renderPcrAnalyticsChartCanvas(sym);
+    },
+
+    changePcrSymbol(symbol) {
+        if (!symbol) return;
+        this.state.pcrAnalyticsSymbol = symbol;
+        this.renderPcrAnalyticsView(symbol);
+    },
+
+    refreshPcrAnalytics() {
+        const sym = this.state.pcrAnalyticsSymbol || this.state.activeSymbol || 'NIFTY';
+        this.renderPcrAnalyticsView(sym);
+    },
+
+    async renderPcrAnalyticsView(symbolInput) {
+        const rawSym = symbolInput || this.state.pcrAnalyticsSymbol || this.state.activeSymbol || 'NIFTY';
+        const cleanSym = rawSym.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
+        this.state.pcrAnalyticsSymbol = cleanSym;
+
+        // Ensure symbol is selected in select dropdown
+        const select = document.getElementById('pcr-symbol-select');
+        if (select) {
+            let exists = Array.from(select.options).some(opt => opt.value === cleanSym);
+            if (!exists) {
+                const newOpt = document.createElement('option');
+                newOpt.value = cleanSym;
+                newOpt.textContent = cleanSym;
+                select.appendChild(newOpt);
+            }
+            select.value = cleanSym;
+        }
+
+        // Initialize Firebase Time Engine for live streaming
+        this.initFirebaseTimeEngine(cleanSym);
+
+        // Fetch live top PCR & Option Chain summary
+        const topData = await NSEApi.getTopPCR(cleanSym);
+
+        // Lot Size Dictionary
+        const LOT_SIZES = {
+            'NIFTY': 75, 'BANKNIFTY': 30, 'FINNIFTY': 65, 'MIDCPNIFTY': 120,
+            'RELIANCE': 250, 'TCS': 175, 'HDFCBANK': 550, 'INFY': 400,
+            'ICICIBANK': 700, 'SBIN': 1500, 'BHARTIARTL': 475, 'ITC': 1600,
+            'LT': 300, 'AXISBANK': 625, 'BAJFINANCE': 125
+        };
+
+        const lotSize = LOT_SIZES[cleanSym] || '--';
+        const maxPain = (topData && topData.maxPain) ? '₹' + topData.maxPain : '--';
+        const pcrVal = (topData && topData.pcr) ? topData.pcr.toFixed(2) : '--';
+
+        // Calculate CHG IN OI PCR estimate
+        let chgPcrVal = '--';
+        if (topData && topData.callOI > 0 && topData.putOI > 0) {
+            chgPcrVal = (topData.putOI / topData.callOI).toFixed(2);
+        }
+
+        // Update Header Badges
+        const elMaxPain = document.getElementById('pcr-m-maxpain');
+        if (elMaxPain) elMaxPain.textContent = maxPain;
+
+        const elLot = document.getElementById('pcr-m-lotsize');
+        if (elLot) elLot.textContent = lotSize;
+
+        const elPcr = document.getElementById('pcr-m-pcr');
+        if (elPcr) elPcr.textContent = pcrVal;
+
+        const elChgPcr = document.getElementById('pcr-m-chgpcr');
+        if (elChgPcr) elChgPcr.textContent = chgPcrVal !== '--' ? chgPcrVal : pcrVal;
+
+        // Record live PCR tick if valid
+        if (topData && topData.pcr) {
+            this.recordPcr(cleanSym, parseFloat(topData.pcr), parseFloat(topData.spot) || 0);
+        }
+
+        // Ensure intraday history is prefilled
+        await this.prefillIntradayPcrHistory(cleanSym);
+
+        // Render full-screen chart canvas
+        this.renderPcrAnalyticsChartCanvas(cleanSym);
+    },
+
+    renderPcrAnalyticsChartCanvas(targetSymbol) {
+        const container = document.getElementById('pcr-analytics-chart-canvas');
+        if (!container) return;
+
+        const sym = (targetSymbol || this.state.pcrAnalyticsSymbol || this.state.activeSymbol || 'NIFTY').replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
+
+        let rawList = [];
+        if (this.state.pcrHistory && typeof this.state.pcrHistory === 'object' && !Array.isArray(this.state.pcrHistory)) {
+            rawList = this.state.pcrHistory[sym] || [];
+        }
+
+        let data = this.sanitize5MinPcrList(rawList);
+        this.state.pcrHistory[sym] = data;
+
+        if (!data || data.length < 1) {
+            container.innerHTML = `<div style="color:var(--text-muted);font-size:0.95rem;text-align:center;padding-top:120px"><i class="fas fa-satellite-dish fa-spin" style="font-size:2rem;color:var(--primary);margin-bottom:1rem"></i><br>Connecting to live multi-device market stream for ${sym}...</div>`;
+            return;
+        }
+
+        const mode = this.statePcrMode || 'pcr';
+
+        const dpr = window.devicePixelRatio || 1;
+        const width = container.clientWidth || 800;
+        const height = container.clientHeight || 480;
+        container.innerHTML = `<canvas id="pcr-analytics-canvas" width="${Math.round(width * dpr)}" height="${Math.round(height * dpr)}" style="width:${width}px; height:${height}px; cursor:crosshair; touch-action:none"></canvas>`;
+        const canvas = document.getElementById('pcr-analytics-canvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+
+        const values = data.map((d, idx) => {
+            if (mode === 'chg_pcr' && idx > 0) {
+                const prev = data[idx - 1].value;
+                return parseFloat((d.value - prev + 1.0).toFixed(4));
+            }
+            return d.value;
+        });
+
+        const rawMin = Math.min(...values);
+        const rawMax = Math.max(...values);
+        const padding = Math.max(0.03, (rawMax - rawMin) * 0.18);
+        const minVal = Math.max(0.05, rawMin - padding);
+        const maxVal = (rawMax === rawMin) ? (rawMax + 0.1) : (rawMax + padding);
+
+        const spots = data.map(d => parseFloat(d.spot) || 0).filter(s => s > 0);
+        const hasSpot = spots.length > 1;
+        const spotMin = hasSpot ? Math.min(...spots) * 0.998 : 0;
+        const spotMax = hasSpot ? Math.max(...spots) * 1.002 : 1;
+
+        const paddingLeft = 55;
+        const paddingRight = hasSpot ? 75 : 55;
+        const paddingTop = 30;
+        const paddingBottom = 35;
+        const chartW = width - paddingLeft - paddingRight;
+        const chartH = height - paddingTop - paddingBottom;
+
+        const pts = data.map((d, i) => {
+            const val = values[i];
+            const x = (data.length === 1) ? (paddingLeft + chartW / 2) : (paddingLeft + (i / (data.length - 1)) * chartW);
+            const y = paddingTop + chartH * (1 - (val - minVal) / (maxVal - minVal || 1));
+            const spotY = hasSpot ? paddingTop + chartH * (1 - ((parseFloat(d.spot) || 0) - spotMin) / ((spotMax - spotMin) || 1)) : 0;
+            return { x, y, spotY, val, pcrRaw: d.value, spot: parseFloat(d.spot) || 0, timeStr: d.timeStr || '--' };
+        });
+
+        let hoverIdx = null;
+
+        const drawChart = () => {
+            ctx.clearRect(0, 0, width, height);
+
+            // 1. Gridlines & Y-Axes
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
+            ctx.lineWidth = 1;
+            ctx.fillStyle = 'rgba(148, 163, 184, 0.8)';
+            ctx.font = '600 11px JetBrains Mono, monospace';
+            ctx.textAlign = 'right';
+
+            const gridSteps = 5;
+            for (let g = 0; g <= gridSteps; g++) {
+                const ratio = g / gridSteps;
+                const y = paddingTop + chartH * (1 - ratio);
+                const val = (minVal + ratio * (maxVal - minVal)).toFixed(3);
+
+                ctx.beginPath();
+                ctx.moveTo(paddingLeft, y);
+                ctx.lineTo(width - paddingRight, y);
+                ctx.stroke();
+
+                // Left Y-Axis: PCR Value (NiftyTrader Blue)
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillText(val, paddingLeft - 8, y + 4);
+
+                // Right Y-Axis: Spot Price (NiftyTrader Green)
+                if (hasSpot) {
+                    const spotVal = (spotMin + ratio * (spotMax - spotMin)).toFixed(1);
+                    ctx.textAlign = 'left';
+                    ctx.fillStyle = '#34d399';
+                    ctx.fillText('₹' + spotVal, width - paddingRight + 8, y + 4);
+                    ctx.textAlign = 'right';
+                }
+            }
+
+            // 2. Draw Spot Price Curve (NiftyTrader Vibrant Green Curve)
+            if (hasSpot && pts.length > 1) {
+                ctx.beginPath();
+                ctx.strokeStyle = '#34d399';
+                ctx.lineWidth = 2.2;
+                ctx.moveTo(pts[0].x, pts[0].spotY);
+                for (let i = 0; i < pts.length - 1; i++) {
+                    const xc = (pts[i].x + pts[i + 1].x) / 2;
+                    const yc = (pts[i].spotY + pts[i + 1].spotY) / 2;
+                    ctx.quadraticCurveTo(pts[i].x, pts[i].spotY, xc, yc);
+                }
+                ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].spotY);
+                ctx.stroke();
+            }
+
+            // 3. Draw PCR Translucent Soft Blue Gradient Fill (NiftyTrader Area Chart Style)
+            const grad = ctx.createLinearGradient(0, paddingTop, 0, height - paddingBottom);
+            grad.addColorStop(0, 'rgba(56, 189, 248, 0.25)');
+            grad.addColorStop(1, 'rgba(56, 189, 248, 0.01)');
+
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 0; i < pts.length - 1; i++) {
+                const xc = (pts[i].x + pts[i + 1].x) / 2;
+                const yc = (pts[i].y + pts[i + 1].y) / 2;
+                ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+            }
+            ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+            ctx.lineTo(pts[pts.length - 1].x, height - paddingBottom);
+            ctx.lineTo(pts[0].x, height - paddingBottom);
+            ctx.closePath();
+            ctx.fillStyle = grad;
+            ctx.fill();
+
+            // 4. Draw PCR Line (NiftyTrader Bright Blue)
+            ctx.beginPath();
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = '#38bdf8';
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 0; i < pts.length - 1; i++) {
+                const xc = (pts[i].x + pts[i + 1].x) / 2;
+                const yc = (pts[i].y + pts[i + 1].y) / 2;
+                ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+            }
+            ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+            ctx.stroke();
+
+            // 5. Bottom Legend
+            ctx.font = 'bold 11px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillText('— PCR Trend', width / 2 - 70, height - 10);
+            if (hasSpot) {
+                ctx.fillStyle = '#34d399';
+                ctx.fillText('— Spot Price', width / 2 + 70, height - 10);
+            }
+
+            // 6. Interactive Crosshair & Floating Tooltip
+            if (hoverIdx !== null && pts[hoverIdx]) {
+                const hp = pts[hoverIdx];
+
+                // Vertical Crosshair Line
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([3, 3]);
+                ctx.moveTo(hp.x, paddingTop);
+                ctx.lineTo(hp.x, height - paddingBottom);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // PCR Dot
+                ctx.beginPath();
+                ctx.arc(hp.x, hp.y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = '#38bdf8';
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Spot Dot
+                if (hasSpot) {
+                    ctx.beginPath();
+                    ctx.arc(hp.x, hp.spotY, 5, 0, Math.PI * 2);
+                    ctx.fillStyle = '#34d399';
+                    ctx.fill();
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                }
+
+                // Floating Tooltip Box
+                const tipText = `Time: ${hp.timeStr} | PCR: ${hp.pcrRaw.toFixed(2)}${hp.spot ? ` | Spot: ₹${hp.spot.toLocaleString()}` : ''}`;
+                ctx.font = '600 12px JetBrains Mono, monospace';
+                const textW = ctx.measureText(tipText).width + 20;
+                let tipX = hp.x - textW / 2;
+                if (tipX < paddingLeft) tipX = paddingLeft;
+                if (tipX + textW > width - paddingRight) tipX = width - paddingRight - textW;
+
+                const tipY = paddingTop + 10;
+
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+                ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                if (typeof ctx.roundRect === 'function') ctx.roundRect(tipX, tipY, textW, 28, 6);
+                else ctx.rect(tipX, tipY, textW, 28);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = '#f8fafc';
+                ctx.textAlign = 'left';
+                ctx.fillText(tipText, tipX + 10, tipY + 18);
+            }
+        };
+
+        const updateHover = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX);
+            if (!clientX) return;
+            const mouseX = clientX - rect.left;
+            if (mouseX >= paddingLeft && mouseX <= width - paddingRight) {
+                const ratio = (mouseX - paddingLeft) / chartW;
+                hoverIdx = Math.min(pts.length - 1, Math.max(0, Math.round(ratio * (pts.length - 1))));
+            } else {
+                hoverIdx = null;
+            }
+            drawChart();
+        };
+
+        canvas.onmousemove = updateHover;
+        canvas.ontouchmove = updateHover;
+        drawChart();
     },
 
     async shareTradeSignal(symbol, type, strike, price, margin, roi) {

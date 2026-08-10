@@ -1712,7 +1712,10 @@ const App = {
         if (!symbol) return;
         const cleanSym = symbol.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
         const input = document.getElementById('pcr-symbol-search');
-        if (input) input.value = cleanSym;
+        if (input) {
+            input.value = '';
+            input.placeholder = `🔍 Active: ${cleanSym} (Search symbol...)`;
+        }
 
         const popup = document.getElementById('pcr-symbol-suggestions');
         if (popup) popup.style.display = 'none';
@@ -1725,10 +1728,11 @@ const App = {
         const cleanSym = rawSym.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
         this.state.pcrAnalyticsSymbol = cleanSym;
 
-        // Update search input text
+        // Clear input value and set active symbol placeholder
         const input = document.getElementById('pcr-symbol-search');
         if (input) {
-            input.value = cleanSym;
+            input.value = '';
+            input.placeholder = `🔍 Active: ${cleanSym} (Search symbol...)`;
         }
 
         // Initialize Firebase Time Engine for live streaming

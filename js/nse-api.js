@@ -778,10 +778,10 @@ class NSEApi {
     // ===== DIRECT PCR & OI SUMMARY (Groww top endpoint) =====
     async getTopPCR(symbol = 'NIFTY') {
         const info = this.getGrowwSlug(symbol);
-        const url = `/groww/v1/api/stocks_fo_data/v1/contracts/${info.slug}/top`;
+        const endpoint = `/v1/api/stocks_fo_data/v1/contracts/${info.slug}/top`;
         
         try {
-            const d = await this._fetch(url);
+            const d = await this._fetchGroww(endpoint);
             let spot = 0;
             const q = await this.getQuote(symbol);
             if (q) spot = q.lastPrice || 0;
@@ -816,10 +816,10 @@ class NSEApi {
     // ===== OPTION CHAIN (100% Live Groww Direct Stream) =====
     async getOptionChain(symbol = 'NIFTY') {
         const info = this.getGrowwSlug(symbol);
-        const url = `/v1/api/option_chain_service/v1/option_chain/${info.slug}?type=${info.type}`;
+        const endpoint = `/v1/api/option_chain_service/v1/option_chain/${info.slug}?type=${info.type}`;
         
         try {
-            const d = await this._fetch(`/groww${url}`);
+            const d = await this._fetchGroww(endpoint);
             if (d && d.optionChain) {
                 const oc = d.optionChain;
                 let uv = oc.underlyingValue || oc.lastPrice || 0;
@@ -1565,35 +1565,43 @@ class NSEApi {
 
         return {
             records: {
-                data: contracts.map(c => ({
-                    strikePrice: c.strikePrice / 100,
-                    CE: c.ce ? {
-                        openInterest: c.ce.liveData.oi,
-                        changeinOpenInterest: (c.ce.liveData.oi - (c.ce.liveData.prevOI || 0)),
-                        lastPrice: c.ce.liveData.ltp,
-                        pChange: c.ce.liveData.dayChangePerc,
-                        impliedVolatility: c.ce.greeks?.iv || 0,
-                        greeks: {
-                            delta: c.ce.greeks?.delta || 0,
-                            theta: c.ce.greeks?.theta || 0,
-                            gamma: c.ce.greeks?.gamma || 0,
-                            vega: c.ce.greeks?.vega || 0
-                        }
-                    } : null,
-                    PE: c.pe ? {
-                        openInterest: c.pe.liveData.oi,
-                        changeinOpenInterest: (c.pe.liveData.oi - (c.pe.liveData.prevOI || 0)),
-                        lastPrice: c.pe.liveData.ltp,
-                        pChange: c.pe.liveData.dayChangePerc,
-                        impliedVolatility: c.pe.greeks?.iv || 0,
-                        greeks: {
-                            delta: c.pe.greeks?.delta || 0,
-                            theta: c.pe.greeks?.theta || 0,
-                            gamma: c.pe.greeks?.gamma || 0,
-                            vega: c.pe.greeks?.vega || 0
-                        }
-                    } : null
-                })),
+                data: contracts.map(c => {
+                    let strike = c.strikePrice;
+                    if (strike > 200) {
+                        strike = Math.round(strike / 100);
+                    }
+                    return {
+                        strikePrice: strike,
+                        CE: c.ce ? {
+                            strikePrice: strike,
+                            openInterest: c.ce.liveData ? (c.ce.liveData.oi !== undefined ? c.ce.liveData.oi : (c.ce.liveData.openInterest || 0)) : 0,
+                            changeinOpenInterest: c.ce.liveData ? ((c.ce.liveData.oi || 0) - (c.ce.liveData.prevOI || 0)) : 0,
+                            lastPrice: c.ce.liveData?.ltp || 0,
+                            pChange: c.ce.liveData?.dayChangePerc || 0,
+                            impliedVolatility: c.ce.greeks?.iv || 0,
+                            greeks: {
+                                delta: c.ce.greeks?.delta || 0,
+                                theta: c.ce.greeks?.theta || 0,
+                                gamma: c.ce.greeks?.gamma || 0,
+                                vega: c.ce.greeks?.vega || 0
+                            }
+                        } : null,
+                        PE: c.pe ? {
+                            strikePrice: strike,
+                            openInterest: c.pe.liveData ? (c.pe.liveData.oi !== undefined ? c.pe.liveData.oi : (c.pe.liveData.openInterest || 0)) : 0,
+                            changeinOpenInterest: c.pe.liveData ? ((c.pe.liveData.oi || 0) - (c.pe.liveData.prevOI || 0)) : 0,
+                            lastPrice: c.pe.liveData?.ltp || 0,
+                            pChange: c.pe.liveData?.dayChangePerc || 0,
+                            impliedVolatility: c.pe.greeks?.iv || 0,
+                            greeks: {
+                                delta: c.pe.greeks?.delta || 0,
+                                theta: c.pe.greeks?.theta || 0,
+                                gamma: c.pe.greeks?.gamma || 0,
+                                vega: c.pe.greeks?.vega || 0
+                            }
+                        } : null
+                    };
+                }),
                 underlyingValue: underlying,
                 lotSize: lotSize,
                 expiryDates: d.optionChain?.aggregatedDetails?.expiryDates || [],

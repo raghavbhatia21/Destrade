@@ -1574,7 +1574,12 @@ const App = {
             this.recordPcr(cleanSym, parseFloat(topData.pcr), parseFloat(topData.spot) || 0);
         }
 
-        // Ensure intraday history is prefilled
+        // Force fresh load from Firebase if local cache has fewer than 5 ticks
+        if (this.state.pcrHistory && this.state.pcrHistory[cleanSym] && this.state.pcrHistory[cleanSym].length < 5) {
+            delete this.state.pcrHistory[cleanSym];
+        }
+
+        // Ensure intraday history is prefilled from Firebase
         await this.prefillIntradayPcrHistory(cleanSym);
 
         // Render full-screen chart canvas

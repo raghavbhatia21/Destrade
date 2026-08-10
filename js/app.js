@@ -1612,8 +1612,8 @@ const App = {
         };
 
         const lotSize = LOT_SIZES[cleanSym] || '--';
-        // Force fresh load from Firebase if local cache has fewer than 5 ticks
-        if (this.state.pcrHistory && this.state.pcrHistory[cleanSym] && this.state.pcrHistory[cleanSym].length < 5) {
+        // Force fresh load from Firebase if local cache has fewer than 20 ticks
+        if (this.state.pcrHistory && this.state.pcrHistory[cleanSym] && this.state.pcrHistory[cleanSym].length < 20) {
             delete this.state.pcrHistory[cleanSym];
         }
 

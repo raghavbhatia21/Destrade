@@ -121,7 +121,13 @@ async function fetchOptionChainPCR(symbol) {
 
     let spot = 0;
     if (topData && typeof topData.pcr === 'number') {
-        spot = await fetchSpotPrice(symbol, info.type === 'INDICES');
+        // Extract spot price directly from topData if available, else fetchSpotPrice
+        if (topData.futures && topData.futures[0] && topData.futures[0].livePrice) {
+            spot = topData.futures[0].livePrice.ltp || topData.futures[0].livePrice.close || 0;
+        }
+        if (spot === 0) {
+            spot = await fetchSpotPrice(symbol, info.type === 'INDICES');
+        }
         return {
             pcr: parseFloat(topData.pcr.toFixed(2)),
             callOI: topData.callOI || 0,
@@ -193,7 +199,8 @@ async function executeMarketSync() {
     console.log(`⚡ Market Live! Syncing ${SYMBOLS.length} F&O symbols to Firebase...`);
 
     const summary = {};
-    const BATCH_SIZE = 15;
+    const BATCH_SIZE = 10;
+    const nowSec = Math.floor(Date.now() / 1000);
 
     for (let i = 0; i < SYMBOLS.length; i += BATCH_SIZE) {
         const batch = SYMBOLS.slice(i, i + BATCH_SIZE);
@@ -207,7 +214,6 @@ async function executeMarketSync() {
                     const existing = await firebaseGet(path);
                     const list = Array.isArray(existing) ? existing : (existing ? Object.values(existing) : []);
 
-                    const nowSec = Math.floor(Date.now() / 1000);
                     const lastEntry = list[list.length - 1];
                     
                     // Enforce strict 5-minute ticks (>= 240 seconds)

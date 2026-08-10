@@ -1115,10 +1115,29 @@ const App = {
                 localStorage.setItem(todayKey, JSON.stringify(this.state.pcrHistory));
             } catch(e) {}
 
-            // Save tick safely to Firebase without overwriting existing historical data
+            // MERGE with existing Firebase data — never blindly overwrite server-synced history
             if (window.firebase && window.firebase.database && (!this._lastFbPush || Date.now() - this._lastFbPush > 5000)) {
                 this._lastFbPush = Date.now();
-                window.firebase.database().ref(`pcr_history/${sym}/${dateStr}`).set(list).catch(() => {});
+                const fbRef = window.firebase.database().ref(`pcr_history/${sym}/${dateStr}`);
+                fbRef.once('value').then(snapshot => {
+                    let serverList = [];
+                    if (snapshot.exists()) {
+                        const val = snapshot.val();
+                        serverList = Array.isArray(val) ? val : Object.values(val);
+                    }
+                    // Merge server + local, deduplicate by timestamp
+                    const mergedMap = new Map();
+                    [...serverList, ...list].forEach(item => {
+                        if (item && item.time) mergedMap.set(item.time, item);
+                    });
+                    const merged = Array.from(mergedMap.values())
+                        .filter(x => x && typeof x.value === 'number' && x.value > 0)
+                        .sort((a, b) => a.time - b.time)
+                        .slice(-150);
+                    // Update local state with merged data
+                    this.state.pcrHistory[sym] = merged;
+                    fbRef.set(merged).catch(() => {});
+                }).catch(() => {});
             }
         }
 

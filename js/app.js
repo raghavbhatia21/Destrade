@@ -1547,7 +1547,33 @@ const App = {
         };
 
         const lotSize = LOT_SIZES[cleanSym] || '--';
-        const maxPain = (topData && topData.maxPain) ? '₹' + topData.maxPain : '--';
+        // Force fresh load from Firebase if local cache has fewer than 5 ticks
+        if (this.state.pcrHistory && this.state.pcrHistory[cleanSym] && this.state.pcrHistory[cleanSym].length < 5) {
+            delete this.state.pcrHistory[cleanSym];
+        }
+
+        // Ensure intraday history is prefilled from Firebase
+        await this.prefillIntradayPcrHistory(cleanSym);
+
+        const currentHistory = this.state.pcrHistory[cleanSym] || [];
+        const lastTick = currentHistory[currentHistory.length - 1];
+        const spotPrice = (topData && topData.spot) ? topData.spot : (lastTick ? lastTick.spot : 0);
+
+        let maxPain = '--';
+        if (topData && topData.maxPain) {
+            maxPain = '₹' + topData.maxPain.toLocaleString();
+        } else if (spotPrice > 0) {
+            let step = 100;
+            if (cleanSym.includes('NIFTY') && !cleanSym.includes('BANK')) step = 50;
+            if (cleanSym.includes('BANKNIFTY')) step = 100;
+            if (cleanSym.includes('FINNIFTY')) step = 50;
+            if (spotPrice < 500) step = 5;
+            else if (spotPrice < 1500) step = 10;
+            else if (spotPrice < 3000) step = 20;
+            else if (spotPrice < 10000) step = 50;
+            const estStrike = Math.round(spotPrice / step) * step;
+            maxPain = '₹' + estStrike.toLocaleString();
+        }
         const pcrVal = (topData && topData.pcr) ? topData.pcr.toFixed(2) : '--';
 
         // Calculate CHG IN OI PCR estimate

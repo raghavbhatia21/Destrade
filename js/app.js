@@ -1492,7 +1492,7 @@ const App = {
         this.initFirebaseTimeEngine(cleanSym);
 
         // Fetch live top PCR & Option Chain summary
-        const topData = await NSEApi.getTopPCR(cleanSym);
+        const topData = (window.nseApi && typeof window.nseApi.getTopPCR === 'function') ? await window.nseApi.getTopPCR(cleanSym) : null;
 
         // Lot Size Dictionary
         const LOT_SIZES = {

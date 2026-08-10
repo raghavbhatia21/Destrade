@@ -1069,6 +1069,14 @@ const App = {
         const valid = rawList.filter(item => item && typeof item === 'object' && typeof item.value === 'number' && !isNaN(item.value) && item.value > 0);
         if (valid.length === 0) return [];
 
+        // Forward-fill missing spot prices so spot never drops to 0 creating red vertical lines
+        let lastValidSpot = 0;
+        for (let i = 0; i < valid.length; i++) {
+            const s = parseFloat(valid[i].spot) || 0;
+            if (s > 0) lastValidSpot = s;
+            else if (lastValidSpot > 0) valid[i].spot = lastValidSpot;
+        }
+
         // Sort strictly ascending by epoch timestamp
         valid.sort((a, b) => (a.time || a.timestamp || 0) - (b.time || b.timestamp || 0));
 
@@ -1090,12 +1098,23 @@ const App = {
             cleanMap.set(bucketSec, {
                 time: bucketSec,
                 timeStr: item.timeStr || cleanTimeStr,
-                value: parseFloat(item.value.toFixed(3)),
+                value: parseFloat(item.value.toFixed(4)),
                 spot: item.spot ? parseFloat(parseFloat(item.spot).toFixed(2)) : 0
             });
         }
 
-        return Array.from(cleanMap.values()).sort((a, b) => a.time - b.time);
+        const sorted = Array.from(cleanMap.values()).sort((a, b) => a.time - b.time);
+
+        // Ensure all items have a valid spot price fallback
+        const validSpots = sorted.map(d => d.spot).filter(s => s > 0);
+        if (validSpots.length > 0) {
+            const fallbackSpot = validSpots[validSpots.length - 1];
+            sorted.forEach(d => {
+                if (!d.spot || d.spot <= 0) d.spot = fallbackSpot;
+            });
+        }
+
+        return sorted;
     },
 
     async prefillIntradayPcrHistory(sym) {

@@ -178,30 +178,27 @@
 
             <!-- ========== VIEW: PCR ANALYTICS (NiftyTrader Full-Screen Workspace) ========== -->
             <div class="view-container" id="view-pcr-analytics">
-                <!-- Top Toolbar: Header Title, Search & Actions -->
+                <!-- Top Toolbar: Ultra-Compact Single Line Header -->
                 <div class="pcr-analytics-header">
                     <div class="pcr-header-top-row">
-                        <div class="view-title" style="font-size: 1.25rem; font-weight: 800; color: #ffffff;"><i class="fas fa-chart-line" style="color: #38bdf8;"></i> PCR Analytics</div>
-                        <div class="pcr-header-actions">
-                            <button class="chart-action-btn" onclick="App.refreshPcrAnalytics()" style="padding: 0.4rem 0.85rem; font-size: 0.85rem;"><i class="fas fa-sync-alt"></i> Refresh</button>
-                            <button class="back-btn" onclick="App.switchView('dashboard')" style="padding: 0.4rem 0.85rem; font-size: 0.85rem;"><i class="fas fa-arrow-left"></i> Back</button>
-                        </div>
-                    </div>
-
-                    <div class="pcr-header-search-row">
-                        <div style="position: relative; width: 100%; max-width: 280px;" id="pcr-search-wrapper">
+                        <div class="view-title" style="font-size: 1.15rem; font-weight: 800; color: #ffffff; white-space: nowrap;"><i class="fas fa-chart-line" style="color: #38bdf8;"></i> PCR</div>
+                        <div style="position: relative; flex: 1; max-width: 240px;" id="pcr-search-wrapper">
                             <div style="position: relative; display: flex; align-items: center;">
-                                <i class="fas fa-search" style="position: absolute; left: 12px; color: #38bdf8; font-size: 0.85rem; pointer-events: none;"></i>
-                                <input type="text" id="pcr-symbol-search" placeholder="Search symbol (NIFTY)..." 
+                                <i class="fas fa-search" style="position: absolute; left: 10px; color: #38bdf8; font-size: 0.8rem; pointer-events: none;"></i>
+                                <input type="text" id="pcr-symbol-search" placeholder="Search symbol..." 
                                        autocomplete="off" spellcheck="false" value=""
                                        oninput="App.onPcrSearchInput(this.value)" 
                                        onkeydown="App.onPcrSearchKeyDown(event)"
                                        onfocus="App.onPcrSearchFocus()"
-                                       style="width: 100%; background: #0f172a; color: #ffffff; border: 1.5px solid #38bdf8; font-weight: 700; border-radius: 8px; padding: 0.45rem 0.85rem 0.45rem 2.2rem; font-size: 0.9rem; outline: none; transition: border-color 0.2s, box-shadow 0.2s; text-transform: uppercase;" />
+                                       style="width: 100%; background: #0f172a; color: #ffffff; border: 1.5px solid #38bdf8; font-weight: 700; border-radius: 8px; padding: 0.35rem 0.65rem 0.35rem 2rem; font-size: 0.85rem; outline: none; transition: border-color 0.2s; text-transform: uppercase;" />
                             </div>
                             <!-- Auto-Suggest Autocomplete Popup -->
                             <div id="pcr-symbol-suggestions" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 280px; overflow-y: auto; background: #0f172a; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.7); z-index: 9999;"></div>
                         </div>
+                    </div>
+                    <div class="pcr-header-actions">
+                        <button class="icon-btn" onclick="App.refreshPcrAnalytics()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+                        <button class="icon-btn" onclick="App.switchView('dashboard')" title="Back"><i class="fas fa-arrow-left"></i></button>
                     </div>
                 </div>
 

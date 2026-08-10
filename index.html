@@ -178,11 +178,18 @@
 
             <!-- ========== VIEW: PCR ANALYTICS (NiftyTrader Full-Screen Workspace) ========== -->
             <div class="view-container" id="view-pcr-analytics">
-                <!-- Top Toolbar: Symbol Search & Actions -->
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
-                    <div class="pcr-toolbar-group">
+                <!-- Top Toolbar: Header Title, Search & Actions -->
+                <div class="pcr-analytics-header">
+                    <div class="pcr-header-top-row">
                         <div class="view-title" style="font-size: 1.25rem; font-weight: 800; color: #ffffff;"><i class="fas fa-chart-line" style="color: #38bdf8;"></i> PCR Analytics</div>
-                        <div style="position: relative; width: 230px;" id="pcr-search-wrapper">
+                        <div class="pcr-header-actions">
+                            <button class="chart-action-btn" onclick="App.refreshPcrAnalytics()" style="padding: 0.4rem 0.85rem; font-size: 0.85rem;"><i class="fas fa-sync-alt"></i> Refresh</button>
+                            <button class="back-btn" onclick="App.switchView('dashboard')" style="padding: 0.4rem 0.85rem; font-size: 0.85rem;"><i class="fas fa-arrow-left"></i> Back</button>
+                        </div>
+                    </div>
+
+                    <div class="pcr-header-search-row">
+                        <div style="position: relative; width: 100%; max-width: 280px;" id="pcr-search-wrapper">
                             <div style="position: relative; display: flex; align-items: center;">
                                 <i class="fas fa-search" style="position: absolute; left: 12px; color: #38bdf8; font-size: 0.85rem; pointer-events: none;"></i>
                                 <input type="text" id="pcr-symbol-search" placeholder="Search symbol (NIFTY)..." 
@@ -195,10 +202,6 @@
                             <!-- Auto-Suggest Autocomplete Popup -->
                             <div id="pcr-symbol-suggestions" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 280px; overflow-y: auto; background: #0f172a; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.7); z-index: 9999;"></div>
                         </div>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; margin-left: auto;">
-                        <button class="chart-action-btn" onclick="App.refreshPcrAnalytics()" style="padding: 0.4rem 0.85rem; font-size: 0.85rem;"><i class="fas fa-sync-alt"></i> Refresh</button>
-                        <button class="back-btn" onclick="App.switchView('dashboard')" style="padding: 0.4rem 0.85rem; font-size: 0.85rem;"><i class="fas fa-arrow-left"></i> Back</button>
                     </div>
                 </div>
 

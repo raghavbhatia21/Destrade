@@ -1936,12 +1936,54 @@ kbd {
     flex-direction: column;
 }
 
-/* ===== PCR Analytics Mobile Responsiveness ===== */
-.pcr-toolbar-group {
+/* ===== PCR Analytics Responsive Workspace ===== */
+.pcr-analytics-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pcr-header-top-row {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 1rem;
-    flex-wrap: wrap;
+    width: 100%;
+}
+
+.pcr-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.pcr-header-search-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+}
+
+@media (min-width: 640px) {
+    .pcr-analytics-header {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1.25rem;
+    }
+    .pcr-header-top-row {
+        width: auto;
+        justify-content: flex-start;
+        gap: 1.25rem;
+    }
+    .pcr-header-search-row {
+        width: auto;
+    }
+    .pcr-header-actions {
+        margin-left: auto;
+    }
 }
 
 @media (max-width: 768px) {

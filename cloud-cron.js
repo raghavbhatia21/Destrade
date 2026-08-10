@@ -60,7 +60,7 @@ const SLUG_MAP = {
     'COCHINSHIP': { slug: 'cochin-shipyard-ltd', type: 'STOCKS' },
     'COFORGE': { slug: 'niit-technologies-ltd', type: 'STOCKS' },
     'COLPAL': { slug: 'colgatepalmolive-india-ltd', type: 'STOCKS' },
-    'CONCOR': { slug: 'concord-biotech-ltd', type: 'STOCKS' },
+    'CONCOR': { slug: 'container-corporation-of-india-ltd', type: 'STOCKS' },
     'CROMPTON': { slug: 'crompton-greaves-consumer-electricals-ltd', type: 'STOCKS' },
     'CUMMINSIND': { slug: 'cummins-india-ltd', type: 'STOCKS' },
     'DABUR': { slug: 'dabur-india-ltd', type: 'STOCKS' },

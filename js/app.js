@@ -1043,15 +1043,36 @@ const App = {
 
     sanitize5MinPcrList(rawList) {
         if (!Array.isArray(rawList)) return [];
-        const clean = [];
-        for (const item of rawList) {
-            if (!item || typeof item !== 'object' || typeof item.value !== 'number' || isNaN(item.value) || item.value <= 0) continue;
-            const last = clean[clean.length - 1];
-            if (!last || (item.time - last.time) >= 240) {
-                clean.push(item);
-            }
+        const valid = rawList.filter(item => item && typeof item === 'object' && typeof item.value === 'number' && !isNaN(item.value) && item.value > 0);
+        if (valid.length === 0) return [];
+
+        // Sort strictly ascending by epoch timestamp
+        valid.sort((a, b) => (a.time || a.timestamp || 0) - (b.time || b.timestamp || 0));
+
+        const cleanMap = new Map();
+        for (const item of valid) {
+            let timeSec = item.time || (item.timestamp ? Math.floor(item.timestamp / 1000) : 0);
+            if (!timeSec) continue;
+
+            // Bucket into 5-minute intervals (300 sec)
+            const bucketSec = Math.floor(timeSec / 300) * 300;
+
+            const d = new Date((bucketSec + 5.5 * 3600) * 1000);
+            const hours = d.getUTCHours();
+            const mins = d.getUTCMinutes();
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            const h12 = hours % 12 || 12;
+            const cleanTimeStr = `${String(h12).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${ampm}`;
+
+            cleanMap.set(bucketSec, {
+                time: bucketSec,
+                timeStr: item.timeStr || cleanTimeStr,
+                value: parseFloat(item.value.toFixed(3)),
+                spot: item.spot ? parseFloat(parseFloat(item.spot).toFixed(2)) : 0
+            });
         }
-        return clean;
+
+        return Array.from(cleanMap.values()).sort((a, b) => a.time - b.time);
     },
 
     async prefillIntradayPcrHistory(sym) {
@@ -1768,20 +1789,37 @@ const App = {
                 ctx.fillStyle = '#38bdf8';
                 ctx.fillText(val, paddingLeft - 8, y + 4);
 
-                // Right Y-Axis: Spot Price (NiftyTrader Green)
+                // Right Y-Axis: Spot Price (NiftyTrader Red)
                 if (hasSpot) {
                     const spotVal = (spotMin + ratio * (spotMax - spotMin)).toFixed(1);
                     ctx.textAlign = 'left';
-                    ctx.fillStyle = '#34d399';
+                    ctx.fillStyle = '#ef4444';
                     ctx.fillText('₹' + spotVal, width - paddingRight + 8, y + 4);
                     ctx.textAlign = 'right';
                 }
             }
 
-            // 2. Draw Spot Price Curve (NiftyTrader Vibrant Green Curve)
+            // 1.5 X-Axis Bottom Time Labels (09:15, 10:00, 11:00, 12:00, 13:00, 14:00, 15:00, 15:30)
+            if (pts.length > 5) {
+                ctx.font = '600 11px JetBrains Mono, monospace';
+                ctx.fillStyle = 'rgba(148, 163, 184, 0.8)';
+                ctx.textAlign = 'center';
+
+                const stepCount = Math.min(6, pts.length - 1);
+                for (let k = 0; k <= stepCount; k++) {
+                    const pIdx = Math.min(pts.length - 1, Math.round((k / stepCount) * (pts.length - 1)));
+                    const pt = pts[pIdx];
+                    if (pt && pt.timeStr) {
+                        const cleanT = pt.timeStr.replace(':00 AM', ':00').replace(':00 PM', ':00');
+                        ctx.fillText(cleanT, pt.x, height - paddingBottom + 18);
+                    }
+                }
+            }
+
+            // 2. Draw Spot Price Curve (NiftyTrader Vibrant Red Curve)
             if (hasSpot && pts.length > 1) {
                 ctx.beginPath();
-                ctx.strokeStyle = '#34d399';
+                ctx.strokeStyle = '#ef4444';
                 ctx.lineWidth = 2.2;
                 ctx.moveTo(pts[0].x, pts[0].spotY);
                 for (let i = 0; i < pts.length - 1; i++) {
@@ -1831,7 +1869,7 @@ const App = {
             ctx.fillStyle = '#38bdf8';
             ctx.fillText('— PCR Trend', width / 2 - 70, height - 10);
             if (hasSpot) {
-                ctx.fillStyle = '#34d399';
+                ctx.fillStyle = '#ef4444';
                 ctx.fillText('— Spot Price', width / 2 + 70, height - 10);
             }
 
@@ -1862,7 +1900,7 @@ const App = {
                 if (hasSpot) {
                     ctx.beginPath();
                     ctx.arc(hp.x, hp.spotY, 5, 0, Math.PI * 2);
-                    ctx.fillStyle = '#34d399';
+                    ctx.fillStyle = '#ef4444';
                     ctx.fill();
                     ctx.strokeStyle = '#ffffff';
                     ctx.lineWidth = 1.5;

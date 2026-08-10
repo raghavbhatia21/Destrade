@@ -1606,7 +1606,9 @@ const App = {
             'NIFTY': 75, 'BANKNIFTY': 30, 'FINNIFTY': 65, 'MIDCPNIFTY': 120,
             'RELIANCE': 250, 'TCS': 175, 'HDFCBANK': 550, 'INFY': 400,
             'ICICIBANK': 700, 'SBIN': 1500, 'BHARTIARTL': 475, 'ITC': 1600,
-            'LT': 300, 'AXISBANK': 625, 'BAJFINANCE': 125
+            'LT': 300, 'AXISBANK': 625, 'BAJFINANCE': 125, 'SWIGGY': 1700,
+            'POWERINDIA': 75, 'CONCOR': 1250, 'HUDCO': 3500, 'NUVAMA': 150,
+            'PPLPHARMA': 3200, 'TATATECH': 600, 'TORNTPOWER': 750, 'SAMMAANCAP': 4000
         };
 
         const lotSize = LOT_SIZES[cleanSym] || '--';

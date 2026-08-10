@@ -1936,89 +1936,253 @@ kbd {
     flex-direction: column;
 }
 
-/* ===== PCR Analytics Responsive Workspace ===== */
-.pcr-analytics-header {
+/* ===== PCR Analytics Master Responsive Workspace ===== */
+#view-pcr-analytics, #view-pcr-analytics.active {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100%;
+}
+
+.pcr-workspace-toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
-    margin-bottom: 0.75rem;
+    gap: 1rem;
+    margin-bottom: 0.65rem;
     padding-bottom: 0.5rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.pcr-header-top-row {
+.pcr-title-box {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    flex: 1;
+    gap: 0.5rem;
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: #ffffff;
+    white-space: nowrap;
 }
 
-.pcr-header-actions {
+.pcr-title-box i {
+    color: #38bdf8;
+}
+
+.pcr-search-box {
+    position: relative;
+    width: 250px;
     display: flex;
     align-items: center;
-    gap: 0.4rem;
 }
 
-.pcr-header-actions .icon-btn {
-    background: rgba(30, 41, 59, 0.8);
-    color: #94a3b8;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    padding: 0.4rem 0.65rem;
+.pcr-search-box i.fa-search {
+    position: absolute;
+    left: 12px;
+    color: #38bdf8;
     font-size: 0.85rem;
-    cursor: pointer;
-    transition: background 0.2s, color 0.2s;
+    pointer-events: none;
 }
 
-.pcr-header-actions .icon-btn:hover {
+.pcr-search-box input {
+    width: 100%;
+    background: #0f172a;
+    color: #ffffff;
+    border: 1.5px solid #38bdf8;
+    font-weight: 700;
+    border-radius: 8px;
+    padding: 0.4rem 0.75rem 0.4rem 2.2rem;
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    text-transform: uppercase;
+}
+
+.pcr-search-box input:focus {
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+}
+
+#pcr-symbol-suggestions {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    max-height: 260px;
+    overflow-y: auto;
+    background: #0f172a;
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.7);
+    z-index: 9999;
+}
+
+.pcr-action-btns {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+
+.pcr-action-btns button {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #1e293b;
+    color: #f8fafc;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.pcr-action-btns button:hover {
     background: #38bdf8;
     color: #ffffff;
 }
 
-@media (max-width: 768px) {
-    .pcr-metrics-bar {
-        display: flex !important;
-        overflow-x: auto !important;
-        white-space: nowrap !important;
-        gap: 1rem !important;
-        padding: 0.5rem 0.75rem !important;
-        margin-bottom: 0.6rem !important;
-        font-size: 0.78rem !important;
-        border-radius: 8px !important;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    .pcr-metrics-bar::-webkit-scrollbar {
-        display: none;
-    }
-
-    .pcr-metric-divider {
-        display: inline-block !important;
-        opacity: 0.3;
-    }
-
-    .pcr-analytics-mode-row {
-        margin-bottom: 0.6rem !important;
-    }
-
-    .pcr-fullchart-container {
-        height: calc(100vh - 225px) !important;
-        min-height: 320px !important;
-        padding: 0.5rem !important;
-    }
+/* Ribbon Ticker Bar */
+.pcr-metrics-ribbon {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    padding: 0.45rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 0.65rem;
+    font-size: 0.82rem;
+    color: #94a3b8;
+    font-weight: 600;
+    overflow-x: auto;
+    white-space: nowrap;
 }
 
-@media (max-width: 480px) {
-    .pcr-analytics-header {
+.ribbon-item span {
+    font-weight: 700;
+    color: #ffffff;
+    margin-left: 0.25rem;
+}
+
+.ribbon-item .vix-up { color: #34d399; }
+.ribbon-item .pcr-val { color: #38bdf8; font-weight: 800; }
+.ribbon-item .chg-val { color: #a855f7; font-weight: 800; }
+
+.ribbon-divider {
+    width: 1px;
+    height: 14px;
+    background: rgba(255, 255, 255, 0.15);
+    flex-shrink: 0;
+}
+
+/* Mode Bar */
+.pcr-mode-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.65rem;
+    padding: 0 0.2rem;
+}
+
+.pcr-radios {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+}
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+    color: #f8fafc;
+    font-weight: 700;
+    font-size: 0.84rem;
+}
+
+.radio-label input {
+    accent-color: #38bdf8;
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+}
+
+.pcr-clock-notice {
+    color: #64748b;
+    font-size: 0.78rem;
+    font-weight: 500;
+}
+
+.pcr-clock-notice i {
+    color: #38bdf8;
+}
+
+/* Chart Canvas Box */
+.pcr-fullchart-container {
+    flex: 1;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 0.75rem;
+    min-height: 360px;
+    position: relative;
+}
+
+#pcr-analytics-chart-canvas {
+    width: 100%;
+    height: 100%;
+}
+
+/* ===== Mobile Responsiveness (< 640px) ===== */
+@media (max-width: 640px) {
+    .pcr-workspace-toolbar {
+        flex-wrap: wrap;
+        gap: 0.5rem;
         margin-bottom: 0.5rem;
         padding-bottom: 0.4rem;
     }
-    #pcr-search-wrapper {
-        max-width: 170px !important;
+
+    .pcr-title-box {
+        font-size: 1.05rem;
     }
+
+    .pcr-search-box {
+        width: 100%;
+        max-width: 100%;
+        order: 3;
+    }
+
+    .pcr-action-btns {
+        order: 2;
+    }
+
+    .pcr-action-btns button span {
+        display: none;
+    }
+
+    .pcr-action-btns button {
+        padding: 0.35rem 0.6rem;
+    }
+
+    .pcr-metrics-ribbon {
+        padding: 0.35rem 0.65rem;
+        font-size: 0.76rem;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .pcr-mode-bar {
+        margin-bottom: 0.5rem;
+    }
+
+    .pcr-clock-notice {
+        font-size: 0.72rem;
+    }
+
     .pcr-fullchart-container {
-        height: calc(100vh - 235px) !important;
-        min-height: 300px !important;
+        height: calc(100vh - 210px);
+        min-height: 280px;
+        padding: 0.4rem;
     }
 }

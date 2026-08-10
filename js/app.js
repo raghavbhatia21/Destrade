@@ -1879,10 +1879,10 @@ const App = {
         const spotMax = hasSpot ? Math.max(...spots) * 1.002 : 1;
 
         const isMobile = width < 600;
-        const paddingLeft = isMobile ? 38 : 55;
-        const paddingRight = isMobile ? (hasSpot ? 58 : 38) : (hasSpot ? 75 : 55);
-        const paddingTop = isMobile ? 22 : 30;
-        const paddingBottom = isMobile ? 25 : 35;
+        const paddingLeft = isMobile ? 42 : 52;
+        const paddingRight = isMobile ? (hasSpot ? 50 : 42) : (hasSpot ? 68 : 52);
+        const paddingTop = isMobile ? 22 : 28;
+        const paddingBottom = isMobile ? 42 : 42;
         const chartW = width - paddingLeft - paddingRight;
         const chartH = height - paddingTop - paddingBottom;
 
@@ -1903,7 +1903,7 @@ const App = {
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
             ctx.lineWidth = 1;
             ctx.fillStyle = 'rgba(148, 163, 184, 0.8)';
-            ctx.font = '600 11px JetBrains Mono, monospace';
+            ctx.font = isMobile ? '600 10px JetBrains Mono, monospace' : '600 11px JetBrains Mono, monospace';
             ctx.textAlign = 'right';
 
             const gridSteps = 5;
@@ -1919,31 +1919,31 @@ const App = {
 
                 // Left Y-Axis: PCR Value (NiftyTrader Blue)
                 ctx.fillStyle = '#38bdf8';
-                ctx.fillText(val, paddingLeft - 8, y + 4);
+                ctx.fillText(val, paddingLeft - 5, y + 3);
 
                 // Right Y-Axis: Spot Price (NiftyTrader Red)
                 if (hasSpot) {
                     const spotVal = (spotMin + ratio * (spotMax - spotMin)).toFixed(1);
                     ctx.textAlign = 'left';
                     ctx.fillStyle = '#ef4444';
-                    ctx.fillText('₹' + spotVal, width - paddingRight + 8, y + 4);
+                    ctx.fillText('₹' + spotVal, width - paddingRight + 5, y + 3);
                     ctx.textAlign = 'right';
                 }
             }
 
-            // 1.5 X-Axis Bottom Time Labels (09:15, 10:00, 11:00, 12:00, 13:00, 14:00, 15:00, 15:30)
-            if (pts.length > 5) {
-                ctx.font = '600 11px JetBrains Mono, monospace';
-                ctx.fillStyle = 'rgba(148, 163, 184, 0.8)';
+            // 1.5 X-Axis Bottom Time Labels (Clean, widely-spaced 09:15, 11:30, 13:45, 15:30)
+            if (pts.length > 3) {
+                ctx.font = isMobile ? '600 10px JetBrains Mono, monospace' : '600 11px JetBrains Mono, monospace';
+                ctx.fillStyle = 'rgba(148, 163, 184, 0.85)';
                 ctx.textAlign = 'center';
 
-                const stepCount = Math.min(6, pts.length - 1);
-                for (let k = 0; k <= stepCount; k++) {
-                    const pIdx = Math.min(pts.length - 1, Math.round((k / stepCount) * (pts.length - 1)));
+                const maxLabels = isMobile ? 3 : 5;
+                for (let k = 0; k <= maxLabels; k++) {
+                    const pIdx = Math.min(pts.length - 1, Math.round((k / maxLabels) * (pts.length - 1)));
                     const pt = pts[pIdx];
                     if (pt && pt.timeStr) {
-                        const cleanT = pt.timeStr.replace(':00 AM', ':00').replace(':00 PM', ':00');
-                        ctx.fillText(cleanT, pt.x, height - paddingBottom + 18);
+                        const cleanT = pt.timeStr.replace(/\s*(AM|PM)/i, '').trim();
+                        ctx.fillText(cleanT, pt.x, height - paddingBottom + 16);
                     }
                 }
             }
@@ -1996,13 +1996,13 @@ const App = {
             ctx.stroke();
 
             // 5. Bottom Legend
-            ctx.font = 'bold 11px Inter, sans-serif';
+            ctx.font = isMobile ? 'bold 10px Inter, sans-serif' : 'bold 11px Inter, sans-serif';
             ctx.textAlign = 'center';
             ctx.fillStyle = '#38bdf8';
-            ctx.fillText('— PCR Trend', width / 2 - 70, height - 10);
+            ctx.fillText('— PCR Trend', width / 2 - (isMobile ? 45 : 65), height - 8);
             if (hasSpot) {
                 ctx.fillStyle = '#ef4444';
-                ctx.fillText('— Spot Price', width / 2 + 70, height - 10);
+                ctx.fillText('— Spot Price', width / 2 + (isMobile ? 45 : 65), height - 8);
             }
 
             // 6. Interactive Crosshair & Floating Tooltip

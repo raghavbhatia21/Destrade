@@ -1628,7 +1628,7 @@ const App = {
             'RELIANCE': 250, 'TCS': 175, 'HDFCBANK': 550, 'INFY': 400,
             'ICICIBANK': 700, 'SBIN': 1500, 'BHARTIARTL': 475, 'ITC': 1600,
             'LT': 300, 'AXISBANK': 625, 'BAJFINANCE': 125, 'SWIGGY': 1700,
-            'POWERINDIA': 75, 'CONCOR': 1250, 'HUDCO': 3500, 'NUVAMA': 150,
+            'POWERINDIA': 25, 'CONCOR': 1250, 'HUDCO': 3500, 'NUVAMA': 150,
             'PPLPHARMA': 3200, 'TATATECH': 600, 'TORNTPOWER': 750, 'SAMMAANCAP': 4000
         };
 

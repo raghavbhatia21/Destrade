@@ -13,7 +13,7 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/styles.css?v=137">
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📊</text></svg>">
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
@@ -176,87 +176,67 @@
                 </div>
             </div>
 
-            <!-- ========== VIEW: PCR ANALYTICS (Full-Screen Dedicated PCR Workspace) ========== -->
+            <!-- ========== VIEW: PCR ANALYTICS (NiftyTrader Full-Screen Workspace) ========== -->
             <div class="view-container" id="view-pcr-analytics">
-                <div class="view-header pcr-analytics-header">
-                    <div class="pcr-title-area">
-                        <div class="view-title"><i class="fas fa-chart-line"></i> PCR Analytics & OI Trend</div>
-                        <div class="pcr-symbol-select-wrap">
-                            <select id="pcr-symbol-select" class="pcr-symbol-select" onchange="App.changePcrSymbol(this.value)">
-                                <option value="NIFTY">NIFTY 50</option>
-                                <option value="BANKNIFTY">BANKNIFTY</option>
-                                <option value="FINNIFTY">FINNIFTY</option>
-                                <option value="MIDCPNIFTY">MIDCPNIFTY</option>
-                                <option value="RELIANCE">RELIANCE</option>
-                                <option value="TCS">TCS</option>
-                                <option value="HDFCBANK">HDFCBANK</option>
-                                <option value="INFY">INFY</option>
-                                <option value="ICICIBANK">ICICIBANK</option>
-                                <option value="SBIN">SBIN</option>
-                                <option value="BHARTIARTL">BHARTIARTL</option>
-                                <option value="ITC">ITC</option>
-                                <option value="LT">L&T</option>
-                                <option value="AXISBANK">AXISBANK</option>
-                                <option value="BAJFINANCE">BAJFINANCE</option>
-                            </select>
-                        </div>
+                <!-- Top Toolbar: Symbol Select & Back -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem; padding: 0.5rem 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <div class="view-title" style="font-size: 1.25rem; font-weight: 800; color: #ffffff;"><i class="fas fa-chart-line" style="color: #38bdf8;"></i> PCR Analytics</div>
+                        <select id="pcr-symbol-select" onchange="App.changePcrSymbol(this.value)" style="background: #1e293b; color: #ffffff; border: 1px solid #38bdf8; border-radius: 8px; padding: 0.4rem 1rem; font-size: 0.95rem; font-weight: 700; cursor: pointer; outline: none;">
+                            <option value="NIFTY">NIFTY 50</option>
+                            <option value="BANKNIFTY">BANKNIFTY</option>
+                            <option value="FINNIFTY">FINNIFTY</option>
+                            <option value="MIDCPNIFTY">MIDCPNIFTY</option>
+                            <option value="RELIANCE">RELIANCE</option>
+                            <option value="TCS">TCS</option>
+                            <option value="HDFCBANK">HDFCBANK</option>
+                            <option value="INFY">INFY</option>
+                            <option value="ICICIBANK">ICICIBANK</option>
+                            <option value="SBIN">SBIN</option>
+                            <option value="BHARTIARTL">BHARTIARTL</option>
+                            <option value="ITC">ITC</option>
+                            <option value="LT">L&T</option>
+                            <option value="AXISBANK">AXISBANK</option>
+                            <option value="BAJFINANCE">BAJFINANCE</option>
+                        </select>
                     </div>
-                    <div class="pcr-header-actions">
-                        <button class="chart-action-btn" onclick="App.refreshPcrAnalytics()"><i class="fas fa-sync-alt"></i> Refresh</button>
-                        <button class="back-btn" onclick="App.switchView('dashboard')"><i class="fas fa-arrow-left"></i> Back</button>
-                    </div>
-                </div>
-
-                <!-- NiftyTrader-style Key Market Metrics Bar -->
-                <div class="pcr-metrics-bar glass">
-                    <div class="pcr-metric-item">
-                        <span class="pcr-metric-label">India VIX</span>
-                        <span class="pcr-metric-val" id="pcr-m-vix">12.25 <small style="color:var(--success)">(+0.09)</small></span>
-                    </div>
-                    <div class="pcr-metric-divider"></div>
-                    <div class="pcr-metric-item">
-                        <span class="pcr-metric-label">Max Pain</span>
-                        <span class="pcr-metric-val" id="pcr-m-maxpain">--</span>
-                    </div>
-                    <div class="pcr-metric-divider"></div>
-                    <div class="pcr-metric-item">
-                        <span class="pcr-metric-label">Lot Size</span>
-                        <span class="pcr-metric-val" id="pcr-m-lotsize">--</span>
-                    </div>
-                    <div class="pcr-metric-divider"></div>
-                    <div class="pcr-metric-item highlight">
-                        <span class="pcr-metric-label">PCR</span>
-                        <span class="pcr-metric-val" id="pcr-m-pcr" style="color: var(--primary);">--</span>
-                    </div>
-                    <div class="pcr-metric-divider"></div>
-                    <div class="pcr-metric-item">
-                        <span class="pcr-metric-label">CHG IN OI PCR</span>
-                        <span class="pcr-metric-val" id="pcr-m-chgpcr" style="color: var(--accent);">--</span>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="chart-action-btn" onclick="App.refreshPcrAnalytics()" style="padding: 0.4rem 0.85rem; font-size: 0.85rem;"><i class="fas fa-sync-alt"></i> Refresh</button>
+                        <button class="back-btn" onclick="App.switchView('dashboard')" style="padding: 0.4rem 0.85rem; font-size: 0.85rem;"><i class="fas fa-arrow-left"></i> Back</button>
                     </div>
                 </div>
 
-                <!-- Radio Option Toggles & View Controls -->
-                <div class="pcr-controls-row">
-                    <div class="pcr-radio-group glass">
-                        <label class="pcr-radio-label active" id="lbl-pcr-mode-pcr">
-                            <input type="radio" name="pcr-mode" value="pcr" checked onchange="App.setPcrChartMode('pcr')">
-                            <span class="radio-custom"></span> PCR Trend
-                        </label>
-                        <label class="pcr-radio-label" id="lbl-pcr-mode-chg">
-                            <input type="radio" name="pcr-mode" value="chg_pcr" onchange="App.setPcrChartMode('chg_pcr')">
-                            <span class="radio-custom"></span> CHNG IN OI PCR
-                        </label>
-                    </div>
-                    <div class="pcr-timeframe-info">
-                        <i class="fas fa-history"></i> <span id="pcr-session-info">Live 5-Min Intraday Snapshots</span>
+                <!-- NiftyTrader Inline Ribbon Bar -->
+                <div style="display: flex; align-items: center; gap: 1.5rem; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.25); padding: 0.75rem 1.25rem; border-radius: 10px; margin-bottom: 1rem; flex-wrap: wrap; font-size: 0.88rem;">
+                    <div style="color: #94a3b8; font-weight: 600;">India Vix <span id="pcr-m-vix" style="color: #34d399; font-weight: 700; margin-left: 0.25rem;">12.25 (+0.09)</span></div>
+                    <div style="width: 1px; height: 16px; background: rgba(255, 255, 255, 0.15);"></div>
+                    <div style="color: #94a3b8; font-weight: 600;">Max Pain: <span id="pcr-m-maxpain" style="color: #ffffff; font-weight: 700;">--</span></div>
+                    <div style="width: 1px; height: 16px; background: rgba(255, 255, 255, 0.15);"></div>
+                    <div style="color: #94a3b8; font-weight: 600;">Lot Size: <span id="pcr-m-lotsize" style="color: #ffffff; font-weight: 700;">--</span></div>
+                    <div style="width: 1px; height: 16px; background: rgba(255, 255, 255, 0.15);"></div>
+                    <div style="color: #94a3b8; font-weight: 600;">PCR: <span id="pcr-m-pcr" style="color: #38bdf8; font-weight: 800; font-size: 0.95rem;">--</span></div>
+                    <div style="width: 1px; height: 16px; background: rgba(255, 255, 255, 0.15);"></div>
+                    <div style="color: #94a3b8; font-weight: 600;">CHG IN OI PCR: <span id="pcr-m-chgpcr" style="color: #a855f7; font-weight: 800; font-size: 0.95rem;">--</span></div>
+                </div>
+
+                <!-- NiftyTrader Radio Selectors Row -->
+                <div style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.25rem; padding: 0 0.25rem;">
+                    <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; color: #ffffff; font-weight: 700; font-size: 0.88rem;">
+                        <input type="radio" name="pcr-mode-radio" value="pcr" checked onchange="App.setPcrChartMode('pcr')" style="accent-color: #38bdf8; width: 16px; height: 16px; cursor: pointer;">
+                        PCR
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; color: #94a3b8; font-weight: 700; font-size: 0.88rem;">
+                        <input type="radio" name="pcr-mode-radio" value="chg_pcr" onchange="App.setPcrChartMode('chg_pcr')" style="accent-color: #38bdf8; width: 16px; height: 16px; cursor: pointer;">
+                        CHNG OI PCR
+                    </label>
+                    <div style="margin-left: auto; color: #64748b; font-size: 0.8rem; font-weight: 500;">
+                        <i class="fas fa-clock" style="color: #38bdf8;"></i> Live 5-Min Intraday Snapshots (09:15 - 15:30 IST)
                     </div>
                 </div>
 
-                <!-- Main Full-Screen Chart Canvas Container -->
-                <div class="pcr-fullchart-container glass">
-                    <div id="pcr-analytics-canvas-wrap" style="width:100%; height:calc(100vh - 280px); min-height:480px; position:relative;">
-                        <div id="pcr-analytics-chart-canvas" style="width:100%; height:100%;"></div>
-                    </div>
+                <!-- Main Full-Screen Dual-Axis Chart Canvas Container -->
+                <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 1.25rem; height: calc(100vh - 270px); min-height: 480px; position: relative;">
+                    <div id="pcr-analytics-chart-canvas" style="width: 100%; height: 100%;"></div>
                 </div>
             </div>
 
@@ -335,11 +315,11 @@
     </div>
 
     <!-- Firebase Config & App Initiation -->
-    <script src="js/lib/firebase-app.js?v=136"></script>
-    <script src="js/lib/firebase-database.js?v=136"></script>
-    <script src="js/firebase-config.js?v=136"></script>
-    <script src="js/nse-api.js?v=136"></script>
-    <script src="js/app.js?v=136"></script>
+    <script src="js/lib/firebase-app.js?v=137"></script>
+    <script src="js/lib/firebase-database.js?v=137"></script>
+    <script src="js/firebase-config.js?v=137"></script>
+    <script src="js/nse-api.js?v=137"></script>
+    <script src="js/app.js?v=137"></script>
 </body>
 
 </html>

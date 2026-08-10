@@ -1452,9 +1452,13 @@ const App = {
 
     setPcrChartMode(mode) {
         this.statePcrMode = mode || 'pcr';
-        document.querySelectorAll('.pcr-radio-label').forEach(lbl => lbl.classList.remove('active'));
-        const activeLbl = document.getElementById(mode === 'chg_pcr' ? 'lbl-pcr-mode-chg' : 'lbl-pcr-mode-pcr');
-        if (activeLbl) activeLbl.classList.add('active');
+        const radios = document.querySelectorAll('input[name="pcr-mode-radio"]');
+        radios.forEach(r => {
+            r.checked = (r.value === this.statePcrMode);
+            if (r.parentElement) {
+                r.parentElement.style.color = r.checked ? '#ffffff' : '#94a3b8';
+            }
+        });
         const sym = this.state.pcrAnalyticsSymbol || this.state.activeSymbol || 'NIFTY';
         this.renderPcrAnalyticsChartCanvas(sym);
     },

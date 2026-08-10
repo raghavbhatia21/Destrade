@@ -1514,21 +1514,84 @@ const App = {
         this.renderPcrAnalyticsView(sym);
     },
 
+    populatePcrSymbolDropdown() {
+        const select = document.getElementById('pcr-symbol-select');
+        if (!select) return;
+
+        let allSymbols = [];
+        if (window.nseApi && window.nseApi._growwMap) {
+            allSymbols = Object.keys(window.nseApi._growwMap);
+        } else {
+            allSymbols = [
+                'NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY',
+                '360ONE', 'ABB', 'ABCAPITAL', 'ADANIENSOL', 'ADANIENT', 'ADANIGREEN', 'ADANIPORTS', 'ADANIPOWER',
+                'ALKEM', 'AMBER', 'AMBUJACEM', 'ANGELONE', 'APLAPOLLO', 'APOLLOHOSP', 'ASHOKLEY', 'ASIANPAINT',
+                'ASTRAL', 'AUBANK', 'AUROPHARMA', 'AXISBANK', 'BAJAJ-AUTO', 'BAJAJFINSV', 'BAJAJHLDNG', 'BAJFINANCE',
+                'BANDHANBNK', 'BANKBARODA', 'BANKINDIA', 'BDL', 'BEL', 'BHARATFORG', 'BHARTIARTL', 'BHEL',
+                'BIOCON', 'BLUESTARCO', 'BOSCHLTD', 'BPCL', 'BRITANNIA', 'BSE', 'CAMS', 'CANBK',
+                'CDSL', 'CGPOWER', 'CHOLAFIN', 'CIPLA', 'COALINDIA', 'COCHINSHIP', 'COFORGE', 'COLPAL',
+                'CONCOR', 'CROMPTON', 'CUMMINSIND', 'DABUR', 'DALBHARAT', 'DELHIVERY', 'DIVISLAB', 'DIXON',
+                'DLF', 'DMART', 'DRREDDY', 'EICHERMOT', 'ETERNAL', 'EXIDEIND', 'FEDERALBNK', 'FORCEMOT',
+                'GAIL', 'GLENMARK', 'GODREJCP', 'GODREJPROP', 'GRANULES', 'GRASIM', 'GUJGASLTD', 'HAL',
+                'HAVELLS', 'HCLTECH', 'HDFCAMC', 'HDFCBANK', 'HDFCLIFE', 'HEROMOTOCO', 'HINDALCO', 'HINDPETRO',
+                'HINDUNILVR', 'HINDZINC', 'HUDCO', 'ICICIBANK', 'ICICIGI', 'ICICIPRULI', 'IDEA', 'IDFCFIRSTB',
+                'IEX', 'IGL', 'INDHOTEL', 'INDIAMART', 'INDIANB', 'INDIGO', 'INDUSINDBK', 'INDUSTOWER',
+                'INFY', 'INOXWIND', 'IOC', 'IPCALAB', 'IRCTC', 'IREDA', 'IRFC', 'ITC',
+                'JINDALSTEL', 'JIOFIN', 'JSWENERGY', 'JSWSTEEL', 'JUBLFOOD', 'KALYANKJIL', 'KAYNES', 'KEI',
+                'KFINTECH', 'KOTAKBANK', 'KPITTECH', 'LAURUSLABS', 'LICHSGFIN', 'LODHA', 'LT', 'LTF',
+                'LTIM', 'LUPIN', 'M&M', 'M&MFIN', 'MANAPPURAM', 'MANKIND', 'MARICO', 'MARUTI',
+                'MAXHEALTH', 'MAZDOCK', 'MCX', 'MFSL', 'MGL', 'MOTILALOFS', 'MPHASIS', 'MRF',
+                'MUTHOOTFIN', 'NAM-INDIA', 'NAUKRI', 'NAVINFLUOR', 'NESTLEIND', 'NHPC', 'NMDC', 'NTPC',
+                'NUVAMA', 'OBEROIRLTY', 'OFSS', 'OIL', 'ONGC', 'PAGEIND', 'PATANJALI', 'PERSISTENT',
+                'PETRONET', 'PFC', 'PHOENIXLTD', 'PIDILITIND', 'PIIND', 'PNB', 'PNBHOUSING', 'POLYCAB',
+                'POWERGRID', 'POWERINDIA', 'PPLPHARMA', 'PREMIERENE', 'PRESTIGE', 'RBLBANK', 'RECLTD', 'RELIANCE',
+                'RVNL', 'SAIL', 'SAMMAANCAP', 'SBICARD', 'SBILIFE', 'SBIN', 'SHREECEM', 'SHRIRAMFIN',
+                'SIEMENS', 'SONACOMS', 'SRF', 'SUNPHARMA', 'SUPREMEIND', 'SWIGGY', 'SYNGENE', 'TATACONSUM',
+                'TATAELXSI', 'TATAMOTORS', 'TATAPOWER', 'TATASTEEL', 'TATATECH', 'TCS', 'TECHM', 'TIINDIA',
+                'TITAN', 'TMPV', 'TORNTPHARM', 'TORNTPOWER', 'TRENT', 'TVSMOTOR', 'ULTRACEMCO', 'UNIONBANK',
+                'UNITDSPR', 'UNOMINDA', 'UPL', 'VBL', 'VEDL', 'VOLTAS', 'WAAREEENER', 'WIPRO',
+                'YESBANK', 'ZYDUSLIFE'
+            ];
+        }
+
+        if (select.options.length > 50) return;
+
+        select.innerHTML = '';
+
+        const indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
+        const stocks = allSymbols.filter(s => !indices.includes(s)).sort();
+
+        const grpIndices = document.createElement('optgroup');
+        grpIndices.label = '📈 INDICES';
+        indices.forEach(sym => {
+            const opt = document.createElement('option');
+            opt.value = sym;
+            opt.textContent = sym === 'NIFTY' ? 'NIFTY 50' : sym;
+            grpIndices.appendChild(opt);
+        });
+        select.appendChild(grpIndices);
+
+        const grpStocks = document.createElement('optgroup');
+        grpStocks.label = '🏢 ALL F&O STOCKS (' + stocks.length + ')';
+        stocks.forEach(sym => {
+            const opt = document.createElement('option');
+            opt.value = sym;
+            opt.textContent = sym;
+            grpStocks.appendChild(opt);
+        });
+        select.appendChild(grpStocks);
+    },
+
     async renderPcrAnalyticsView(symbolInput) {
         const rawSym = symbolInput || this.state.pcrAnalyticsSymbol || this.state.activeSymbol || 'NIFTY';
         const cleanSym = rawSym.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
         this.state.pcrAnalyticsSymbol = cleanSym;
 
-        // Ensure symbol is selected in select dropdown
+        // Populate all 218 F&O symbols into dropdown
+        this.populatePcrSymbolDropdown();
+
         const select = document.getElementById('pcr-symbol-select');
         if (select) {
-            let exists = Array.from(select.options).some(opt => opt.value === cleanSym);
-            if (!exists) {
-                const newOpt = document.createElement('option');
-                newOpt.value = cleanSym;
-                newOpt.textContent = cleanSym;
-                select.appendChild(newOpt);
-            }
             select.value = cleanSym;
         }
 

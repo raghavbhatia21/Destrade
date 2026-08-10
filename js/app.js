@@ -939,12 +939,23 @@ const App = {
         return new Date();
     },
 
-    getISTDateStr() {
-        return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    getISTDate() {
+        const d = new Date();
+        const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+        return new Date(utc + (5.5 * 60 * 60 * 1000));
     },
 
-    getISTTimeString() {
-        return new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+    getISTDateStr(dateObj) {
+        const d = dateObj || this.getISTDate();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    },
+
+    getISTTimeString(dateObj) {
+        const d = dateObj || this.getISTDate();
+        return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
     },
 
     isWeekend(istDate = this.getISTDate()) {
@@ -952,12 +963,34 @@ const App = {
         return day === 0 || day === 6; // 0 = Sunday, 6 = Saturday
     },
 
-    getLastTradingDateStr() {
-        const d = new Date();
-        const day = d.getDay();
-        if (day === 0) d.setDate(d.getDate() - 2); // Sunday -> Friday
-        else if (day === 6) d.setDate(d.getDate() - 1); // Saturday -> Friday
-        return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    getLastTradingDateStr(fromDateObj) {
+        const d = fromDateObj ? new Date(fromDateObj.getTime()) : this.getISTDate();
+        d.setDate(d.getDate() - 1);
+        while (d.getDay() === 0 || d.getDay() === 6) { // Skip Saturday and Sunday
+            d.setDate(d.getDate() - 1);
+        }
+        return this.getISTDateStr(d);
+    },
+
+    getTargetTradingDateStr() {
+        const ist = this.getISTDate();
+        const day = ist.getDay();
+        const hour = ist.getHours();
+        const min = ist.getMinutes();
+        const totalMin = (hour * 60) + min;
+
+        // Weekend (Saturday or Sunday) -> Use last Friday
+        if (day === 0 || day === 6) {
+            return this.getLastTradingDateStr(ist);
+        }
+
+        // Before 09:15 AM IST on a weekday -> Use previous trading day
+        if (totalMin < (9 * 60 + 15)) {
+            return this.getLastTradingDateStr(ist);
+        }
+
+        // During/After 09:15 AM IST on a weekday -> Use today
+        return this.getISTDateStr(ist);
     },
 
     initFirebaseTimeEngine(sym) {
@@ -966,7 +999,7 @@ const App = {
 
             // Real-time Multi-Device PCR Stream Listener
             const cleanSym = (sym || this.state.activeSymbol || 'NIFTY').replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
-            const dateStr = this.isWeekend() ? this.getLastTradingDateStr() : this.getISTDateStr();
+            const dateStr = this.getTargetTradingDateStr();
             const streamPath = `pcr_history/${cleanSym}/${dateStr}`;
 
             if (this._fbActiveStreamPath === streamPath) return;
@@ -995,7 +1028,9 @@ const App = {
                         const sortedList = Array.from(mergedMap.values()).sort((a, b) => a.time - b.time);
                         this.state.pcrHistory[cleanSym] = sortedList;
 
-                        if ((this.state.activeView === 'oi-clock' || this.state.activeView === 'option-chain' || this.state.activeView === 'symbol-overview') && (this.state.activeSymbol || 'NIFTY').toUpperCase().includes(cleanSym)) {
+                        if (this.state.activeView === 'pcr-analytics') {
+                            this.renderPcrAnalyticsChartCanvas(cleanSym);
+                        } else if ((this.state.activeView === 'oi-clock' || this.state.activeView === 'option-chain' || this.state.activeView === 'symbol-overview') && (this.state.activeSymbol || 'NIFTY').toUpperCase().includes(cleanSym)) {
                             this.renderPcrChartCanvas(cleanSym);
                         }
                     }
@@ -1025,69 +1060,74 @@ const App = {
             this.state.pcrHistory = {};
         }
 
-        const targetDateStr = this.isWeekend() ? this.getLastTradingDateStr() : this.getISTDateStr();
+        let targetDateStr = this.getTargetTradingDateStr();
 
         // Initialize Firebase Time Engine & Live Multi-Device Sync
         this.initFirebaseTimeEngine(cleanSym);
 
-        const cacheKey = 'destrade_pcr_hist_' + targetDateStr;
+        let loadedList = [];
 
-        // 1. Try loading from local persistent cache
-        if (!this.state.pcrHistory[cleanSym] || this.state.pcrHistory[cleanSym].length < 1) {
-            try {
-                const saved = localStorage.getItem(cacheKey);
-                if (saved) {
-                    const parsed = JSON.parse(saved);
-                    if (parsed[cleanSym]) {
-                        const cleanList = this.sanitize5MinPcrList(parsed[cleanSym]);
-                        if (cleanList.length >= 1) {
-                            this.state.pcrHistory[cleanSym] = cleanList;
-                            this.renderPcrChartCanvas(cleanSym);
-                            return;
-                        }
-                    }
-                }
-            } catch(e) {}
-        }
-
-        // 2. Try loading target trading day's history from Firebase Realtime DB
+        // 1. Try loading target date from Firebase Realtime DB
         if (window.firebase && window.firebase.apps && window.firebase.apps.length > 0 && window.firebase.database) {
             try {
                 const snapshot = await window.firebase.database().ref(`pcr_history/${cleanSym}/${targetDateStr}`).once('value');
                 if (snapshot.exists()) {
                     const val = snapshot.val();
-                    const list = this.sanitize5MinPcrList(Array.isArray(val) ? val : Object.values(val));
-                    if (list && list.length > 0) {
-                        this.state.pcrHistory[cleanSym] = list;
-                        this.renderPcrChartCanvas(cleanSym);
-                        return;
+                    loadedList = this.sanitize5MinPcrList(Array.isArray(val) ? val : Object.values(val));
+                }
+            } catch(e) {}
+        }
+
+        // 2. If target date has < 5 snapshots (e.g. pre-market or early trading session), fall back to previous trading day
+        if (loadedList.length < 5) {
+            const prevDateStr = this.getLastTradingDateStr();
+            if (prevDateStr !== targetDateStr && window.firebase && window.firebase.database) {
+                try {
+                    const snapshotPrev = await window.firebase.database().ref(`pcr_history/${cleanSym}/${prevDateStr}`).once('value');
+                    if (snapshotPrev.exists()) {
+                        const valPrev = snapshotPrev.val();
+                        const listPrev = this.sanitize5MinPcrList(Array.isArray(valPrev) ? valPrev : Object.values(valPrev));
+                        if (listPrev.length > loadedList.length) {
+                            loadedList = listPrev;
+                        }
+                    }
+                } catch(e) {}
+            }
+        }
+
+        // 3. Fallback to local storage if needed
+        if (loadedList.length < 1) {
+            try {
+                const cacheKey = 'destrade_pcr_hist_' + targetDateStr;
+                const saved = localStorage.getItem(cacheKey);
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    if (parsed[cleanSym]) {
+                        loadedList = this.sanitize5MinPcrList(parsed[cleanSym]);
                     }
                 }
             } catch(e) {}
         }
 
-        // 3. On Trading Days: Render placeholder status if no live ticks have accumulated yet
-        const container = document.getElementById('pcr-chart-canvas');
-        if (container) {
-            container.innerHTML = `
-                <div style="padding: 2.5rem 1rem; text-align:center; color:var(--text-bright); background:rgba(15, 23, 42, 0.4); border-radius:10px; border:1px dashed rgba(99, 102, 241, 0.3)">
-                    <div style="font-size: 1.1rem; color:var(--primary); margin-bottom:0.5rem; font-weight:700">
-                        <i class="fas fa-satellite-dish fa-spin"></i> Live Market Streaming Active
-                    </div>
-                    <div style="font-size: 0.85rem; color:var(--text-muted)">Accumulating live PCR ticks for ${cleanSym}...</div>
-                    <div style="font-size: 0.8rem; color:var(--text-bright); margin-top:0.75rem;">
-                        Real-time PCR ticks update automatically every 5 minutes during trading hours.
-                    </div>
-                </div>
-            `;
+        if (loadedList.length >= 1) {
+            this.state.pcrHistory[cleanSym] = loadedList;
+            if (this.state.activeView === 'pcr-analytics') {
+                this.renderPcrAnalyticsChartCanvas(cleanSym);
+            } else {
+                this.renderPcrChartCanvas(cleanSym);
+            }
         }
     },
 
     recordPcr(symbol, pcrVal, underlying = 0) {
         if (!symbol || isNaN(pcrVal) || pcrVal <= 0) return;
 
-        // Do not record live ticks on weekends
-        if (this.isWeekend()) return;
+        const ist = this.getISTDate();
+        const day = ist.getDay();
+        if (day === 0 || day === 6) return; // Skip weekends
+
+        const totalMin = (ist.getHours() * 60) + ist.getMinutes();
+        if (totalMin < (9 * 60 + 10) || totalMin > (15 * 60 + 40)) return; // Only record during market hours (09:10 - 15:40)
 
         const sym = symbol.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
 
@@ -1116,7 +1156,7 @@ const App = {
                 localStorage.setItem(todayKey, JSON.stringify(this.state.pcrHistory));
             } catch(e) {}
 
-            // MERGE with existing Firebase data — never blindly overwrite server-synced history
+            // MERGE with existing Firebase data
             if (window.firebase && window.firebase.database && (!this._lastFbPush || Date.now() - this._lastFbPush > 5000)) {
                 this._lastFbPush = Date.now();
                 const fbRef = window.firebase.database().ref(`pcr_history/${sym}/${dateStr}`);
@@ -1126,7 +1166,6 @@ const App = {
                         const val = snapshot.val();
                         serverList = Array.isArray(val) ? val : Object.values(val);
                     }
-                    // Merge server + local, deduplicate by timestamp
                     const mergedMap = new Map();
                     [...serverList, ...list].forEach(item => {
                         if (item && item.time) mergedMap.set(item.time, item);
@@ -1135,14 +1174,15 @@ const App = {
                         .filter(x => x && typeof x.value === 'number' && x.value > 0)
                         .sort((a, b) => a.time - b.time)
                         .slice(-150);
-                    // Update local state with merged data
                     this.state.pcrHistory[sym] = merged;
                     fbRef.set(merged).catch(() => {});
                 }).catch(() => {});
             }
         }
 
-        if ((this.state.activeView === 'oi-clock' || this.state.activeView === 'symbol-overview') && (this.state.activeSymbol || 'NIFTY').toUpperCase().includes(sym)) {
+        if (this.state.activeView === 'pcr-analytics') {
+            this.renderPcrAnalyticsChartCanvas(sym);
+        } else if ((this.state.activeView === 'oi-clock' || this.state.activeView === 'symbol-overview') && (this.state.activeSymbol || 'NIFTY').toUpperCase().includes(sym)) {
             this.renderPcrChartCanvas(sym);
         }
     },

@@ -178,9 +178,9 @@
 
             <!-- ========== VIEW: PCR ANALYTICS (NiftyTrader Full-Screen Workspace) ========== -->
             <div class="view-container" id="view-pcr-analytics">
-                <!-- Top Toolbar: Symbol Select & Back -->
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem; padding: 0.5rem 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
-                    <div style="display: flex; align-items: center; gap: 1rem;">
+                <!-- Top Toolbar: Symbol Search & Actions -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+                    <div class="pcr-toolbar-group">
                         <div class="view-title" style="font-size: 1.25rem; font-weight: 800; color: #ffffff;"><i class="fas fa-chart-line" style="color: #38bdf8;"></i> PCR Analytics</div>
                         <div style="position: relative; width: 230px;" id="pcr-search-wrapper">
                             <div style="position: relative; display: flex; align-items: center;">
@@ -196,42 +196,44 @@
                             <div id="pcr-symbol-suggestions" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 280px; overflow-y: auto; background: #0f172a; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.7); z-index: 9999;"></div>
                         </div>
                     </div>
-                    <div style="display: flex; gap: 0.5rem;">
+                    <div style="display: flex; gap: 0.5rem; margin-left: auto;">
                         <button class="chart-action-btn" onclick="App.refreshPcrAnalytics()" style="padding: 0.4rem 0.85rem; font-size: 0.85rem;"><i class="fas fa-sync-alt"></i> Refresh</button>
                         <button class="back-btn" onclick="App.switchView('dashboard')" style="padding: 0.4rem 0.85rem; font-size: 0.85rem;"><i class="fas fa-arrow-left"></i> Back</button>
                     </div>
                 </div>
 
-                <!-- NiftyTrader Inline Ribbon Bar -->
-                <div style="display: flex; align-items: center; gap: 1.5rem; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.25); padding: 0.75rem 1.25rem; border-radius: 10px; margin-bottom: 1rem; flex-wrap: wrap; font-size: 0.88rem;">
+                <!-- Responsive Inline Ribbon Bar -->
+                <div class="pcr-metrics-bar" style="display: flex; align-items: center; gap: 1.25rem; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.25); padding: 0.75rem 1.25rem; border-radius: 10px; margin-bottom: 1rem; flex-wrap: wrap; font-size: 0.88rem;">
                     <div style="color: #94a3b8; font-weight: 600;">India Vix <span id="pcr-m-vix" style="color: #34d399; font-weight: 700; margin-left: 0.25rem;">12.25 (+0.09)</span></div>
-                    <div style="width: 1px; height: 16px; background: rgba(255, 255, 255, 0.15);"></div>
+                    <div class="pcr-metric-divider" style="width: 1px; height: 16px; background: rgba(255, 255, 255, 0.15);"></div>
                     <div style="color: #94a3b8; font-weight: 600;">Max Pain: <span id="pcr-m-maxpain" style="color: #ffffff; font-weight: 700;">--</span></div>
-                    <div style="width: 1px; height: 16px; background: rgba(255, 255, 255, 0.15);"></div>
+                    <div class="pcr-metric-divider" style="width: 1px; height: 16px; background: rgba(255, 255, 255, 0.15);"></div>
                     <div style="color: #94a3b8; font-weight: 600;">Lot Size: <span id="pcr-m-lotsize" style="color: #ffffff; font-weight: 700;">--</span></div>
-                    <div style="width: 1px; height: 16px; background: rgba(255, 255, 255, 0.15);"></div>
+                    <div class="pcr-metric-divider" style="width: 1px; height: 16px; background: rgba(255, 255, 255, 0.15);"></div>
                     <div style="color: #94a3b8; font-weight: 600;">PCR: <span id="pcr-m-pcr" style="color: #38bdf8; font-weight: 800; font-size: 0.95rem;">--</span></div>
-                    <div style="width: 1px; height: 16px; background: rgba(255, 255, 255, 0.15);"></div>
+                    <div class="pcr-metric-divider" style="width: 1px; height: 16px; background: rgba(255, 255, 255, 0.15);"></div>
                     <div style="color: #94a3b8; font-weight: 600;">CHG IN OI PCR: <span id="pcr-m-chgpcr" style="color: #a855f7; font-weight: 800; font-size: 0.95rem;">--</span></div>
                 </div>
 
-                <!-- NiftyTrader Radio Selectors Row -->
-                <div style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.25rem; padding: 0 0.25rem;">
-                    <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; color: #ffffff; font-weight: 700; font-size: 0.88rem;">
-                        <input type="radio" name="pcr-mode-radio" value="pcr" checked onchange="App.setPcrChartMode('pcr')" style="accent-color: #38bdf8; width: 16px; height: 16px; cursor: pointer;">
-                        PCR
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; color: #94a3b8; font-weight: 700; font-size: 0.88rem;">
-                        <input type="radio" name="pcr-mode-radio" value="chg_pcr" onchange="App.setPcrChartMode('chg_pcr')" style="accent-color: #38bdf8; width: 16px; height: 16px; cursor: pointer;">
-                        CHNG OI PCR
-                    </label>
-                    <div style="margin-left: auto; color: #64748b; font-size: 0.8rem; font-weight: 500;">
+                <!-- Responsive Mode Selectors Row -->
+                <div class="pcr-analytics-mode-row" style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.25rem; padding: 0 0.25rem;">
+                    <div style="display: flex; align-items: center; gap: 1.25rem;">
+                        <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; color: #ffffff; font-weight: 700; font-size: 0.88rem;">
+                            <input type="radio" name="pcr-mode-radio" value="pcr" checked onchange="App.setPcrChartMode('pcr')" style="accent-color: #38bdf8; width: 16px; height: 16px; cursor: pointer;">
+                            PCR
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; color: #94a3b8; font-weight: 700; font-size: 0.88rem;">
+                            <input type="radio" name="pcr-mode-radio" value="chg_pcr" onchange="App.setPcrChartMode('chg_pcr')" style="accent-color: #38bdf8; width: 16px; height: 16px; cursor: pointer;">
+                            CHNG OI PCR
+                        </label>
+                    </div>
+                    <div class="pcr-notice-text" style="margin-left: auto; color: #64748b; font-size: 0.8rem; font-weight: 500;">
                         <i class="fas fa-clock" style="color: #38bdf8;"></i> Live 5-Min Intraday Snapshots (09:15 - 15:30 IST)
                     </div>
                 </div>
 
                 <!-- Main Full-Screen Dual-Axis Chart Canvas Container -->
-                <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 1.25rem; height: calc(100vh - 270px); min-height: 480px; position: relative;">
+                <div class="pcr-fullchart-container" style="position: relative;">
                     <div id="pcr-analytics-chart-canvas" style="width: 100%; height: 100%;"></div>
                 </div>
             </div>

@@ -1936,19 +1936,53 @@ kbd {
     flex-direction: column;
 }
 
+/* ===== PCR Analytics Mobile Responsiveness ===== */
+.pcr-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
 @media (max-width: 768px) {
     .pcr-metrics-bar {
-        justify-content: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 0.75rem;
+        display: grid !important;
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) !important;
+        gap: 0.75rem !important;
+        padding: 0.75rem !important;
     }
 
     .pcr-metric-divider {
-        display: none;
+        display: none !important;
     }
 
     .pcr-fullchart-container {
-        height: calc(100vh - 350px);
-        min-height: 380px;
+        height: calc(100vh - 350px) !important;
+        min-height: 360px !important;
+        padding: 0.5rem !important;
+    }
+}
+
+@media (max-width: 640px) {
+    .pcr-toolbar-group {
+        width: 100%;
+        gap: 0.75rem;
+    }
+    #pcr-search-wrapper {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    .pcr-analytics-mode-row {
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 0.5rem !important;
+    }
+    .pcr-notice-text {
+        margin-left: 0 !important;
+        font-size: 0.72rem !important;
+    }
+    .pcr-fullchart-container {
+        height: 380px !important;
+        min-height: 320px !important;
     }
 }

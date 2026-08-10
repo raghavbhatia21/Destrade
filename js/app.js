@@ -64,6 +64,18 @@ const App = {
         try { this.startIntradayHearts(); } catch (e) { console.warn(e); }
         try { this.setupVisibilityAPI(); } catch (e) { console.warn(e); }
         try { this.setupPcrSearchClickOutside(); } catch (e) { console.warn(e); }
+        try { this.setupPcrCanvasResizeListener(); } catch (e) { console.warn(e); }
+    },
+
+    setupPcrCanvasResizeListener() {
+        window.addEventListener('resize', () => {
+            if (this.state.activeView === 'pcr-analytics' && this.state.pcrAnalyticsSymbol) {
+                if (this._pcrResizeTimer) clearTimeout(this._pcrResizeTimer);
+                this._pcrResizeTimer = setTimeout(() => {
+                    this.renderPcrAnalyticsChartCanvas(this.state.pcrAnalyticsSymbol);
+                }, 150);
+            }
+        });
     },
 
     setupPcrSearchClickOutside() {
@@ -1866,10 +1878,11 @@ const App = {
         const spotMin = hasSpot ? Math.min(...spots) * 0.998 : 0;
         const spotMax = hasSpot ? Math.max(...spots) * 1.002 : 1;
 
-        const paddingLeft = 55;
-        const paddingRight = hasSpot ? 75 : 55;
-        const paddingTop = 30;
-        const paddingBottom = 35;
+        const isMobile = width < 600;
+        const paddingLeft = isMobile ? 38 : 55;
+        const paddingRight = isMobile ? (hasSpot ? 58 : 38) : (hasSpot ? 75 : 55);
+        const paddingTop = isMobile ? 22 : 30;
+        const paddingBottom = isMobile ? 25 : 35;
         const chartW = width - paddingLeft - paddingRight;
         const chartH = height - paddingTop - paddingBottom;
 

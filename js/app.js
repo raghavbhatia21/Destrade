@@ -1726,7 +1726,7 @@ const App = {
         const input = document.getElementById('pcr-symbol-search');
         if (input) {
             input.value = '';
-            input.placeholder = `🔍 Active: ${cleanSym} (Search symbol...)`;
+            input.placeholder = `Search symbol (${cleanSym})...`;
         }
 
         const popup = document.getElementById('pcr-symbol-suggestions');
@@ -1744,7 +1744,7 @@ const App = {
         const input = document.getElementById('pcr-symbol-search');
         if (input) {
             input.value = '';
-            input.placeholder = `🔍 Active: ${cleanSym} (Search symbol...)`;
+            input.placeholder = `Search symbol (${cleanSym})...`;
         }
 
         // Initialize Firebase Time Engine for live streaming

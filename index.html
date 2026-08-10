@@ -182,23 +182,19 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem; padding: 0.5rem 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
                     <div style="display: flex; align-items: center; gap: 1rem;">
                         <div class="view-title" style="font-size: 1.25rem; font-weight: 800; color: #ffffff;"><i class="fas fa-chart-line" style="color: #38bdf8;"></i> PCR Analytics</div>
-                        <select id="pcr-symbol-select" onchange="App.changePcrSymbol(this.value)" style="background: #1e293b; color: #ffffff; border: 1px solid #38bdf8; border-radius: 8px; padding: 0.4rem 1rem; font-size: 0.95rem; font-weight: 700; cursor: pointer; outline: none;">
-                            <option value="NIFTY">NIFTY 50</option>
-                            <option value="BANKNIFTY">BANKNIFTY</option>
-                            <option value="FINNIFTY">FINNIFTY</option>
-                            <option value="MIDCPNIFTY">MIDCPNIFTY</option>
-                            <option value="RELIANCE">RELIANCE</option>
-                            <option value="TCS">TCS</option>
-                            <option value="HDFCBANK">HDFCBANK</option>
-                            <option value="INFY">INFY</option>
-                            <option value="ICICIBANK">ICICIBANK</option>
-                            <option value="SBIN">SBIN</option>
-                            <option value="BHARTIARTL">BHARTIARTL</option>
-                            <option value="ITC">ITC</option>
-                            <option value="LT">L&T</option>
-                            <option value="AXISBANK">AXISBANK</option>
-                            <option value="BAJFINANCE">BAJFINANCE</option>
-                        </select>
+                        <div style="position: relative; width: 230px;" id="pcr-search-wrapper">
+                            <div style="position: relative; display: flex; align-items: center;">
+                                <i class="fas fa-search" style="position: absolute; left: 12px; color: #38bdf8; font-size: 0.85rem; pointer-events: none;"></i>
+                                <input type="text" id="pcr-symbol-search" placeholder="Search Symbol (e.g. RELIANCE)..." 
+                                       autocomplete="off" spellcheck="false" value="NIFTY"
+                                       oninput="App.onPcrSearchInput(this.value)" 
+                                       onkeydown="App.onPcrSearchKeyDown(event)"
+                                       onfocus="App.onPcrSearchFocus()"
+                                       style="width: 100%; background: #0f172a; color: #ffffff; border: 1.5px solid #38bdf8; font-weight: 700; border-radius: 8px; padding: 0.45rem 0.85rem 0.45rem 2.2rem; font-size: 0.9rem; outline: none; transition: border-color 0.2s, box-shadow 0.2s; text-transform: uppercase;" />
+                            </div>
+                            <!-- Auto-Suggest Autocomplete Popup -->
+                            <div id="pcr-symbol-suggestions" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 280px; overflow-y: auto; background: #0f172a; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.7); z-index: 9999;"></div>
+                        </div>
                     </div>
                     <div style="display: flex; gap: 0.5rem;">
                         <button class="chart-action-btn" onclick="App.refreshPcrAnalytics()" style="padding: 0.4rem 0.85rem; font-size: 0.85rem;"><i class="fas fa-sync-alt"></i> Refresh</button>

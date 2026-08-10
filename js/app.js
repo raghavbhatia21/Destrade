@@ -63,6 +63,17 @@ const App = {
         try { this.startDataPolling(); } catch (e) { console.warn(e); }
         try { this.startIntradayHearts(); } catch (e) { console.warn(e); }
         try { this.setupVisibilityAPI(); } catch (e) { console.warn(e); }
+        try { this.setupPcrSearchClickOutside(); } catch (e) { console.warn(e); }
+    },
+
+    setupPcrSearchClickOutside() {
+        document.addEventListener('click', (e) => {
+            const wrapper = document.getElementById('pcr-search-wrapper');
+            const popup = document.getElementById('pcr-symbol-suggestions');
+            if (wrapper && popup && !wrapper.contains(e.target)) {
+                popup.style.display = 'none';
+            }
+        });
     },
 
     setupVisibilityAPI() {
@@ -1535,16 +1546,16 @@ const App = {
         this.renderPcrAnalyticsView(sym);
     },
 
-    populatePcrSymbolDropdown() {
-        const select = document.getElementById('pcr-symbol-select');
-        if (!select) return;
+    // ===== PCR SYMBOL AUTO-SUGGEST SEARCH ENGINE =====
+    statePcrSuggestIdx: -1,
 
-        let allSymbols = [];
+    getPcrSymbolList() {
+        const indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
+        let stocks = [];
         if (window.nseApi && window.nseApi._growwMap) {
-            allSymbols = Object.keys(window.nseApi._growwMap);
+            stocks = Object.keys(window.nseApi._growwMap).filter(s => !indices.includes(s)).sort();
         } else {
-            allSymbols = [
-                'NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY',
+            stocks = [
                 '360ONE', 'ABB', 'ABCAPITAL', 'ADANIENSOL', 'ADANIENT', 'ADANIGREEN', 'ADANIPORTS', 'ADANIPOWER',
                 'ALKEM', 'AMBER', 'AMBUJACEM', 'ANGELONE', 'APLAPOLLO', 'APOLLOHOSP', 'ASHOKLEY', 'ASIANPAINT',
                 'ASTRAL', 'AUBANK', 'AUROPHARMA', 'AXISBANK', 'BAJAJ-AUTO', 'BAJAJFINSV', 'BAJAJHLDNG', 'BAJFINANCE',
@@ -1574,33 +1585,139 @@ const App = {
                 'YESBANK', 'ZYDUSLIFE'
             ];
         }
+        return [...indices, ...stocks];
+    },
 
-        if (select.options.length > 50) return;
+    findClosestPcrSymbol(query) {
+        if (!query || typeof query !== 'string') return 'NIFTY';
+        const q = query.trim().toUpperCase();
+        if (!q) return 'NIFTY';
 
-        select.innerHTML = '';
+        const all = this.getPcrSymbolList();
 
+        // 1. Exact match
+        if (all.includes(q)) return q;
+
+        // 2. Starts-with prefix match
+        const prefix = all.find(s => s.startsWith(q));
+        if (prefix) return prefix;
+
+        // 3. Contains substring match
+        const contains = all.find(s => s.includes(q));
+        if (contains) return contains;
+
+        // 4. Fallback to NIFTY
+        return all[0] || 'NIFTY';
+    },
+
+    onPcrSearchFocus() {
+        const input = document.getElementById('pcr-symbol-search');
+        if (input) {
+            this.renderPcrSearchSuggestions(input.value || '');
+        }
+    },
+
+    onPcrSearchInput(val) {
+        this.renderPcrSearchSuggestions(val);
+    },
+
+    renderPcrSearchSuggestions(query) {
+        const popup = document.getElementById('pcr-symbol-suggestions');
+        if (!popup) return;
+
+        const q = (query || '').trim().toUpperCase();
+        const all = this.getPcrSymbolList();
         const indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
-        const stocks = allSymbols.filter(s => !indices.includes(s)).sort();
 
-        const grpIndices = document.createElement('optgroup');
-        grpIndices.label = '📈 INDICES';
-        indices.forEach(sym => {
-            const opt = document.createElement('option');
-            opt.value = sym;
-            opt.textContent = sym === 'NIFTY' ? 'NIFTY 50' : sym;
-            grpIndices.appendChild(opt);
-        });
-        select.appendChild(grpIndices);
+        let matches = [];
+        if (!q) {
+            matches = all.slice(0, 15);
+        } else {
+            const prefixMatches = all.filter(s => s.startsWith(q));
+            const containsMatches = all.filter(s => !s.startsWith(q) && s.includes(q));
+            matches = [...prefixMatches, ...containsMatches].slice(0, 20);
+        }
 
-        const grpStocks = document.createElement('optgroup');
-        grpStocks.label = '🏢 ALL F&O STOCKS (' + stocks.length + ')';
-        stocks.forEach(sym => {
-            const opt = document.createElement('option');
-            opt.value = sym;
-            opt.textContent = sym;
-            grpStocks.appendChild(opt);
+        if (matches.length === 0) {
+            popup.style.display = 'none';
+            return;
+        }
+
+        this.statePcrSuggestIdx = -1;
+
+        popup.innerHTML = matches.map((sym, idx) => {
+            const isIdx = indices.includes(sym);
+            const label = sym === 'NIFTY' ? 'NIFTY 50' : sym;
+            return `
+                <div class="pcr-suggest-item" data-idx="${idx}" data-sym="${sym}"
+                     onclick="App.selectPcrSearchSymbol('${sym}')"
+                     style="padding: 0.55rem 0.85rem; display: flex; align-items: center; justify-content: space-between; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.06); color: #f8fafc; font-weight: 600; font-size: 0.85rem; transition: background 0.15s;">
+                    <span>${label}</span>
+                    <span style="font-size: 0.65rem; padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: 700; background: ${isIdx ? 'rgba(56, 189, 248, 0.2)' : 'rgba(148, 163, 184, 0.15)'}; color: ${isIdx ? '#38bdf8' : '#94a3b8'};">
+                        ${isIdx ? 'INDEX' : 'STOCK'}
+                    </span>
+                </div>
+            `;
+        }).join('');
+
+        popup.style.display = 'block';
+    },
+
+    onPcrSearchKeyDown(e) {
+        const popup = document.getElementById('pcr-symbol-suggestions');
+        const items = popup ? popup.querySelectorAll('.pcr-suggest-item') : [];
+        const input = document.getElementById('pcr-symbol-search');
+        if (!input) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (items.length > 0) {
+                this.statePcrSuggestIdx = (this.statePcrSuggestIdx + 1) % items.length;
+                this.updatePcrSuggestHighlight(items);
+            }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (items.length > 0) {
+                this.statePcrSuggestIdx = (this.statePcrSuggestIdx - 1 + items.length) % items.length;
+                this.updatePcrSuggestHighlight(items);
+            }
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (this.statePcrSuggestIdx >= 0 && items[this.statePcrSuggestIdx]) {
+                const sym = items[this.statePcrSuggestIdx].getAttribute('data-sym');
+                this.selectPcrSearchSymbol(sym);
+            } else {
+                const closest = this.findClosestPcrSymbol(input.value);
+                this.selectPcrSearchSymbol(closest);
+            }
+        } else if (e.key === 'Escape') {
+            if (popup) popup.style.display = 'none';
+        }
+    },
+
+    updatePcrSuggestHighlight(items) {
+        items.forEach((item, i) => {
+            if (i === this.statePcrSuggestIdx) {
+                item.style.background = 'rgba(56, 189, 248, 0.25)';
+                item.style.color = '#ffffff';
+                item.scrollIntoView({ block: 'nearest' });
+            } else {
+                item.style.background = 'transparent';
+                item.style.color = '#f8fafc';
+            }
         });
-        select.appendChild(grpStocks);
+    },
+
+    selectPcrSearchSymbol(symbol) {
+        if (!symbol) return;
+        const cleanSym = symbol.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
+        const input = document.getElementById('pcr-symbol-search');
+        if (input) input.value = cleanSym;
+
+        const popup = document.getElementById('pcr-symbol-suggestions');
+        if (popup) popup.style.display = 'none';
+
+        this.changePcrSymbol(cleanSym);
     },
 
     async renderPcrAnalyticsView(symbolInput) {
@@ -1608,12 +1725,10 @@ const App = {
         const cleanSym = rawSym.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
         this.state.pcrAnalyticsSymbol = cleanSym;
 
-        // Populate all 218 F&O symbols into dropdown
-        this.populatePcrSymbolDropdown();
-
-        const select = document.getElementById('pcr-symbol-select');
-        if (select) {
-            select.value = cleanSym;
+        // Update search input text
+        const input = document.getElementById('pcr-symbol-search');
+        if (input) {
+            input.value = cleanSym;
         }
 
         // Initialize Firebase Time Engine for live streaming

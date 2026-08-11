@@ -793,23 +793,20 @@ class NSEApi {
 
     // ===== DIRECT PCR & OI SUMMARY (Groww top endpoint) =====
     async getTopPCR(symbol = 'NIFTY') {
-        const info = this.getGrowwSlug(symbol);
+        const up = symbol.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
+        const info = this.getGrowwSlug(up);
         const endpoint = `/v1/api/stocks_fo_data/v1/contracts/${info.slug}/top`;
         
         try {
-            const d = await this._fetchGroww(endpoint);
+            const [d, livePrice] = await Promise.all([
+                this._fetchGroww(endpoint).catch(() => null),
+                this.getLivePriceGroww(up).catch(() => 0)
+            ]);
 
             if (d && typeof d.pcr === 'number') {
-                let spot = 0;
-                if (d.futures && d.futures[0] && d.futures[0].livePrice) {
+                let spot = livePrice || 0;
+                if (!spot && d.futures && d.futures[0] && d.futures[0].livePrice) {
                     spot = d.futures[0].livePrice.ltp || d.futures[0].livePrice.close || 0;
-                }
-                if (!spot && d.derivatives && d.derivatives[0] && d.derivatives[0].livePrice) {
-                    spot = d.derivatives[0].livePrice.ltp || d.derivatives[0].livePrice.close || 0;
-                }
-                if (!spot) {
-                    const q = await this.getQuote(symbol);
-                    if (q) spot = q.lastPrice || 0;
                 }
 
                 return {

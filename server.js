@@ -109,27 +109,23 @@ async function fetchSpotPrice(symbol, isIndex) {
         ? `https://groww.in/v1/api/stocks_data/v1/tr_live_indices/exchange/NSE/segment/CASH/${symbol}/latest`
         : `https://groww.in/v1/api/stocks_data/v1/tr_live_prices/exchange/NSE/segment/CASH/${symbol}/latest`;
     const d = await fetchUrl(ep);
-    return d ? (d.ltp || d.value || 0) : 0;
+    return d ? (d.value || d.ltp || d.lastPrice || 0) : 0;
 }
 
 async function fetchOptionChainPCR(symbol) {
     const info = SLUG_MAP[symbol] || { slug: symbol.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-ltd', type: 'STOCKS' };
+    const isIdx = info.type === 'INDICES' || ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'].includes(symbol.toUpperCase());
     
-    // Primary Endpoint: Groww Top Endpoint
+    // 1. Fetch TRUE Cash Market Spot Price
+    let spot = await fetchSpotPrice(symbol, isIdx);
+
+    // 2. Fetch PCR from Groww Top Endpoint
     const topUrl = `https://groww.in/v1/api/stocks_fo_data/v1/contracts/${info.slug}/top`;
     const topData = await fetchUrl(topUrl);
 
-    let spot = 0;
     if (topData && typeof topData.pcr === 'number') {
-        // Extract spot price directly from topData if available, else fetchSpotPrice
-        if (topData.futures && topData.futures[0] && topData.futures[0].livePrice) {
+        if (spot === 0 && topData.futures && topData.futures[0] && topData.futures[0].livePrice) {
             spot = topData.futures[0].livePrice.ltp || topData.futures[0].livePrice.close || 0;
-        }
-        if (!spot && topData.derivatives && topData.derivatives[0] && topData.derivatives[0].livePrice) {
-            spot = topData.derivatives[0].livePrice.ltp || topData.derivatives[0].livePrice.close || 0;
-        }
-        if (spot === 0) {
-            spot = await fetchSpotPrice(symbol, info.type === 'INDICES');
         }
         return {
             pcr: parseFloat(topData.pcr.toFixed(2)),

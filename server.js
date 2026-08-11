@@ -133,13 +133,15 @@ async function fetchOptionChainPCR(symbol) {
     const topUrl = `https://groww.in/v1/api/stocks_fo_data/v1/contracts/${info.slug}/top`;
     const topData = await fetchUrl(topUrl);
 
-    if (topData && typeof topData.pcr === 'number') {
+    if (topData && (topData.callOI > 0 || typeof topData.pcr === 'number')) {
         // Only for stocks if spot is still 0, fall back to futures price
         if (spot === 0 && !isIdx && topData.futures && topData.futures[0] && topData.futures[0].livePrice) {
             spot = topData.futures[0].livePrice.ltp || topData.futures[0].livePrice.close || 0;
         }
+        const calcPcr = (topData.callOI > 0 && topData.putOI > 0) ? (topData.putOI / topData.callOI) : (topData.pcr || 0);
+
         return {
-            pcr: parseFloat(topData.pcr.toFixed(4)),
+            pcr: parseFloat(calcPcr.toFixed(4)),
             callOI: topData.callOI || 0,
             putOI: topData.putOI || 0,
             spot: spot

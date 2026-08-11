@@ -805,14 +805,15 @@ class NSEApi {
                 this.getLivePriceGroww(up).catch(() => 0)
             ]);
 
-            if (d && typeof d.pcr === 'number') {
+            if (d && (d.callOI > 0 || typeof d.pcr === 'number')) {
                 let spot = livePrice || 0;
                 if (!spot && !isIdx && d.futures && d.futures[0] && d.futures[0].livePrice) {
                     spot = d.futures[0].livePrice.ltp || d.futures[0].livePrice.close || 0;
                 }
+                const calcPcr = (d.callOI > 0 && d.putOI > 0) ? (d.putOI / d.callOI) : (d.pcr || 0);
 
                 return {
-                    pcr: parseFloat(d.pcr.toFixed(4)),
+                    pcr: parseFloat(calcPcr.toFixed(4)),
                     callOI: d.callOI || 0,
                     putOI: d.putOI || 0,
                     spot: spot,

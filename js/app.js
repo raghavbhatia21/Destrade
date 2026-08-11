@@ -1085,18 +1085,19 @@ const App = {
             let timeSec = item.time || (item.timestamp ? Math.floor(item.timestamp / 1000) : 0);
             if (!timeSec) continue;
 
-            // Bucket into 5-minute intervals (300 sec)
-            const bucketSec = Math.floor(timeSec / 300) * 300;
-
-            const d = new Date((bucketSec + 5.5 * 3600) * 1000);
+            const d = new Date((timeSec + 5.5 * 3600) * 1000);
             const hours = d.getUTCHours();
             const mins = d.getUTCMinutes();
+            const secs = d.getUTCSeconds();
             const h24 = String(hours).padStart(2, '0');
             const m24 = String(mins).padStart(2, '0');
-            const cleanTimeStr = `${h24}:${m24}`;
+            const s24 = String(secs).padStart(2, '0');
 
-            cleanMap.set(bucketSec, {
-                time: bucketSec,
+            // Preserve accurate fetch timestamp and string (e.g. 15:02:24 or 03:02 PM)
+            let cleanTimeStr = item.timeStr ? item.timeStr.trim() : `${h24}:${m24}:${s24}`;
+
+            cleanMap.set(timeSec, {
+                time: timeSec,
                 timeStr: cleanTimeStr,
                 value: parseFloat(item.value.toFixed(4)),
                 spot: item.spot ? parseFloat(parseFloat(item.spot).toFixed(2)) : 0

@@ -105,11 +105,21 @@ function firebasePut(path, data) {
 }
 
 async function fetchSpotPrice(symbol, isIndex) {
+    const cleanSym = symbol.toUpperCase().replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY');
     const ep = isIndex 
-        ? `https://groww.in/v1/api/stocks_data/v1/tr_live_indices/exchange/NSE/segment/CASH/${symbol}/latest`
-        : `https://groww.in/v1/api/stocks_data/v1/tr_live_prices/exchange/NSE/segment/CASH/${symbol}/latest`;
-    const d = await fetchUrl(ep);
-    return d ? (d.value || d.ltp || d.lastPrice || 0) : 0;
+        ? `https://groww.in/v1/api/stocks_data/v1/tr_live_indices/exchange/NSE/segment/CASH/${cleanSym}/latest`
+        : `https://groww.in/v1/api/stocks_data/v1/tr_live_prices/exchange/NSE/segment/CASH/${cleanSym}/latest`;
+    
+    let d = await fetchUrl(ep);
+    let spot = d ? (d.value || d.ltp || d.lastPrice || 0) : 0;
+    
+    // Retry once if spot returned 0
+    if (!spot) {
+        await new Promise(r => setTimeout(r, 500));
+        d = await fetchUrl(ep);
+        spot = d ? (d.value || d.ltp || d.lastPrice || 0) : 0;
+    }
+    return spot;
 }
 
 async function fetchOptionChainPCR(symbol) {
@@ -124,7 +134,8 @@ async function fetchOptionChainPCR(symbol) {
     const topData = await fetchUrl(topUrl);
 
     if (topData && typeof topData.pcr === 'number') {
-        if (spot === 0 && topData.futures && topData.futures[0] && topData.futures[0].livePrice) {
+        // Only for stocks if spot is still 0, fall back to futures price
+        if (spot === 0 && !isIdx && topData.futures && topData.futures[0] && topData.futures[0].livePrice) {
             spot = topData.futures[0].livePrice.ltp || topData.futures[0].livePrice.close || 0;
         }
         return {

@@ -2218,10 +2218,9 @@ const App = {
                 biasColor = '#ef4444';
                 biasBg = 'rgba(239, 68, 68, 0.15)';
             } else {
-                const isBullish = pcrVal >= 1.0;
-                biasLabel = isBullish ? 'BULLISH' : 'BEARISH';
-                biasColor = isBullish ? '#10b981' : '#ef4444';
-                biasBg = isBullish ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+                biasLabel = 'NEUTRAL';
+                biasColor = '#94a3b8';
+                biasBg = 'rgba(148, 163, 184, 0.15)';
             }
 
             html += `

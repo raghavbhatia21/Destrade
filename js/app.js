@@ -1604,8 +1604,9 @@ const App = {
     getPcrSymbolList() {
         const indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
         let stocks = [];
-        if (window.nseApi && window.nseApi._growwMap) {
-            stocks = Object.keys(window.nseApi._growwMap).filter(s => !indices.includes(s)).sort();
+        const growwMap = (window.nseApi && typeof window.nseApi.getGrowwMap === 'function') ? window.nseApi.getGrowwMap() : (window.nseApi ? window.nseApi._growwMap : null);
+        if (growwMap && Object.keys(growwMap).length > 0) {
+            stocks = Object.keys(growwMap).filter(s => !indices.includes(s)).sort();
         } else {
             stocks = [
                 '360ONE', 'ABB', 'ABCAPITAL', 'ADANIENSOL', 'ADANIENT', 'ADANIGREEN', 'ADANIPORTS', 'ADANIPOWER',

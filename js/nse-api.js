@@ -565,7 +565,12 @@ class NSEApi {
         return await this.getLiveQuoteGroww(up);
     }
 
-        getGrowwSlug(symbol) {
+    getGrowwMap() {
+        if (this._growwMap) return this._growwMap;
+        return this.getGrowwSlug('NIFTY') ? this._growwMap : {};
+    }
+
+    getGrowwSlug(symbol) {
         const s = (symbol || 'NIFTY').toUpperCase().replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY');
         const map = {
             '360ONE': { slug: 'iifl-wealth-management-ltd-1568865430949', type: 'STOCKS' },
@@ -787,6 +792,7 @@ class NSEApi {
             'ZYDUSLIFE': { slug: 'cadila-healthcare-ltd', type: 'STOCKS' },
             'NIFTYNXT50': { slug: 'nifty-next-50', type: 'INDICES' }
         };
+        this._growwMap = map;
         if (map[s]) return map[s];
         return { slug: s.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-ltd', type: 'STOCKS' };
     }

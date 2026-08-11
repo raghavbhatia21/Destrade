@@ -125,6 +125,9 @@ async function fetchOptionChainPCR(symbol) {
         if (topData.futures && topData.futures[0] && topData.futures[0].livePrice) {
             spot = topData.futures[0].livePrice.ltp || topData.futures[0].livePrice.close || 0;
         }
+        if (!spot && topData.derivatives && topData.derivatives[0] && topData.derivatives[0].livePrice) {
+            spot = topData.derivatives[0].livePrice.ltp || topData.derivatives[0].livePrice.close || 0;
+        }
         if (spot === 0) {
             spot = await fetchSpotPrice(symbol, info.type === 'INDICES');
         }

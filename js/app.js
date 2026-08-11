@@ -1091,13 +1091,13 @@ const App = {
             const d = new Date((bucketSec + 5.5 * 3600) * 1000);
             const hours = d.getUTCHours();
             const mins = d.getUTCMinutes();
-            const ampm = hours >= 12 ? 'PM' : 'AM';
-            const h12 = hours % 12 || 12;
-            const cleanTimeStr = `${String(h12).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${ampm}`;
+            const h24 = String(hours).padStart(2, '0');
+            const m24 = String(mins).padStart(2, '0');
+            const cleanTimeStr = `${h24}:${m24}`;
 
             cleanMap.set(bucketSec, {
                 time: bucketSec,
-                timeStr: item.timeStr || cleanTimeStr,
+                timeStr: cleanTimeStr,
                 value: parseFloat(item.value.toFixed(4)),
                 spot: item.spot ? parseFloat(parseFloat(item.spot).toFixed(2)) : 0
             });
@@ -1108,9 +1108,12 @@ const App = {
         // Ensure all items have a valid spot price fallback
         const validSpots = sorted.map(d => d.spot).filter(s => s > 0);
         if (validSpots.length > 0) {
-            const fallbackSpot = validSpots[validSpots.length - 1];
+            const firstValid = validSpots[0];
+            const lastValid = validSpots[validSpots.length - 1];
+            let current = firstValid;
             sorted.forEach(d => {
-                if (!d.spot || d.spot <= 0) d.spot = fallbackSpot;
+                if (d.spot > 0) current = d.spot;
+                else d.spot = current || lastValid;
             });
         }
 
@@ -1899,7 +1902,7 @@ const App = {
 
         const isMobile = width < 600;
         const paddingLeft = isMobile ? 42 : 52;
-        const paddingRight = isMobile ? (hasSpot ? 50 : 42) : (hasSpot ? 68 : 52);
+        const paddingRight = isMobile ? (hasSpot ? 62 : 44) : (hasSpot ? 72 : 54);
         const paddingTop = isMobile ? 22 : 28;
         const paddingBottom = isMobile ? 42 : 42;
         const chartW = width - paddingLeft - paddingRight;

@@ -1727,6 +1727,8 @@ kbd {
     border-collapse: separate !important;
     border-spacing: 0 !important;
     width: 100%;
+}
+
 /* ===== OPTION CHAIN TABLE PRO STYLING ===== */
 .oc-table {
     width: 100%;
@@ -1937,10 +1939,15 @@ kbd {
 }
 
 /* ===== PCR Analytics Master Responsive Workspace ===== */
-#view-pcr-analytics, #view-pcr-analytics.active {
+#view-pcr-analytics.active {
     display: flex !important;
     flex-direction: column !important;
-    height: 100%;
+    height: auto !important;
+    min-height: 100%;
+    overflow-y: auto !important;
+    padding: 1rem 1rem 2.5rem 1rem !important;
+    gap: 1rem;
+    -webkit-overflow-scrolling: touch;
 }
 
 .pcr-workspace-toolbar {
@@ -1948,16 +1955,15 @@ kbd {
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    margin-bottom: 0.65rem;
-    padding-bottom: 0.5rem;
+    padding-bottom: 0.75rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .pcr-title-box {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    font-size: 1.2rem;
+    gap: 0.65rem;
+    font-size: 1.25rem;
     font-weight: 800;
     color: #ffffff;
     white-space: nowrap;
@@ -1965,20 +1971,21 @@ kbd {
 
 .pcr-title-box i {
     color: #38bdf8;
+    font-size: 1.3rem;
 }
 
 .pcr-search-box {
     position: relative;
-    width: 250px;
+    width: 280px;
     display: flex;
     align-items: center;
 }
 
 .pcr-search-box i.fa-search {
     position: absolute;
-    left: 12px;
+    left: 14px;
     color: #38bdf8;
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     pointer-events: none;
 }
 
@@ -1988,53 +1995,53 @@ kbd {
     color: #ffffff;
     border: 1.5px solid #38bdf8;
     font-weight: 700;
-    border-radius: 8px;
-    padding: 0.4rem 0.75rem 0.4rem 2.2rem;
-    font-size: 0.85rem;
+    border-radius: 10px;
+    padding: 0.5rem 0.85rem 0.5rem 2.4rem;
+    font-size: 0.9rem;
     outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
     text-transform: uppercase;
 }
 
 .pcr-search-box input:focus {
-    box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+    box-shadow: 0 0 14px rgba(56, 189, 248, 0.4);
 }
 
 #pcr-symbol-suggestions {
     display: none;
     position: absolute;
-    top: calc(100% + 4px);
+    top: calc(100% + 6px);
     left: 0;
     right: 0;
-    max-height: 260px;
+    max-height: 280px;
     overflow-y: auto;
     background: #0f172a;
     border: 1px solid rgba(56, 189, 248, 0.4);
-    border-radius: 8px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.7);
+    border-radius: 10px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.8);
     z-index: 9999;
 }
 
 .pcr-action-btns {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.65rem;
     margin-left: auto;
 }
 
 .pcr-action-btns button {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.4rem 0.85rem;
-    font-size: 0.82rem;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
     font-weight: 600;
-    border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
     background: #1e293b;
     color: #f8fafc;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.2s, transform 0.1s;
 }
 
 .pcr-action-btns button:hover {
@@ -2046,32 +2053,32 @@ kbd {
 .pcr-metrics-ribbon {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 1.25rem;
     background: rgba(15, 23, 42, 0.85);
-    border: 1px solid rgba(56, 189, 248, 0.2);
-    padding: 0.45rem 1rem;
-    border-radius: 8px;
-    margin-bottom: 0.65rem;
-    font-size: 0.82rem;
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    padding: 0.65rem 1.25rem;
+    border-radius: 10px;
+    font-size: 0.88rem;
     color: #94a3b8;
     font-weight: 600;
     overflow-x: auto;
     white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
 }
 
 .ribbon-item span {
     font-weight: 700;
     color: #ffffff;
-    margin-left: 0.25rem;
+    margin-left: 0.35rem;
 }
 
 .ribbon-item .vix-up { color: #34d399; }
-.ribbon-item .pcr-val { color: #38bdf8; font-weight: 800; }
-.ribbon-item .chg-val { color: #a855f7; font-weight: 800; }
+.ribbon-item .pcr-val { color: #38bdf8; font-weight: 800; font-size: 0.95rem; }
+.ribbon-item .chg-val { color: #a855f7; font-weight: 800; font-size: 0.95rem; }
 
 .ribbon-divider {
     width: 1px;
-    height: 14px;
+    height: 16px;
     background: rgba(255, 255, 255, 0.15);
     flex-shrink: 0;
 }
@@ -2081,36 +2088,35 @@ kbd {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 0.65rem;
-    padding: 0 0.2rem;
+    padding: 0 0.25rem;
 }
 
 .pcr-radios {
     display: flex;
     align-items: center;
-    gap: 1.25rem;
+    gap: 1.5rem;
 }
 
 .radio-label {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.45rem;
     cursor: pointer;
     color: #f8fafc;
     font-weight: 700;
-    font-size: 0.84rem;
+    font-size: 0.88rem;
 }
 
 .radio-label input {
     accent-color: #38bdf8;
-    width: 15px;
-    height: 15px;
+    width: 16px;
+    height: 16px;
     cursor: pointer;
 }
 
 .pcr-clock-notice {
     color: #64748b;
-    font-size: 0.78rem;
+    font-size: 0.8rem;
     font-weight: 500;
 }
 
@@ -2120,13 +2126,14 @@ kbd {
 
 /* Chart Canvas Box */
 .pcr-fullchart-container {
-    flex: 1;
     background: rgba(15, 23, 42, 0.85);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
-    padding: 0.75rem;
-    min-height: 360px;
+    border-radius: 14px;
+    padding: 1rem;
+    height: 480px;
+    min-height: 400px;
     position: relative;
+    width: 100%;
 }
 
 #pcr-analytics-chart-canvas {
@@ -2136,15 +2143,19 @@ kbd {
 
 /* ===== Mobile Responsiveness (< 640px) ===== */
 @media (max-width: 640px) {
+    #view-pcr-analytics, #view-pcr-analytics.active {
+        padding: 0.75rem 0.75rem 4rem 0.75rem !important;
+        gap: 0.85rem;
+    }
+
     .pcr-workspace-toolbar {
         flex-wrap: wrap;
-        gap: 0.5rem;
-        margin-bottom: 0.5rem;
-        padding-bottom: 0.4rem;
+        gap: 0.65rem;
+        padding-bottom: 0.5rem;
     }
 
     .pcr-title-box {
-        font-size: 1.05rem;
+        font-size: 1.15rem;
     }
 
     .pcr-search-box {
@@ -2158,31 +2169,33 @@ kbd {
     }
 
     .pcr-action-btns button span {
-        display: none;
+        display: inline;
     }
 
     .pcr-action-btns button {
-        padding: 0.35rem 0.6rem;
+        padding: 0.4rem 0.75rem;
+        font-size: 0.8rem;
     }
 
     .pcr-metrics-ribbon {
-        padding: 0.35rem 0.65rem;
-        font-size: 0.76rem;
-        gap: 0.75rem;
-        margin-bottom: 0.5rem;
+        padding: 0.55rem 0.85rem;
+        font-size: 0.8rem;
+        gap: 1rem;
     }
 
     .pcr-mode-bar {
-        margin-bottom: 0.5rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
     }
 
     .pcr-clock-notice {
-        font-size: 0.72rem;
+        font-size: 0.75rem;
+        width: 100%;
     }
 
     .pcr-fullchart-container {
-        height: calc(100vh - 210px);
-        min-height: 280px;
-        padding: 0.4rem;
+        height: 440px;
+        min-height: 380px;
+        padding: 0.6rem;
     }
 }

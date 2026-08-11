@@ -57,6 +57,9 @@ class NSEApi {
     }
 
     async _fetch(endpoint, retries = 2, backoff = 1000) {
+        // NSE endpoints require a local dev-proxy to bypass CORS/WAF. Skip entirely if no proxy.
+        if (!this.proxyUrl) return null;
+
         const isOC = endpoint.includes('option-chain') || endpoint.includes('quote-equity');
         const effectiveRetries = isOC ? 0 : retries;
 
@@ -130,32 +133,45 @@ class NSEApi {
 
     async _fetchGroww(path) {
         const rawUrl = path.startsWith('http') ? path : `https://groww.in${path.startsWith('/') ? '' : '/'}${path}`;
+        const isCapacitor = typeof window !== 'undefined' && window.Capacitor;
 
-        // 1. Native Mobile App (Capacitor Android/iOS APK): Direct Fetch
-        if (typeof window !== 'undefined' && window.Capacitor) {
+        // 1. Native Mobile App (Capacitor Android/iOS APK): Direct Fetch with timeout
+        if (isCapacitor) {
             try {
-                const res = await fetch(rawUrl, { cache: 'no-store' });
+                const res = await fetch(rawUrl, { cache: 'no-store', signal: AbortSignal.timeout(4000) });
                 if (res.ok) {
-                    const data = await res.json();
-                    if (data) return data;
+                    const text = await res.text();
+                    if (text && !text.trim().startsWith('<')) {
+                        const data = JSON.parse(text);
+                        if (data && !data.error && !data.errorCode) return data;
+                    }
                 }
-            } catch (e) {}
+            } catch (e) {
+                // Direct fetch failed (blocked/timeout), fall through to cloud proxy
+            }
         }
 
-        // 2. Web Browsers / DevTools / localhost: Prioritize Cloud CORS Proxy to eliminate browser CORS errors
+        // 2. Cloud CORS Proxy (works for both web browsers and mobile apps)
         try {
             const cloudUrl = `https://destrade-market-worker.onrender.com/api/proxy?url=${encodeURIComponent(rawUrl)}`;
-            const res = await fetch(cloudUrl, { cache: 'no-store' });
+            const res = await fetch(cloudUrl, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
             if (res.ok) {
-                const data = await res.json();
-                if (data && !data.error) return data;
+                const text = await res.text();
+                if (text && !text.trim().startsWith('<')) {
+                    const data = JSON.parse(text);
+                    if (data && !data.error && !data.errorCode) return data;
+                }
             }
         } catch (e) {}
 
-        // 3. Fallback: Local Node Dev-Proxy (if running locally on port)
-        const cleanPath = rawUrl.replace('https://groww.in', '');
-        const endpoint = `/groww${cleanPath.startsWith('/') ? '' : '/'}${cleanPath}`;
-        return this._fetch(endpoint);
+        // 3. Fallback: Local Node Dev-Proxy (only when running locally, skip on Capacitor)
+        if (!isCapacitor && this.proxyUrl) {
+            const cleanPath = rawUrl.replace('https://groww.in', '');
+            const endpoint = `/groww${cleanPath.startsWith('/') ? '' : '/'}${cleanPath}`;
+            return this._fetch(endpoint);
+        }
+
+        return null;
     }
 
     // ===== GROWW LIVE PRICE (Index + Stock) =====
@@ -217,7 +233,7 @@ class NSEApi {
         const growwGainersEp = '/v1/api/stocks_fo_data/v1/live-aggregations/explore/market_trends/instrument/STOCKS?exchange=NSE&interval=ONE_DAY&limit=300&marketTrendFactor=PRICE&type=GAINERS';
         const growwLosersEp = '/v1/api/stocks_fo_data/v1/live-aggregations/explore/market_trends/instrument/STOCKS?exchange=NSE&interval=ONE_DAY&limit=300&marketTrendFactor=PRICE&type=LOSERS';
 
-        const runNse = !!this.proxyUrl || !!window.Capacitor;
+        const runNse = !!this.proxyUrl;
 
         const [growwGainers, growwLosers, gainersData, loosersData, oiData, underData] = await Promise.all([
             this._fetchGroww(growwGainersEp).catch(() => null),
@@ -782,11 +798,20 @@ class NSEApi {
         
         try {
             const d = await this._fetchGroww(endpoint);
-            let spot = 0;
-            const q = await this.getQuote(symbol);
-            if (q) spot = q.lastPrice || 0;
 
             if (d && typeof d.pcr === 'number') {
+                let spot = 0;
+                if (d.futures && d.futures[0] && d.futures[0].livePrice) {
+                    spot = d.futures[0].livePrice.ltp || d.futures[0].livePrice.close || 0;
+                }
+                if (!spot && d.derivatives && d.derivatives[0] && d.derivatives[0].livePrice) {
+                    spot = d.derivatives[0].livePrice.ltp || d.derivatives[0].livePrice.close || 0;
+                }
+                if (!spot) {
+                    const q = await this.getQuote(symbol);
+                    if (q) spot = q.lastPrice || 0;
+                }
+
                 return {
                     pcr: parseFloat(d.pcr.toFixed(2)),
                     callOI: d.callOI || 0,

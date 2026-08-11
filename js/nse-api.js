@@ -812,7 +812,7 @@ class NSEApi {
                 }
 
                 return {
-                    pcr: parseFloat(d.pcr.toFixed(2)),
+                    pcr: parseFloat(d.pcr.toFixed(4)),
                     callOI: d.callOI || 0,
                     putOI: d.putOI || 0,
                     spot: spot,
@@ -933,7 +933,7 @@ class NSEApi {
             if (peOI > maxPEOI) { maxPEOI = peOI; maxPEStrike = row.strikePrice; }
         }
 
-        const pcr = totalCEOI > 0 ? (totalPEOI / totalCEOI).toFixed(2) : '0.00';
+        const pcr = totalCEOI > 0 ? (totalPEOI / totalCEOI).toFixed(4) : '0.0000';
         const sentiment = pcr > 1.3 ? 'BULLISH' : pcr < 0.7 ? 'BEARISH' : 'NEUTRAL';
         const underlying = d.records.underlyingValue || 0;
         // Show full data instead of slicing
@@ -1066,7 +1066,7 @@ class NSEApi {
             underlying: +spot.toFixed(2),
             timestamp: new Date().toLocaleTimeString(),
             totalCEOI, totalPEOI,
-            pcr: (totalPEOI / totalCEOI).toFixed(2),
+            pcr: (totalPEOI / totalCEOI).toFixed(4),
             maxPainStrike: baseStrike,
             sentiment: (totalPEOI / totalCEOI) > 1.1 ? 'BULLISH' : (totalPEOI / totalCEOI) < 0.9 ? 'BEARISH' : 'NEUTRAL',
             data
@@ -1286,7 +1286,7 @@ class NSEApi {
 
         return {
             spot: underlying.toFixed(2),
-            pcr: pcr.toFixed(2),
+            pcr: pcr.toFixed(4),
             maxPain: maxPain || '-',
             maxPainDiff: maxPainDiff.toFixed(1),
             lotSize: this._getLotSize(symbol),

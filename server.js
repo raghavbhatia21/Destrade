@@ -139,7 +139,7 @@ async function fetchOptionChainPCR(symbol) {
             spot = topData.futures[0].livePrice.ltp || topData.futures[0].livePrice.close || 0;
         }
         return {
-            pcr: parseFloat(topData.pcr.toFixed(2)),
+            pcr: parseFloat(topData.pcr.toFixed(4)),
             callOI: topData.callOI || 0,
             putOI: topData.putOI || 0,
             spot: spot
@@ -168,7 +168,7 @@ async function fetchOptionChainPCR(symbol) {
 
     const pcr = totalCE > 0 ? (totalPE / totalCE) : 0;
     return {
-        pcr: parseFloat(pcr.toFixed(2)),
+        pcr: parseFloat(pcr.toFixed(4)),
         callOI: totalCE,
         putOI: totalPE,
         spot: spot

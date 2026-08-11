@@ -1437,7 +1437,7 @@ const App = {
             ctx.fillStyle = isBullish ? '#10b981' : '#ef4444';
             ctx.font = 'bold 10px monospace';
             ctx.textAlign = 'left';
-            ctx.fillText(`PCR ${lastPt.val.toFixed(2)}`, lastPt.x + 6, lastPt.y + 3);
+            ctx.fillText(`PCR ${lastPt.val.toFixed(4)}`, lastPt.x + 6, lastPt.y + 3);
 
             // 6. Interactive Crosshair & Tooltip Overlay
             if (hoverIdx !== null && pts[hoverIdx]) {
@@ -1463,7 +1463,7 @@ const App = {
                 ctx.stroke();
 
                 // Floating Glass Tooltip Box
-                const tipText = `Time: ${hp.timeStr} | PCR: ${hp.val.toFixed(2)}${hp.spot ? ` | Spot: ₹${hp.spot.toLocaleString()}` : ''}`;
+                const tipText = `Time: ${hp.timeStr} | PCR: ${hp.val.toFixed(4)}${hp.spot ? ` | Spot: ₹${hp.spot.toLocaleString()}` : ''}`;
                 ctx.font = 'bold 10px sans-serif';
                 const textW = ctx.measureText(tipText).width + 16;
                 let tipX = hp.x - textW / 2;
@@ -1550,7 +1550,7 @@ const App = {
                         ${reversedData.map(d => {
                             const valNum = (d && typeof d.value === 'number' && !isNaN(d.value)) ? d.value : 0;
                             const isBull = valNum >= 1.0;
-                            const valStr = valNum ? valNum.toFixed(2) : '0.00';
+                            const valStr = valNum ? valNum.toFixed(4) : '0.0000';
                             const spotNum = parseFloat(d.spot) || 0;
                             return `
                                 <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
@@ -1831,12 +1831,12 @@ const App = {
             const estStrike = Math.round(spotPrice / step) * step;
             maxPain = '₹' + estStrike.toLocaleString();
         }
-        const pcrVal = (topData && topData.pcr) ? topData.pcr.toFixed(2) : '--';
+        const pcrVal = (topData && topData.pcr) ? topData.pcr.toFixed(4) : '--';
 
         // Calculate CHG IN OI PCR estimate
         let chgPcrVal = '--';
         if (topData && topData.callOI > 0 && topData.putOI > 0) {
-            chgPcrVal = (topData.putOI / topData.callOI).toFixed(2);
+            chgPcrVal = (topData.putOI / topData.callOI).toFixed(4);
         }
 
         // Update Header Badges
@@ -2080,7 +2080,7 @@ const App = {
                 }
 
                 // Floating Tooltip Box
-                const tipText = `Time: ${hp.timeStr} | PCR: ${hp.pcrRaw.toFixed(2)}${hp.spot ? ` | Spot: ₹${hp.spot.toLocaleString()}` : ''}`;
+                const tipText = `Time: ${hp.timeStr} | PCR: ${hp.pcrRaw.toFixed(4)}${hp.spot ? ` | Spot: ₹${hp.spot.toLocaleString()}` : ''}`;
                 ctx.font = '600 12px JetBrains Mono, monospace';
                 const textW = ctx.measureText(tipText).width + 20;
                 let tipX = hp.x - textW / 2;

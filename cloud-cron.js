@@ -331,7 +331,7 @@ async function fetchOptionChainPCR(symbol) {
     }
 
     if (totalCE === 0) return null;
-    const pcr = parseFloat((totalPE / totalCE).toFixed(2));
+    const pcr = parseFloat((totalPE / totalCE).toFixed(4));
     return { pcr, spot };
 }
 

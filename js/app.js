@@ -2205,10 +2205,24 @@ const App = {
                 spotBadge = `▼ ${spotDiff.toFixed(1)}`;
             }
 
-            const isBullish = pcrVal >= 1.0;
-            const biasLabel = isBullish ? 'BULLISH' : 'BEARISH';
-            const biasColor = isBullish ? '#10b981' : '#ef4444';
-            const biasBg = isBullish ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+            let biasLabel = 'NEUTRAL';
+            let biasColor = '#94a3b8';
+            let biasBg = 'rgba(148, 163, 184, 0.15)';
+
+            if (pcrDiff > 0.0002) {
+                biasLabel = 'BULLISH';
+                biasColor = '#10b981';
+                biasBg = 'rgba(16, 185, 129, 0.15)';
+            } else if (pcrDiff < -0.0002) {
+                biasLabel = 'BEARISH';
+                biasColor = '#ef4444';
+                biasBg = 'rgba(239, 68, 68, 0.15)';
+            } else {
+                const isBullish = pcrVal >= 1.0;
+                biasLabel = isBullish ? 'BULLISH' : 'BEARISH';
+                biasColor = isBullish ? '#10b981' : '#ef4444';
+                biasBg = isBullish ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+            }
 
             html += `
                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background='transparent'">

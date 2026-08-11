@@ -1080,25 +1080,42 @@ const App = {
         // Sort strictly ascending by epoch timestamp
         valid.sort((a, b) => (a.time || a.timestamp || 0) - (b.time || b.timestamp || 0));
 
+        // Identify if original entries with AM/PM or non-300sec exist
+        const hasOriginals = valid.some(item => {
+            const str = item.timeStr || '';
+            const isExactStr = /[ap]m/i.test(str);
+            const isExactSec = (item.time || 0) % 300 !== 0;
+            return isExactStr || isExactSec;
+        });
+
+        let filtered = valid;
+        if (hasOriginals) {
+            // Filter out synthetic 24h bucket entries (time % 300 === 0 and 24h HH:MM without am/pm)
+            filtered = valid.filter(item => {
+                const str = (item.timeStr || '').trim();
+                const isSynthetic = (item.time % 300 === 0) && (/^\d{2}:\d{2}$/.test(str));
+                return !isSynthetic;
+            });
+        }
+
         const cleanMap = new Map();
-        for (const item of valid) {
+        for (const item of filtered) {
             let timeSec = item.time || (item.timestamp ? Math.floor(item.timestamp / 1000) : 0);
             if (!timeSec) continue;
 
-            const d = new Date((timeSec + 5.5 * 3600) * 1000);
-            const hours = d.getUTCHours();
-            const mins = d.getUTCMinutes();
-            const secs = d.getUTCSeconds();
-            const h24 = String(hours).padStart(2, '0');
-            const m24 = String(mins).padStart(2, '0');
-            const s24 = String(secs).padStart(2, '0');
-
-            // Preserve accurate fetch timestamp and string (e.g. 15:02:24 or 03:02 PM)
-            let cleanTimeStr = item.timeStr ? item.timeStr.trim() : `${h24}:${m24}:${s24}`;
+            let str = (item.timeStr || '').trim();
+            if (!str || /^\d{2}:\d{2}$/.test(str)) {
+                const d = new Date((timeSec + 5.5 * 3600) * 1000);
+                let h = d.getUTCHours();
+                const m = String(d.getUTCMinutes()).padStart(2, '0');
+                const ampm = h >= 12 ? 'pm' : 'am';
+                h = h % 12 || 12;
+                str = `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+            }
 
             cleanMap.set(timeSec, {
                 time: timeSec,
-                timeStr: cleanTimeStr,
+                timeStr: str,
                 value: parseFloat(item.value.toFixed(4)),
                 spot: item.spot ? parseFloat(parseFloat(item.spot).toFixed(2)) : 0
             });

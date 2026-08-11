@@ -1866,8 +1866,9 @@ const App = {
         // Ensure intraday history is prefilled from Firebase
         await this.prefillIntradayPcrHistory(cleanSym);
 
-        // Render full-screen chart canvas
+        // Render full-screen chart canvas & snapshots table
         this.renderPcrAnalyticsChartCanvas(cleanSym);
+        this.renderPcrSnapshotsTable(cleanSym);
     },
 
     renderPcrAnalyticsChartCanvas(targetSymbol) {
@@ -2122,6 +2123,127 @@ const App = {
         canvas.onmousemove = updateHover;
         canvas.ontouchmove = updateHover;
         drawChart();
+    },
+
+    renderPcrSnapshotsTable(targetSymbol) {
+        const container = document.getElementById('pcr-snapshots-table-container');
+        if (!container) return;
+
+        const sym = (targetSymbol || this.state.pcrAnalyticsSymbol || this.state.activeSymbol || 'NIFTY').replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
+
+        let rawList = [];
+        if (this.state.pcrHistory && typeof this.state.pcrHistory === 'object' && !Array.isArray(this.state.pcrHistory)) {
+            rawList = this.state.pcrHistory[sym] || [];
+        }
+
+        let data = this.sanitize5MinPcrList(rawList);
+        if (!data || data.length === 0) {
+            container.innerHTML = `<div style="text-align:center; padding: 2rem; color: var(--text-muted); font-size: 0.85rem;"><i class="fas fa-spinner fa-spin"></i> Loading PCR intraday snapshots...</div>`;
+            return;
+        }
+
+        // Calculate snapshot-to-snapshot changes (reverse order so newest is at the top)
+        const reversed = [...data].reverse();
+        
+        let html = `
+            <div class="card pcr-snapshots-card" style="margin-top: 1.2rem; border-radius: 12px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.08); padding: 1rem 1.25rem;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 0.5rem;">
+                    <div style="font-weight: 700; color: #f8fafc; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="fas fa-list-ol" style="color:var(--primary);"></i>
+                        Intraday PCR Snapshots History (${sym})
+                        <span style="font-size:0.75rem; font-weight:600; color:var(--text-muted); padding:0.15rem 0.5rem; background:rgba(255,255,255,0.06); border-radius:4px;">${data.length} snapshots</span>
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">
+                        <i class="fas fa-arrow-up" style="color:#10b981;"></i> Increasing PCR = Bullish | <i class="fas fa-arrow-down" style="color:#ef4444;"></i> Decreasing PCR = Bearish
+                    </div>
+                </div>
+
+                <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+                    <table class="table pcr-snapshot-table" style="width:100%; border-collapse:collapse; font-size: 0.82rem;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.12); color: var(--text-muted); text-align: left; position: sticky; top: 0; background: rgba(15, 23, 42, 0.95); z-index: 2;">
+                                <th style="padding: 0.6rem 0.75rem;">Time</th>
+                                <th style="padding: 0.6rem 0.75rem; text-align: right;">PCR Value</th>
+                                <th style="padding: 0.6rem 0.75rem; text-align: center;">PCR Shift (Trend)</th>
+                                <th style="padding: 0.6rem 0.75rem; text-align: right;">Spot Price</th>
+                                <th style="padding: 0.6rem 0.75rem; text-align: center;">Spot Shift ($\Delta$)</th>
+                                <th style="padding: 0.6rem 0.75rem; text-align: center;">Market Bias</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+
+        for (let i = 0; i < reversed.length; i++) {
+            const cur = reversed[i];
+            const prev = (i < reversed.length - 1) ? reversed[i + 1] : null;
+
+            const pcrVal = cur.value;
+            const pcrDiff = prev ? (pcrVal - prev.value) : 0;
+
+            const spotVal = cur.spot || 0;
+            const prevSpot = prev ? (prev.spot || 0) : 0;
+            const spotDiff = (spotVal && prevSpot) ? (spotVal - prevSpot) : 0;
+
+            let pcrBadge = '= Stable';
+            let pcrColor = '#94a3b8';
+
+            if (pcrDiff > 0.0005) {
+                pcrBadge = `▲ +${pcrDiff.toFixed(4)} (Increasing)`;
+                pcrColor = '#10b981';
+            } else if (pcrDiff < -0.0005) {
+                pcrBadge = `▼ ${pcrDiff.toFixed(4)} (Decreasing)`;
+                pcrColor = '#ef4444';
+            }
+
+            let spotTrendColor = '#94a3b8';
+            let spotBadge = '0.00';
+            if (spotDiff > 0.05) {
+                spotTrendColor = '#10b981';
+                spotBadge = `▲ +${spotDiff.toFixed(1)}`;
+            } else if (spotDiff < -0.05) {
+                spotTrendColor = '#ef4444';
+                spotBadge = `▼ ${spotDiff.toFixed(1)}`;
+            }
+
+            const isBullish = pcrVal >= 1.0;
+            const biasLabel = isBullish ? 'BULLISH' : 'BEARISH';
+            const biasColor = isBullish ? '#10b981' : '#ef4444';
+            const biasBg = isBullish ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+
+            html += `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background='transparent'">
+                    <td style="padding: 0.55rem 0.75rem; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #f8fafc;">
+                        ${cur.timeStr || '--'}
+                    </td>
+                    <td style="padding: 0.55rem 0.75rem; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #38bdf8; font-size: 0.88rem;">
+                        ${pcrVal.toFixed(4)}
+                    </td>
+                    <td style="padding: 0.55rem 0.75rem; text-align: center; font-family: 'JetBrains Mono', monospace; font-weight: 700; color: ${pcrColor}; font-size: 0.82rem;">
+                        ${pcrBadge}
+                    </td>
+                    <td style="padding: 0.55rem 0.75rem; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #f8fafc;">
+                        ${spotVal ? '₹' + spotVal.toLocaleString() : '---'}
+                    </td>
+                    <td style="padding: 0.55rem 0.75rem; text-align: center; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: ${spotTrendColor}; font-size: 0.82rem;">
+                        ${spotBadge}
+                    </td>
+                    <td style="padding: 0.55rem 0.75rem; text-align: center;">
+                        <span style="display:inline-block; font-size:0.68rem; font-weight:700; padding:0.18rem 0.5rem; border-radius:4px; background:${biasBg}; color:${biasColor}; border: 1px solid ${biasColor}40;">
+                            ${biasLabel}
+                        </span>
+                    </td>
+                </tr>
+            `;
+        }
+
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+
+        container.innerHTML = html;
     },
 
     async shareTradeSignal(symbol, type, strike, price, margin, roi) {

@@ -1670,6 +1670,7 @@ const App = {
         const filterMode = this.scanLogFilter || 'all';
 
         const timeMap = {};
+        const lastTriggeredMins = {}; // Track symbol -> last triggered minute to enforce 30m cooling off
 
         symbols.forEach(sym => {
             const rawList = pcrHist[sym];
@@ -1695,6 +1696,8 @@ const App = {
                 const tickPrev = cleanList[i - 1]; // Single tick (5m)
 
                 const timeStr = cur.timeStr || '--';
+                const tickMins = this.parseTimeToMinutes(timeStr);
+
                 const pcrCur = cur.value;
                 const pcrPrev = prev.value;
                 const pcrDiff = pcrCur - pcrPrev;
@@ -1716,6 +1719,7 @@ const App = {
 
                 const pcrMultiplier = avgPcrDiff > 0 ? (Math.abs(singlePcrDiff) / avgPcrDiff) : 0;
                 const spotMultiplier = avgSpotDiff > 0 ? (Math.abs(singleSpotDiff) / avgSpotDiff) : 0;
+                const maxMult = Math.max(pcrMultiplier, spotMultiplier);
 
                 // 2. Minimum Volatility Floor:
                 // Ignore flat noise stocks where 15m price shift < 0.15% AND PCR shift < 0.5%
@@ -1725,9 +1729,6 @@ const App = {
                 // Must be trend-aligned, significant volatility, and both PCR & Spot multipliers >= 1.2x of day average!
                 const isDualSpike = (isBullishAligned || isBearishAligned) && isSignificantVolatility && (pcrMultiplier >= 1.2 && spotMultiplier >= 1.2);
 
-                const rawPowerScore = 40 + (pcrMultiplier * 6) + (spotMultiplier * 8) + (Math.abs(spotPct) * 15) + (Math.abs(pcrPct) * 3);
-                const powerScore = Math.min(99, Math.max(50, Math.round(rawPowerScore)));
-
                 const isPcrBull = pcrPct > 1.0;
                 const isPriceBull = spotPct > 0.5;
 
@@ -1735,6 +1736,13 @@ const App = {
                 const isPriceBear = spotPct < -0.5;
 
                 if (isPcrBull || isPriceBull || isPcrBear || isPriceBear || isDualSpike) {
+                    // 3. 30-Minute Symbol Cooling-Off Rule:
+                    // If this symbol already triggered a signal in the last 30 minutes, suppress it to prevent repeated clutter!
+                    if (lastTriggeredMins[sym] && (tickMins - lastTriggeredMins[sym]) < 30) {
+                        continue;
+                    }
+                    lastTriggeredMins[sym] = tickMins;
+
                     if (!timeMap[timeStr]) timeMap[timeStr] = [];
 
                     let type = 'NEUTRAL';
@@ -1779,7 +1787,11 @@ const App = {
                         tagColor = '#f59e0b';
                     }
 
-                    const score = Math.min(100, Math.round((Math.abs(spotPct) * 40) + (Math.abs(pcrPct) * 10) + (powerScore * 0.5)));
+                    // Percentage-First Power Score (Spot % delta is the primary driver!)
+                    const absSpotPct = Math.abs(spotPct);
+                    const absPcrPct = Math.abs(pcrPct);
+                    let rawScore = 30 + (absSpotPct * 30) + (absPcrPct * 4) + (maxMult * 3);
+                    const powerScore = Math.min(99, Math.max(50, Math.round(rawScore)));
 
                     timeMap[timeStr].push({
                         symbol: sym,
@@ -1797,7 +1809,7 @@ const App = {
                         pcrMultiplier,
                         spotMultiplier,
                         powerScore,
-                        score
+                        score: powerScore
                     });
                 }
             }

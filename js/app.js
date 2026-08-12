@@ -1814,8 +1814,27 @@ const App = {
 
     changePcrSymbol(symbol) {
         if (!symbol) return;
-        this.state.pcrAnalyticsSymbol = symbol;
-        this.renderPcrAnalyticsView(symbol);
+        const cleanSym = symbol.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
+        this.state.pcrAnalyticsSymbol = cleanSym;
+
+        // Immediately update search input placeholder
+        const input = document.getElementById('pcr-symbol-search');
+        if (input) {
+            input.value = '';
+            input.placeholder = `Search symbol (${cleanSym})...`;
+        }
+
+        // Instantly show loading indicator in canvas and snapshot table
+        const canvasContainer = document.getElementById('pcr-analytics-chart-canvas');
+        if (canvasContainer) {
+            canvasContainer.innerHTML = `<div style="text-align:center; padding: 4rem; color: #38bdf8; font-size: 0.9rem; font-weight: 700;"><i class="fas fa-spinner fa-spin"></i> Loading ${cleanSym} PCR Chart...</div>`;
+        }
+        const tableContainer = document.getElementById('pcr-snapshots-table-container');
+        if (tableContainer) {
+            tableContainer.innerHTML = `<div style="text-align:center; padding: 2rem; color: var(--text-muted); font-size: 0.85rem;"><i class="fas fa-spinner fa-spin"></i> Loading ${cleanSym} PCR intraday snapshots...</div>`;
+        }
+
+        this.renderPcrAnalyticsView(cleanSym);
     },
 
     refreshPcrAnalytics() {
@@ -2019,6 +2038,9 @@ const App = {
         // Fetch live top PCR & Option Chain summary
         const topData = (window.nseApi && typeof window.nseApi.getTopPCR === 'function') ? await window.nseApi.getTopPCR(cleanSym) : null;
 
+        // Race condition guard: exit if user switched symbols while fetching top PCR
+        if (cleanSym !== this.state.pcrAnalyticsSymbol) return;
+
         // Lot Size Dictionary
         const LOT_SIZES = {
             'NIFTY': 75, 'BANKNIFTY': 30, 'FINNIFTY': 65, 'MIDCPNIFTY': 120,
@@ -2037,6 +2059,9 @@ const App = {
 
         // Ensure intraday history is prefilled from Firebase
         await this.prefillIntradayPcrHistory(cleanSym);
+
+        // Race condition guard: exit if user switched symbols while prefilling history
+        if (cleanSym !== this.state.pcrAnalyticsSymbol) return;
 
         const currentHistory = this.state.pcrHistory[cleanSym] || [];
         const lastTick = currentHistory[currentHistory.length - 1];
@@ -2083,17 +2108,6 @@ const App = {
             this.recordPcr(cleanSym, parseFloat(topData.pcr), parseFloat(topData.spot) || 0);
         }
 
-        // Force fresh load from Firebase if local cache has fewer than 5 ticks
-        if (this.state.pcrHistory && this.state.pcrHistory[cleanSym] && this.state.pcrHistory[cleanSym].length < 5) {
-            delete this.state.pcrHistory[cleanSym];
-        }
-
-        // Ensure intraday history is prefilled from Firebase
-        await this.prefillIntradayPcrHistory(cleanSym);
-
-        // Race condition guard: exit if active symbol changed while async fetching
-        if (cleanSym !== this.state.pcrAnalyticsSymbol) return;
-
         // Render full-screen chart canvas & snapshots table
         this.renderPcrAnalyticsChartCanvas(cleanSym);
         this.renderPcrSnapshotsTable(cleanSym);
@@ -2112,6 +2126,9 @@ const App = {
         if (!container) return;
 
         const sym = (targetSymbol || this.state.pcrAnalyticsSymbol || this.state.activeSymbol || 'NIFTY').replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
+
+        // Strict guard: NEVER render if sym does not match the active pcrAnalyticsSymbol workspace
+        if (this.state.pcrAnalyticsSymbol && sym !== this.state.pcrAnalyticsSymbol) return;
 
         let rawList = [];
         if (this.state.pcrHistory && typeof this.state.pcrHistory === 'object' && !Array.isArray(this.state.pcrHistory)) {
@@ -2366,6 +2383,9 @@ const App = {
         if (!container) return;
 
         const sym = (targetSymbol || this.state.pcrAnalyticsSymbol || this.state.activeSymbol || 'NIFTY').replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
+
+        // Strict guard: NEVER render if sym does not match the active pcrAnalyticsSymbol workspace
+        if (this.state.pcrAnalyticsSymbol && sym !== this.state.pcrAnalyticsSymbol) return;
 
         let rawList = [];
         if (this.state.pcrHistory && typeof this.state.pcrHistory === 'object' && !Array.isArray(this.state.pcrHistory)) {

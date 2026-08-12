@@ -1805,7 +1805,11 @@ const App = {
             if (events.length === 0) return;
             totalEvents += events.length;
 
-            events.sort((a, b) => b.score - a.score);
+            if (filterMode === 'spike') {
+                events.sort((a, b) => b.maxMultiplier - a.maxMultiplier);
+            } else {
+                events.sort((a, b) => b.score - a.score);
+            }
 
             html += `
                 <div style="margin-bottom: 1rem; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 0.75rem 1rem;">

@@ -1708,15 +1708,25 @@ const App = {
                 // Single Tick Shift Analysis
                 const singlePcrDiff = pcrCur - tickPrev.value;
                 const singleSpotDiff = (spotCur && tickPrev.spot) ? (spotCur - tickPrev.spot) : 0;
-                const isSingleBothRisen = (singlePcrDiff > 0 && singleSpotDiff > 0);
-                const isSingleBothFallen = (singlePcrDiff < 0 && singleSpotDiff < 0);
+
+                // 1. Strict Dual Trend Alignment Guard:
+                // Single tick movement AND 15-minute trend MUST move in the exact same direction!
+                const isBullishAligned = (singleSpotDiff > 0 && spotDiff > 0) && (singlePcrDiff > 0 && pcrDiff > 0);
+                const isBearishAligned = (singleSpotDiff < 0 && spotDiff < 0) && (singlePcrDiff < 0 && pcrDiff < 0);
 
                 const pcrMultiplier = avgPcrDiff > 0 ? (Math.abs(singlePcrDiff) / avgPcrDiff) : 0;
                 const spotMultiplier = avgSpotDiff > 0 ? (Math.abs(singleSpotDiff) / avgSpotDiff) : 0;
-                const powerScore = this.calculateDualSpikePowerScore(pcrMultiplier, spotMultiplier);
 
-                // Both PCR and Price MUST have spiked above average together on the single tick!
-                const isDualSpike = (isSingleBothRisen || isSingleBothFallen) && (pcrMultiplier >= 1.2 && spotMultiplier >= 1.2);
+                // 2. Minimum Volatility Floor:
+                // Ignore flat noise stocks where 15m price shift < 0.15% AND PCR shift < 0.5%
+                const isSignificantVolatility = Math.abs(spotPct) >= 0.15 || Math.abs(pcrPct) >= 0.5;
+
+                // Genuine Dual Spike:
+                // Must be trend-aligned, significant volatility, and both PCR & Spot multipliers >= 1.2x of day average!
+                const isDualSpike = (isBullishAligned || isBearishAligned) && isSignificantVolatility && (pcrMultiplier >= 1.2 && spotMultiplier >= 1.2);
+
+                const rawPowerScore = 40 + (pcrMultiplier * 6) + (spotMultiplier * 8) + (Math.abs(spotPct) * 15) + (Math.abs(pcrPct) * 3);
+                const powerScore = Math.min(99, Math.max(50, Math.round(rawPowerScore)));
 
                 const isPcrBull = pcrPct > 1.0;
                 const isPriceBull = spotPct > 0.5;
@@ -1733,10 +1743,10 @@ const App = {
                     let tagColor = '';
 
                     if (isDualSpike && filterMode === 'spike') {
-                        type = isSingleBothRisen ? 'BULLISH' : 'BEARISH';
-                        tag = isSingleBothRisen ? '🚀 DUAL SURGE' : '📉 DUAL CRASH';
-                        tagBg = isSingleBothRisen ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)';
-                        tagColor = isSingleBothRisen ? '#10b981' : '#ef4444';
+                        type = isBullishAligned ? 'BULLISH' : 'BEARISH';
+                        tag = isBullishAligned ? '🚀 PURE DUAL SURGE' : '📉 PURE DUAL CRASH';
+                        tagBg = isBullishAligned ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)';
+                        tagColor = isBullishAligned ? '#10b981' : '#ef4444';
                     } else if (isPcrBull && isPriceBull) {
                         type = 'BULLISH';
                         tag = '🔥 DUAL SURGE';

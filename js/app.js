@@ -1707,9 +1707,10 @@ const App = {
 
                 const pcrMultiplier = avgPcrDiff > 0 ? (Math.abs(singlePcrDiff) / avgPcrDiff) : 0;
                 const spotMultiplier = avgSpotDiff > 0 ? (Math.abs(singleSpotDiff) / avgSpotDiff) : 0;
-                const maxMultiplier = Math.max(pcrMultiplier, spotMultiplier);
+                const combinedScore = (pcrMultiplier * spotMultiplier) * (pcrMultiplier + spotMultiplier);
 
-                const isSpike = (isSingleBothRisen || isSingleBothFallen) && (pcrMultiplier >= 1.5 || spotMultiplier >= 1.5);
+                // Both PCR and Price MUST have spiked above average together on the single tick!
+                const isDualSpike = (isSingleBothRisen || isSingleBothFallen) && (pcrMultiplier >= 1.2 && spotMultiplier >= 1.2);
 
                 const isPcrBull = pcrPct > 1.0;
                 const isPriceBull = spotPct > 0.5;
@@ -1717,7 +1718,7 @@ const App = {
                 const isPcrBear = pcrPct < -1.0;
                 const isPriceBear = spotPct < -0.5;
 
-                if (isPcrBull || isPriceBull || isPcrBear || isPriceBear || isSpike) {
+                if (isPcrBull || isPriceBull || isPcrBear || isPriceBear || isDualSpike) {
                     if (!timeMap[timeStr]) timeMap[timeStr] = [];
 
                     let type = 'NEUTRAL';
@@ -1725,11 +1726,13 @@ const App = {
                     let tagBg = '';
                     let tagColor = '';
 
-                    if (isSpike && filterMode === 'spike') {
+                    if (isDualSpike && filterMode === 'spike') {
                         type = isSingleBothRisen ? 'BULLISH' : 'BEARISH';
-                        tag = isSingleBothRisen ? `⚡ TICK RALLY (${maxMultiplier.toFixed(1)}x DAY AVG)` : `⚡ TICK DROP (${maxMultiplier.toFixed(1)}x DAY AVG)`;
-                        tagBg = isSingleBothRisen ? 'rgba(245, 158, 11, 0.25)' : 'rgba(239, 68, 68, 0.25)';
-                        tagColor = isSingleBothRisen ? '#f59e0b' : '#ef4444';
+                        tag = isSingleBothRisen 
+                            ? `🔥 DUAL TICK SURGE (${pcrMultiplier.toFixed(1)}x PCR | ${spotMultiplier.toFixed(1)}x Price)` 
+                            : `🔥 DUAL TICK CRASH (${pcrMultiplier.toFixed(1)}x PCR | ${spotMultiplier.toFixed(1)}x Price)`;
+                        tagBg = isSingleBothRisen ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)';
+                        tagColor = isSingleBothRisen ? '#10b981' : '#ef4444';
                     } else if (isPcrBull && isPriceBull) {
                         type = 'BULLISH';
                         tag = '🔥 DUAL SURGE';
@@ -1762,7 +1765,7 @@ const App = {
                         tagColor = '#f59e0b';
                     }
 
-                    const score = Math.min(100, Math.round((Math.abs(spotPct) * 40) + (Math.abs(pcrPct) * 10) + (maxMultiplier * 10)));
+                    const score = Math.min(100, Math.round((Math.abs(spotPct) * 40) + (Math.abs(pcrPct) * 10) + (combinedScore * 2)));
 
                     timeMap[timeStr].push({
                         symbol: sym,
@@ -1776,8 +1779,10 @@ const App = {
                         spotCur,
                         spotDiff,
                         spotPct,
-                        isSpike,
-                        maxMultiplier,
+                        isDualSpike,
+                        pcrMultiplier,
+                        spotMultiplier,
+                        combinedScore,
                         score
                     });
                 }
@@ -1800,13 +1805,13 @@ const App = {
             if (filterMode === 'bull') events = events.filter(e => e.type === 'BULLISH');
             else if (filterMode === 'bear') events = events.filter(e => e.type === 'BEARISH');
             else if (filterMode === 'dual') events = events.filter(e => e.tag.includes('DUAL'));
-            else if (filterMode === 'spike') events = events.filter(e => e.isSpike);
+            else if (filterMode === 'spike') events = events.filter(e => e.isDualSpike);
 
             if (events.length === 0) return;
             totalEvents += events.length;
 
             if (filterMode === 'spike') {
-                events.sort((a, b) => b.maxMultiplier - a.maxMultiplier);
+                events.sort((a, b) => b.combinedScore - a.combinedScore);
             } else {
                 events.sort((a, b) => b.score - a.score);
             }

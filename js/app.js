@@ -1616,41 +1616,16 @@ const App = {
         }
     },
 
-    // ===== DUAL MOMENTUM INTRADAY PCR + PRICE SCREENER (Dashboard) =====
-    pcrScreenerTab: 'bull', // 'bull' or 'bear'
-
-    switchPcrScreenerTab(tab) {
-        this.pcrScreenerTab = tab || 'bull';
-        const btnBull = document.getElementById('pcr-screener-btn-bull');
-        const btnBear = document.getElementById('pcr-screener-btn-bear');
-        
-        if (btnBull && btnBear) {
-            const isBull = this.pcrScreenerTab === 'bull';
-            btnBull.classList.toggle('active', isBull);
-            btnBear.classList.toggle('active', !isBull);
-            
-            btnBull.style.background = isBull ? 'rgba(16, 185, 129, 0.18)' : 'rgba(255,255,255,0.05)';
-            btnBull.style.borderColor = isBull ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255,255,255,0.1)';
-            btnBull.style.color = isBull ? '#10b981' : 'var(--text-muted)';
-
-            btnBear.style.background = !isBull ? 'rgba(239, 68, 68, 0.18)' : 'rgba(255,255,255,0.05)';
-            btnBear.style.borderColor = !isBull ? 'rgba(239, 68, 68, 0.4)' : 'rgba(255,255,255,0.1)';
-            btnBear.style.color = !isBull ? '#ef4444' : 'var(--text-muted)';
-        }
-        this.renderPcrIntradayScreener();
-    },
-
+    // ===== INTRADAY PCR & PRICE MOMENTUM RADAR (Dashboard) =====
     renderPcrIntradayScreener() {
         const container = document.getElementById('pcr-intraday-screener-content');
         if (!container) return;
 
-        const isBullTab = this.pcrScreenerTab !== 'bear';
-
-        // Read all stored PCR histories
         const pcrHist = this.state.pcrHistory || {};
         const symbols = Object.keys(pcrHist);
 
-        const items = [];
+        const bullList = [];
+        const bearList = [];
 
         symbols.forEach(sym => {
             const rawList = pcrHist[sym];
@@ -1660,166 +1635,121 @@ const App = {
             if (cleanList.length < 2) return;
 
             const latest = cleanList[cleanList.length - 1];
-            
-            // 15-Minute Window (3 ticks back)
             const tick15m = cleanList[Math.max(0, cleanList.length - 4)];
 
             const pcrCur = latest.value;
             const pcrPrev = tick15m.value;
             const pcrDiff = pcrCur - pcrPrev;
-            const pcrPct15m = pcrPrev > 0 ? ((pcrDiff / pcrPrev) * 100) : 0;
+            const pcrPct = pcrPrev > 0 ? ((pcrDiff / pcrPrev) * 100) : 0;
 
             const spotCur = latest.spot || 0;
             const spotPrev = tick15m.spot || 0;
             const spotDiff = (spotCur && spotPrev) ? (spotCur - spotPrev) : 0;
-            const spotPct15m = spotPrev > 0 ? ((spotDiff / spotPrev) * 100) : 0;
+            const spotPct = spotPrev > 0 ? ((spotDiff / spotPrev) * 100) : 0;
 
-            const isPcrBull = pcrPct15m > 1.0;
-            const isPriceBull = spotPct15m > 0.5;
+            const bullScore = (spotPct * 50) + (pcrPct * 8) + (pcrDiff * 200);
+            const bearScore = (-spotPct * 50) + (-pcrPct * 8) + (-pcrDiff * 200);
 
-            const isPcrBear = pcrPct15m < -1.0;
-            const isPriceBear = spotPct15m < -0.5;
-
-            // Screening Condition Check:
-            // Bullish Tab: PCR > 1.0% OR Price > 0.5% in 15 mins
-            // Bearish Tab: PCR < -1.0% OR Price < -0.5% in 15 mins
-            if (isBullTab) {
-                if (!isPcrBull && !isPriceBull) return;
-            } else {
-                if (!isPcrBear && !isPriceBear) return;
+            if (spotDiff > 0 || pcrDiff > 0) {
+                let tag = (spotDiff > 0 && pcrDiff > 0) ? '🔥 DUAL SURGE' : (pcrDiff > 0 ? '📈 PCR RALLY' : '⚡ PRICE UP');
+                let tagBg = (spotDiff > 0 && pcrDiff > 0) ? 'rgba(16, 185, 129, 0.25)' : (pcrDiff > 0 ? 'rgba(56, 189, 248, 0.2)' : 'rgba(245, 158, 11, 0.2)');
+                let tagColor = (spotDiff > 0 && pcrDiff > 0) ? '#10b981' : (pcrDiff > 0 ? '#38bdf8' : '#f59e0b');
+                bullList.push({ symbol: sym, pcrCur, pcrDiff, pcrPct, spotCur, spotDiff, spotPct, score: bullScore, tag, tagBg, tagColor, timeStr: latest.timeStr || '' });
             }
 
-            // Determine Trigger Badge
-            let triggerBadge = '';
-            let badgeBg = '';
-            let badgeColor = '';
-
-            if (isBullTab) {
-                if (isPcrBull && isPriceBull) {
-                    triggerBadge = '🔥 DUAL SURGE';
-                    badgeBg = 'rgba(16, 185, 129, 0.25)';
-                    badgeColor = '#10b981';
-                } else if (isPcrBull) {
-                    triggerBadge = `📈 PCR SURGE (+${pcrPct15m.toFixed(1)}%)`;
-                    badgeBg = 'rgba(56, 189, 248, 0.2)';
-                    badgeColor = '#38bdf8';
-                } else {
-                    triggerBadge = `⚡ PRICE BREAKOUT (+${spotPct15m.toFixed(1)}%)`;
-                    badgeBg = 'rgba(245, 158, 11, 0.2)';
-                    badgeColor = '#f59e0b';
-                }
-            } else {
-                if (isPcrBear && isPriceBear) {
-                    triggerBadge = '🔥 DUAL DROP';
-                    badgeBg = 'rgba(239, 68, 68, 0.25)';
-                    badgeColor = '#ef4444';
-                } else if (isPcrBear) {
-                    triggerBadge = `📉 PCR DROP (${pcrPct15m.toFixed(1)}%)`;
-                    badgeBg = 'rgba(239, 68, 68, 0.2)';
-                    badgeColor = '#ef4444';
-                } else {
-                    triggerBadge = `⚡ PRICE BREAKDOWN (${spotPct15m.toFixed(1)}%)`;
-                    badgeBg = 'rgba(245, 158, 11, 0.2)';
-                    badgeColor = '#f59e0b';
-                }
+            if (spotDiff < 0 || pcrDiff < 0) {
+                let tag = (spotDiff < 0 && pcrDiff < 0) ? '🔥 DUAL DROP' : (pcrDiff < 0 ? '📉 PCR DROP' : '⚡ PRICE DOWN');
+                let tagBg = (spotDiff < 0 && pcrDiff < 0) ? 'rgba(239, 68, 68, 0.25)' : (pcrDiff < 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)');
+                let tagColor = (spotDiff < 0 && pcrDiff < 0) ? '#ef4444' : (pcrDiff < 0 ? '#ef4444' : '#f59e0b');
+                bearList.push({ symbol: sym, pcrCur, pcrDiff, pcrPct, spotCur, spotDiff, spotPct, score: bearScore, tag, tagBg, tagColor, timeStr: latest.timeStr || '' });
             }
-
-            // Calculate Momentum Score (0 to 100)
-            const absSpot = Math.abs(spotPct15m);
-            const absPcr = Math.abs(pcrPct15m);
-            let rawScore = (absSpot * 40) + (absPcr * 10);
-            let score = Math.min(100, Math.max(15, Math.round(rawScore)));
-
-            items.push({
-                symbol: sym,
-                pcrCur,
-                pcrPrev,
-                pcrDiff,
-                pcrPct15m,
-                spotCur,
-                spotPrev,
-                spotDiff,
-                spotPct15m,
-                score,
-                triggerBadge,
-                badgeBg,
-                badgeColor,
-                timeStr: latest.timeStr || ''
-            });
         });
 
-        // Sort items by Score descending
-        items.sort((a, b) => b.score - a.score);
+        bullList.sort((a, b) => b.score - a.score);
+        bearList.sort((a, b) => b.score - a.score);
 
-        if (items.length === 0) {
+        const topBull = bullList.slice(0, 5);
+        const topBear = bearList.slice(0, 5);
+
+        if (topBull.length === 0 && topBear.length === 0) {
             container.innerHTML = `
-                <div style="text-align:center; padding: 2rem 1rem; color: var(--text-muted); font-size: 0.85rem; background: rgba(15, 23, 42, 0.4); border-radius: 10px; border: 1px dashed rgba(255,255,255,0.08);">
-                    <i class="fas ${isBullTab ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down'}" style="font-size: 1.4rem; margin-bottom: 0.4rem; opacity: 0.6; color: ${isBullTab ? '#10b981' : '#ef4444'};"></i><br>
-                    No stocks matching <strong>${isBullTab ? 'Bullish (15m: PCR >1% OR Price >0.5%)' : 'Bearish (15m: PCR <-1% OR Price <-0.5%)'}</strong> criteria in current tick.<br>
-                    <span style="font-size: 0.75rem; opacity: 0.7;">Live intraday 15-minute momentum engine scans all 218 F&O symbols.</span>
+                <div style="text-align:center; padding: 2rem; color: var(--text-muted); font-size: 0.85rem;">
+                    <i class="fas fa-satellite-dish fa-spin" style="font-size: 1.5rem; color: #38bdf8; margin-bottom: 0.5rem;"></i><br>
+                    Connecting to live intraday market stream for 218 F&O symbols...
                 </div>
             `;
             return;
         }
 
-        // Render Cards Grid
-        let html = `<div class="pcr-screener-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.85rem;">`;
+        const renderRows = (list, isBull) => {
+            if (list.length === 0) return `<div style="text-align:center; padding:1.5rem; color:var(--text-muted); font-size:0.78rem;">No active ${isBull ? 'bullish' : 'bearish'} shifts detected in current 15m window.</div>`;
 
-        items.slice(0, 12).forEach(item => {
-            const pcrDiffStr = (item.pcrDiff > 0 ? '+' : '') + item.pcrDiff.toFixed(4);
-            const pcrPctStr = (item.pcrPct15m > 0 ? '+' : '') + item.pcrPct15m.toFixed(2) + '%';
-            const spotDiffStr = (item.spotDiff > 0 ? '+' : '') + item.spotDiff.toFixed(2);
-            const spotPctStr = (item.spotPct15m > 0 ? '+' : '') + item.spotPct15m.toFixed(2) + '%';
+            return list.map((item, idx) => {
+                const pcrDiffStr = (item.pcrDiff > 0 ? '+' : '') + item.pcrDiff.toFixed(4);
+                const spotDiffStr = (item.spotDiff > 0 ? '+' : '') + item.spotDiff.toFixed(2);
+                const spotPctStr = (item.spotPct > 0 ? '+' : '') + item.spotPct.toFixed(2) + '%';
 
-            html += `
-                <div class="pcr-screener-item-card" onclick="App.switchView('pcr-analytics'); App.changePcrSymbol('${item.symbol}');" 
-                     style="background: rgba(15, 23, 42, 0.85); border: 1px solid ${item.badgeColor}40; border-radius: 10px; padding: 0.85rem 1rem; cursor: pointer; transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;"
-                     onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 20px rgba(0,0,0,0.35)';"
-                     onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
-                    
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-                        <div style="font-weight: 700; font-size: 0.95rem; color: #f8fafc; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
-                            ${item.symbol}
-                            <span style="font-size: 0.6rem; padding: 0.12rem 0.4rem; border-radius: 4px; font-weight: 800; background: ${item.badgeBg}; color: ${item.badgeColor}; border: 1px solid ${item.badgeColor}50;">
-                                ${item.triggerBadge}
-                            </span>
-                        </div>
-                        <div style="font-size: 0.85rem; font-weight: 800; font-family: 'JetBrains Mono', monospace; color: ${item.badgeColor}; background: rgba(255,255,255,0.05); padding: 0.2rem 0.5rem; border-radius: 6px;">
-                            ${item.score}<span style="font-size: 0.65rem; opacity: 0.7;">/100</span>
-                        </div>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; background: rgba(0,0,0,0.25); padding: 0.5rem 0.6rem; border-radius: 6px; font-size: 0.78rem;">
-                        <div>
-                            <div style="color: var(--text-muted); font-size: 0.68rem; margin-bottom: 0.1rem;">Spot Price (15m)</div>
-                            <div style="font-weight: 700; color: #f8fafc; font-family: 'JetBrains Mono', monospace;">
-                                ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}
+                return `
+                    <div class="radar-row" onclick="App.switchView('pcr-analytics'); App.changePcrSymbol('${item.symbol}');"
+                         style="display: flex; align-items: center; justify-content: space-between; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 0.6rem 0.85rem; cursor: pointer; transition: all 0.18s;"
+                         onmouseover="this.style.borderColor='${isBull ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)'}'; this.style.transform='translateX(${isBull ? '3px' : '-3px'})';"
+                         onmouseout="this.style.borderColor='rgba(255,255,255,0.06)'; this.style.transform='none';">
+                        
+                        <div style="display: flex; align-items: center; gap: 0.6rem;">
+                            <div style="width: 22px; height: 22px; border-radius: 50%; background: ${isBull ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}; color: ${isBull ? '#10b981' : '#ef4444'}; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.72rem;">
+                                #${idx + 1}
                             </div>
-                            <div style="font-size: 0.7rem; font-weight: 700; color: ${item.spotDiff >= 0 ? '#10b981' : '#ef4444'};">
-                                ${spotDiffStr} (${spotPctStr})
+                            <div>
+                                <div style="font-weight: 700; color: #f8fafc; font-size: 0.88rem; display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
+                                    ${item.symbol}
+                                    <span style="font-size: 0.58rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 800; background: ${item.tagBg}; color: ${item.tagColor}; border: 1px solid ${item.tagColor}40;">
+                                        ${item.tag}
+                                    </span>
+                                </div>
+                                <div style="font-size: 0.7rem; color: var(--text-muted);">
+                                    Spot: <strong style="color: #f8fafc;">₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}</strong> <span style="color: ${item.spotDiff >= 0 ? '#10b981' : '#ef4444'}; font-weight:700;">(${spotDiffStr} | ${spotPctStr})</span>
+                                </div>
                             </div>
                         </div>
+
                         <div style="text-align: right;">
-                            <div style="color: var(--text-muted); font-size: 0.68rem; margin-bottom: 0.1rem;">PCR Ratio (15m)</div>
-                            <div style="font-weight: 700; color: #38bdf8; font-family: 'JetBrains Mono', monospace;">
+                            <div style="font-size: 0.85rem; font-weight: 800; font-family: 'JetBrains Mono', monospace; color: #38bdf8;">
                                 ${item.pcrCur.toFixed(4)}
                             </div>
-                            <div style="font-size: 0.7rem; font-weight: 700; color: ${item.pcrDiff >= 0 ? '#10b981' : '#ef4444'};">
-                                ${pcrDiffStr} (${pcrPctStr})
+                            <div style="font-size: 0.7rem; font-weight: 700; color: ${isBull ? '#10b981' : '#ef4444'}; font-family: 'JetBrains Mono', monospace;">
+                                15m: ${pcrDiffStr}
                             </div>
                         </div>
                     </div>
+                `;
+            }).join('');
+        };
 
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.55rem; font-size: 0.7rem; color: var(--text-muted);">
-                        <span><i class="far fa-clock"></i> ${item.timeStr || '15m Tick'}</span>
-                        <span style="color: #38bdf8; font-weight: 600;">View Chart →</span>
+        container.innerHTML = `
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 1rem;">
+                <!-- Left: Bullish Leaders -->
+                <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 10px; padding: 0.85rem 1rem;">
+                    <div style="font-weight: 700; color: #10b981; font-size: 0.88rem; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;">
+                        <span><i class="fas fa-arrow-trend-up"></i> 🟢 Top 5 Bullish Momentum Leaders</span>
+                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(16, 185, 129, 0.15); border-radius: 4px; color: #10b981; font-weight:800;">15M DRIFT</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        ${renderRows(topBull, true)}
                     </div>
                 </div>
-            `;
-        });
 
-        html += `</div>`;
-        container.innerHTML = html;
+                <!-- Right: Bearish Leaders -->
+                <div style="background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 10px; padding: 0.85rem 1rem;">
+                    <div style="font-weight: 700; color: #ef4444; font-size: 0.88rem; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;">
+                        <span><i class="fas fa-arrow-trend-down"></i> 🔴 Top 5 Bearish Momentum Leaders</span>
+                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(239, 68, 68, 0.15); border-radius: 4px; color: #ef4444; font-weight:800;">15M DRIFT</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        ${renderRows(topBear, false)}
+                    </div>
+                </div>
+            </div>
+        `;
     },
 
     // ===== FULL-SCREEN PCR ANALYTICS & OI TREND WORKSPACE =====

@@ -5,17 +5,16 @@
 
 class NSEApi {
     constructor() {
+        const isCapacitor = !!(window.Capacitor || window.location.protocol === 'capacitor:' || window.location.href.includes('android_asset'));
         const host = window.location.hostname;
-        const isLocal = host === 'localhost' ||
-            host === '127.0.0.1' ||
-            window.location.protocol === 'file:' ||
-            /^192\.168\./.test(host) ||
-            /^10\./.test(host) ||
-            /^172\.(1[6-9]|2[0-9]|3[01])\./.test(host) ||
-            host.endsWith('.local');
+        const isLocalDevServer = !isCapacitor && (host === 'localhost' || host === '127.0.0.1' || /^192\.168\./.test(host) || /^10\./.test(host) || host.endsWith('.local'));
         
-        // Dynamically resolve proxy host to support local network devices (like Android/iOS phones on the same Wi-Fi)
-        this.proxyUrl = isLocal ? `${window.location.protocol}//${window.location.host}` : '';
+        // Use local dev server if running node server locally on desktop, otherwise use Render cloud worker proxy
+        if (isLocalDevServer && window.location.port) {
+            this.proxyUrl = `${window.location.protocol}//${window.location.host}`;
+        } else {
+            this.proxyUrl = 'https://destrade-market-worker.onrender.com';
+        }
         this._cache = new Map();
         this._cacheTTL = 800; // 0.8s cache TTL for 1s real-time streaming
         this.fnoSymbols = []; // Now populated dynamically

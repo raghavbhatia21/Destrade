@@ -958,62 +958,75 @@ const App = {
         document.querySelectorAll('.oc-header-puts').forEach(c => c.colSpan = colspan);
     },
 
+    getISTInfo(dateObj) {
+        const d = dateObj || new Date();
+        const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+        const timeStr = d.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
+        
+        const parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Asia/Kolkata',
+            hour: 'numeric',
+            minute: 'numeric',
+            hour12: false
+        }).formatToParts(d);
+        
+        let hour = 0, min = 0;
+        parts.forEach(p => {
+            if (p.type === 'hour') hour = parseInt(p.value, 10);
+            if (p.type === 'minute') min = parseInt(p.value, 10);
+        });
+
+        const dayName = d.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'short' });
+        const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(dayName);
+        
+        return { dateStr, timeStr, hour, min, day, totalMin: (hour * 60) + min };
+    },
+
     getISTDate() {
         return new Date();
     },
 
-    getISTDate() {
-        const d = new Date();
-        const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
-        return new Date(utc + (5.5 * 60 * 60 * 1000));
-    },
-
     getISTDateStr(dateObj) {
-        const d = dateObj || this.getISTDate();
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
+        const target = dateObj || new Date();
+        return target.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     },
 
     getISTTimeString(dateObj) {
-        const d = dateObj || this.getISTDate();
-        return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        const target = dateObj || new Date();
+        return target.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
     },
 
-    isWeekend(istDate = this.getISTDate()) {
-        const day = istDate.getDay();
-        return day === 0 || day === 6; // 0 = Sunday, 6 = Saturday
+    isWeekend(istDate = new Date()) {
+        const info = this.getISTInfo(istDate);
+        return info.day === 0 || info.day === 6;
     },
 
     getLastTradingDateStr(fromDateObj) {
-        const d = fromDateObj ? new Date(fromDateObj.getTime()) : this.getISTDate();
+        const d = fromDateObj ? new Date(fromDateObj.getTime()) : new Date();
         d.setDate(d.getDate() - 1);
-        while (d.getDay() === 0 || d.getDay() === 6) { // Skip Saturday and Sunday
+        let info = this.getISTInfo(d);
+        while (info.day === 0 || info.day === 6) {
             d.setDate(d.getDate() - 1);
+            info = this.getISTInfo(d);
         }
-        return this.getISTDateStr(d);
+        return info.dateStr;
     },
 
     getTargetTradingDateStr() {
-        const ist = this.getISTDate();
-        const day = ist.getDay();
-        const hour = ist.getHours();
-        const min = ist.getMinutes();
-        const totalMin = (hour * 60) + min;
+        const info = this.getISTInfo();
 
         // Weekend (Saturday or Sunday) -> Use last Friday
-        if (day === 0 || day === 6) {
-            return this.getLastTradingDateStr(ist);
+        if (info.day === 0 || info.day === 6) {
+            return this.getLastTradingDateStr();
         }
 
         // Before 09:15 AM IST on a weekday -> Use previous trading day
-        if (totalMin < (9 * 60 + 15)) {
-            return this.getLastTradingDateStr(ist);
+        if (info.totalMin < (9 * 60 + 15)) {
+            return this.getLastTradingDateStr();
         }
 
         // During/After 09:15 AM IST on a weekday -> Use today
-        return this.getISTDateStr(ist);
+        return info.dateStr;
     },
 
     initFirebaseTimeEngine(sym) {
@@ -1869,6 +1882,14 @@ const App = {
         // Render full-screen chart canvas & snapshots table
         this.renderPcrAnalyticsChartCanvas(cleanSym);
         this.renderPcrSnapshotsTable(cleanSym);
+
+        // Setup 15-second auto-refresh timer for PCR view
+        if (this._pcrAutoRefreshTimer) clearInterval(this._pcrAutoRefreshTimer);
+        this._pcrAutoRefreshTimer = setInterval(() => {
+            if (this.state.activeView === 'pcr-analytics' && !this._stopPolling) {
+                this.renderPcrAnalyticsView(cleanSym);
+            }
+        }, 15000);
     },
 
     renderPcrAnalyticsChartCanvas(targetSymbol) {

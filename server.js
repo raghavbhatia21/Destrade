@@ -37,17 +37,37 @@ let lastSyncStatus = {
     marketStatus: 'Closed'
 };
 
-function getISTDate() {
+function getISTInfo() {
     const d = new Date();
-    const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
-    return new Date(utc + (5.5 * 60 * 60 * 1000));
+    const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const timeStr = d.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
+    
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Kolkata',
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: false
+    }).formatToParts(d);
+    
+    let hour = 0, min = 0;
+    parts.forEach(p => {
+        if (p.type === 'hour') hour = parseInt(p.value, 10);
+        if (p.type === 'minute') min = parseInt(p.value, 10);
+    });
+
+    const dayName = d.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'short' });
+    const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(dayName);
+    
+    return { dateStr, timeStr, hour, min, day, totalMin: (hour * 60) + min, iso: d.toISOString() };
+}
+
+function getISTDate() {
+    return new Date();
 }
 
 function getISTDateStr(d) {
-    const year = d.getUTCFullYear();
-    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(d.getUTCDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    const target = d || new Date();
+    return target.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 }
 
 function fetchUrl(url) {
@@ -178,21 +198,15 @@ async function fetchOptionChainPCR(symbol) {
 }
 
 async function executeMarketSync() {
-    const ist = getISTDate();
-    const day = ist.getDay();
-    const hour = ist.getHours();
-    const min = ist.getMinutes();
-    const totalMin = (hour * 60) + min;
+    const istInfo = getISTInfo();
+    const { day, totalMin, dateStr, timeStr, iso } = istInfo;
 
-    const dateStr = getISTDateStr(ist);
-    const timeStr = ist.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-    console.log(`\n⏱️ [24/7 Cloud Worker] IST Time: ${dateStr} ${timeStr} (Day: ${day})`);
+    console.log(`\n⏱️ [24/7 Cloud Worker] IST Time: ${dateStr} ${timeStr} (Day: ${day}, TotalMin: ${totalMin})`);
 
     // Check Weekend
     if (day === 0 || day === 6) {
         console.log('🌴 Market Closed (Weekend). Skipping sync.');
-        lastSyncStatus = { lastRun: ist.toISOString(), status: 'Market Closed (Weekend)', dateStr, symbolsSynced: 0 };
+        lastSyncStatus = { lastRun: iso, status: 'Market Closed (Weekend)', dateStr, symbolsSynced: 0 };
         await firebasePut('/cron_status.json', lastSyncStatus);
         return;
     }
@@ -203,7 +217,7 @@ async function executeMarketSync() {
 
     if (totalMin < marketStart || totalMin > marketEnd) {
         console.log('🌙 Outside Market Hours (09:15 - 15:30 IST). Skipping sync.');
-        lastSyncStatus = { lastRun: ist.toISOString(), status: 'Outside Market Hours', dateStr, symbolsSynced: 0 };
+        lastSyncStatus = { lastRun: iso, status: 'Outside Market Hours', dateStr, symbolsSynced: 0 };
         await firebasePut('/cron_status.json', lastSyncStatus);
         return;
     }

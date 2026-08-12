@@ -1719,15 +1719,16 @@ const App = {
 
                 const pcrMultiplier = avgPcrDiff > 0 ? (Math.abs(singlePcrDiff) / avgPcrDiff) : 0;
                 const spotMultiplier = avgSpotDiff > 0 ? (Math.abs(singleSpotDiff) / avgSpotDiff) : 0;
-                const maxMult = Math.max(pcrMultiplier, spotMultiplier);
+                const avgMultiplier = (pcrMultiplier + spotMultiplier) / 2;
 
-                // 2. Minimum Volatility Floor:
-                // Ignore flat noise stocks where 15m price shift < 0.15% AND PCR shift < 0.5%
-                const isSignificantVolatility = Math.abs(spotPct) >= 0.15 || Math.abs(pcrPct) >= 0.5;
+                // 2. Strict PCR Floor Guard & Volatility Floor:
+                // PCR MUST have a real feelable movement (>= 0.8% PCR change or >= 0.003 absolute shift)!
+                const isSignificantPcr = Math.abs(pcrPct) >= 0.8 || Math.abs(pcrDiff) >= 0.003;
+                const isSignificantSpot = Math.abs(spotPct) >= 0.15;
 
                 // Genuine Dual Spike:
-                // Must be trend-aligned, significant volatility, and both PCR & Spot multipliers >= 1.2x of day average!
-                const isDualSpike = (isBullishAligned || isBearishAligned) && isSignificantVolatility && (pcrMultiplier >= 1.2 && spotMultiplier >= 1.2);
+                // Must be trend-aligned, feelable PCR shift, significant price movement, and both PCR & Spot multipliers >= 1.2x of day average!
+                const isDualSpike = (isBullishAligned || isBearishAligned) && isSignificantPcr && isSignificantSpot && (pcrMultiplier >= 1.2 && spotMultiplier >= 1.2);
 
                 const isPcrBull = pcrPct > 1.0;
                 const isPriceBull = spotPct > 0.5;
@@ -1787,10 +1788,12 @@ const App = {
                         tagColor = '#f59e0b';
                     }
 
-                    // Percentage-First Power Score (Spot % delta is the primary driver!)
+                    // HARMONIC DUAL SCORE: Geometric mean of Spot % AND PCR %!
+                    // Both MUST move strongly together to achieve a high score!
                     const absSpotPct = Math.abs(spotPct);
                     const absPcrPct = Math.abs(pcrPct);
-                    let rawScore = 30 + (absSpotPct * 30) + (absPcrPct * 4) + (maxMult * 3);
+                    const harmonicPct = Math.sqrt(absSpotPct * absPcrPct);
+                    let rawScore = 45 + (harmonicPct * 22) + (avgMultiplier * 4);
                     const powerScore = Math.min(99, Math.max(50, Math.round(rawScore)));
 
                     timeMap[timeStr].push({

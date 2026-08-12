@@ -1617,24 +1617,31 @@ const App = {
     },
 
     // ===== DUAL MOMENTUM INTRADAY PCR + PRICE SCREENER (Dashboard) =====
-    pcrScreenerTab: 'bull',
+    pcrScreenerTab: 'explosive', // 'explosive', 'bull', or 'bear'
 
     switchPcrScreenerTab(tab) {
-        this.pcrScreenerTab = tab || 'bull';
+        this.pcrScreenerTab = tab || 'explosive';
+        const btnExplosive = document.getElementById('pcr-screener-btn-explosive');
         const btnBull = document.getElementById('pcr-screener-btn-bull');
         const btnBear = document.getElementById('pcr-screener-btn-bear');
-        if (btnBull && btnBear) {
-            const isBull = this.pcrScreenerTab === 'bull';
-            btnBull.classList.toggle('active', isBull);
-            btnBear.classList.toggle('active', !isBull);
+        
+        if (btnExplosive && btnBull && btnBear) {
+            const mode = this.pcrScreenerTab;
+            btnExplosive.classList.toggle('active', mode === 'explosive');
+            btnBull.classList.toggle('active', mode === 'bull');
+            btnBear.classList.toggle('active', mode === 'bear');
             
-            btnBull.style.background = isBull ? 'rgba(16, 185, 129, 0.18)' : 'rgba(255,255,255,0.05)';
-            btnBull.style.borderColor = isBull ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255,255,255,0.1)';
-            btnBull.style.color = isBull ? '#10b981' : 'var(--text-muted)';
+            btnExplosive.style.background = mode === 'explosive' ? 'rgba(245, 158, 11, 0.22)' : 'rgba(255,255,255,0.05)';
+            btnExplosive.style.borderColor = mode === 'explosive' ? 'rgba(245, 158, 11, 0.5)' : 'rgba(255,255,255,0.1)';
+            btnExplosive.style.color = mode === 'explosive' ? '#f59e0b' : 'var(--text-muted)';
 
-            btnBear.style.background = !isBull ? 'rgba(239, 68, 68, 0.18)' : 'rgba(255,255,255,0.05)';
-            btnBear.style.borderColor = !isBull ? 'rgba(239, 68, 68, 0.4)' : 'rgba(255,255,255,0.1)';
-            btnBear.style.color = !isBull ? '#ef4444' : 'var(--text-muted)';
+            btnBull.style.background = mode === 'bull' ? 'rgba(16, 185, 129, 0.18)' : 'rgba(255,255,255,0.05)';
+            btnBull.style.borderColor = mode === 'bull' ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255,255,255,0.1)';
+            btnBull.style.color = mode === 'bull' ? '#10b981' : 'var(--text-muted)';
+
+            btnBear.style.background = mode === 'bear' ? 'rgba(239, 68, 68, 0.18)' : 'rgba(255,255,255,0.05)';
+            btnBear.style.borderColor = mode === 'bear' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(255,255,255,0.1)';
+            btnBear.style.color = mode === 'bear' ? '#ef4444' : 'var(--text-muted)';
         }
         this.renderPcrIntradayScreener();
     },
@@ -1643,7 +1650,7 @@ const App = {
         const container = document.getElementById('pcr-intraday-screener-content');
         if (!container) return;
 
-        const isBull = this.pcrScreenerTab !== 'bear';
+        const mode = this.pcrScreenerTab || 'explosive';
 
         // Read all stored PCR histories
         const pcrHist = this.state.pcrHistory || {};
@@ -1682,22 +1689,32 @@ const App = {
             const spotDiff = (spotCur && spotPrev) ? (spotCur - spotPrev) : 0;
             const spotPct = spotPrev > 0 ? ((spotDiff / spotPrev) * 100) : 0;
 
-            // Screening Condition Check:
-            // Bullish Surge: Both PCR is rising (pcrDiff > 0.0001) AND Spot Price is rising (spotDiff > 0)
-            // Bearish Shift: Both PCR is falling (pcrDiff < -0.0001) AND Spot Price is falling (spotDiff < 0)
-            if (isBull) {
-                if (pcrDiff <= 0.0002 || spotDiff <= 0) return;
+            // Compute 30-min slope acceleration for steep parabolic wave matching
+            const past30m = cleanList[Math.max(0, cleanList.length - 6)];
+            const pcrDiff30m = past30m ? (pcrCur - past30m.value) : pcrDiff;
+            const pcrPct30m = (past30m && past30m.value > 0) ? ((pcrDiff30m / past30m.value) * 100) : pcrPct;
+            const spotDiff30m = (past30m && past30m.spot) ? (spotCur - past30m.spot) : spotDiff;
+            const spotPct30m = (past30m && past30m.spot > 0) ? ((spotDiff30m / past30m.spot) * 100) : spotPct;
+
+            // Screening Filter Modes:
+            if (mode === 'explosive') {
+                // Explosive Wave Surge: Steep Parabolic Rise in BOTH PCR and Price!
+                if (pcrPct30m < 1.2 || spotPct30m < 0.15 || pcrDiff <= 0) return;
+            } else if (mode === 'bull') {
+                // Bullish Surge: Both PCR is rising AND Spot Price is rising
+                if (pcrDiff <= 0.0001 || spotDiff <= 0) return;
             } else {
-                if (pcrDiff >= -0.0002 || spotDiff >= 0) return;
+                // Bearish Shift: Both PCR is falling AND Spot Price is falling
+                if (pcrDiff >= -0.0001 || spotDiff >= 0) return;
             }
 
-            // Calculate Composite Momentum Score (0 to 100)
-            const absSpotPct = Math.abs(spotPct);
-            const absPcrPct = Math.abs(pcrPct);
-            const absPcrDiff = Math.abs(pcrDiff);
+            // Calculate Wave Momentum Velocity Score (0 to 100)
+            const absSpotPct = Math.abs(spotPct30m);
+            const absPcrPct = Math.abs(pcrPct30m);
+            const absPcrDiff = Math.abs(pcrDiff30m);
 
-            let rawScore = (absSpotPct * 40) + (absPcrPct * 25) + ((absPcrDiff / 0.04) * 35);
-            let score = Math.min(100, Math.max(10, Math.round(rawScore)));
+            let rawScore = (absSpotPct * 30) + (absPcrPct * 4) + (absPcrDiff * 400);
+            let score = Math.min(100, Math.max(15, Math.round(rawScore)));
 
             items.push({
                 symbol: sym,
@@ -1705,56 +1722,65 @@ const App = {
                 pcrPrev,
                 pcrDiff,
                 pcrPct,
+                pcrPct30m,
                 spotCur,
                 spotPrev,
                 spotDiff,
                 spotPct,
+                spotPct30m,
                 score,
-                timeStr: latest.timeStr || ''
+                timeStr: latest.timeStr || '',
+                cleanList: cleanList.slice(-20) // Last 20 ticks for mini wave sparkline!
             });
         });
 
-        // Sort items by Composite Score descending
+        // Sort items by Score descending
         items.sort((a, b) => b.score - a.score);
 
         if (items.length === 0) {
+            const isBear = mode === 'bear';
+            const label = mode === 'explosive' 
+                ? 'Explosive Wave Surge (Steep PCR ↑↑ & Price ↑↑)' 
+                : (isBear ? 'Bearish Shift (PCR ↓ & Price ↓)' : 'Bullish Surge (PCR ↑ & Price ↑)');
+            
             container.innerHTML = `
                 <div style="text-align:center; padding: 2rem 1rem; color: var(--text-muted); font-size: 0.85rem; background: rgba(15, 23, 42, 0.4); border-radius: 10px; border: 1px dashed rgba(255,255,255,0.08);">
-                    <i class="fas ${isBull ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down'}" style="font-size: 1.4rem; margin-bottom: 0.4rem; opacity: 0.6; color: ${isBull ? '#10b981' : '#ef4444'};"></i><br>
-                    No stocks matching <strong>${isBull ? 'Bullish Surge (PCR ↑ & Price ↑)' : 'Bearish Shift (PCR ↓ & Price ↓)'}</strong> criteria in current tick.<br>
-                    <span style="font-size: 0.75rem; opacity: 0.7;">Live intraday dual-momentum engine scans all 218 F&O symbols.</span>
+                    <i class="fas ${mode === 'explosive' ? 'fa-rocket' : (isBear ? 'fa-arrow-trend-down' : 'fa-arrow-trend-up')}" style="font-size: 1.4rem; margin-bottom: 0.4rem; opacity: 0.6; color: ${mode === 'explosive' ? '#f59e0b' : (isBear ? '#ef4444' : '#10b981')};"></i><br>
+                    No stocks matching <strong>${label}</strong> criteria in current tick.<br>
+                    <span style="font-size: 0.75rem; opacity: 0.7;">Live intraday dual-momentum wave engine scans all 218 F&O symbols.</span>
                 </div>
             `;
             return;
         }
 
-        // Render Cards Grid
+        // Render Cards Grid with Mini Dual Sparkline Canvas!
         let html = `<div class="pcr-screener-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.85rem;">`;
 
-        items.slice(0, 12).forEach(item => {
+        items.slice(0, 12).forEach((item, idx) => {
             const isExplosive = item.score >= 80;
             const isHigh = item.score >= 60;
+            const isBull = mode !== 'bear';
             
-            const badgeText = isExplosive ? '🔥 EXPLOSIVE' : (isHigh ? '⚡ HIGH MOMENTUM' : '📈 BUILDING');
-            const badgeBg = isBull 
-                ? (isExplosive ? 'rgba(16, 185, 129, 0.25)' : 'rgba(16, 185, 129, 0.15)')
-                : (isExplosive ? 'rgba(239, 68, 68, 0.25)' : 'rgba(239, 68, 68, 0.15)');
-            const badgeColor = isBull ? '#10b981' : '#ef4444';
+            const badgeText = isExplosive ? '🚀 PARABOLIC WAVE' : (isHigh ? '🔥 HIGH VELOCITY' : '⚡ WAVE BREAKOUT');
+            const badgeBg = mode === 'explosive' 
+                ? 'rgba(245, 158, 11, 0.25)' 
+                : (isBull ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)');
+            const badgeColor = mode === 'explosive' ? '#f59e0b' : (isBull ? '#10b981' : '#ef4444');
 
             const pcrDiffStr = (item.pcrDiff > 0 ? '+' : '') + item.pcrDiff.toFixed(4);
             const spotDiffStr = (item.spotDiff > 0 ? '+' : '') + item.spotDiff.toFixed(2);
-            const spotPctStr = (item.spotPct > 0 ? '+' : '') + item.spotPct.toFixed(2) + '%';
+            const spotPctStr = (item.spotPct30m > 0 ? '+' : '') + item.spotPct30m.toFixed(2) + '%';
 
             html += `
                 <div class="pcr-screener-item-card" onclick="App.switchView('pcr-analytics'); App.changePcrSymbol('${item.symbol}');" 
-                     style="background: rgba(15, 23, 42, 0.75); border: 1px solid ${isBull ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)'}; border-radius: 10px; padding: 0.85rem 1rem; cursor: pointer; transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;"
-                     onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 20px rgba(0,0,0,0.3)';"
+                     style="background: rgba(15, 23, 42, 0.85); border: 1px solid ${badgeColor}40; border-radius: 10px; padding: 0.85rem 1rem; cursor: pointer; transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;"
+                     onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 20px rgba(0,0,0,0.35)';"
                      onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
                     
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
                         <div style="font-weight: 700; font-size: 0.95rem; color: #f8fafc; display: flex; align-items: center; gap: 0.4rem;">
                             ${item.symbol}
-                            <span style="font-size: 0.62rem; padding: 0.12rem 0.4rem; border-radius: 4px; font-weight: 800; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeColor}40;">
+                            <span style="font-size: 0.6rem; padding: 0.12rem 0.4rem; border-radius: 4px; font-weight: 800; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeColor}50;">
                                 ${badgeText}
                             </span>
                         </div>
@@ -1763,7 +1789,7 @@ const App = {
                         </div>
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; background: rgba(0,0,0,0.22); padding: 0.5rem 0.6rem; border-radius: 6px; font-size: 0.78rem;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; background: rgba(0,0,0,0.25); padding: 0.45rem 0.6rem; border-radius: 6px; font-size: 0.78rem;">
                         <div>
                             <div style="color: var(--text-muted); font-size: 0.68rem; margin-bottom: 0.1rem;">Spot Price</div>
                             <div style="font-weight: 700; color: #f8fafc; font-family: 'JetBrains Mono', monospace;">
@@ -1779,14 +1805,23 @@ const App = {
                                 ${item.pcrCur.toFixed(4)}
                             </div>
                             <div style="font-size: 0.7rem; font-weight: 700; color: ${item.pcrDiff >= 0 ? '#10b981' : '#ef4444'};">
-                                ${pcrDiffStr}
+                                ${pcrDiffStr} (+${item.pcrPct30m.toFixed(1)}%)
                             </div>
                         </div>
                     </div>
 
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.5rem; font-size: 0.7rem; color: var(--text-muted);">
+                    <!-- Mini Dual Sparkline Wave Canvas -->
+                    <div style="margin-top: 0.4rem; background: rgba(0,0,0,0.3); border-radius: 6px; padding: 0.25rem 0.4rem; position: relative;">
+                        <div style="display:flex; justify-content:space-between; font-size:0.62rem; color:var(--text-muted); margin-bottom: 0.15rem;">
+                            <span>Intraday Wave</span>
+                            <span><strong style="color:#38bdf8;">— PCR</strong> &nbsp;<strong style="color:#ef4444;">— Spot</strong></span>
+                        </div>
+                        <canvas id="screener-sparkline-${idx}" width="220" height="38" style="width:100%; height:38px; display:block;"></canvas>
+                    </div>
+
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.45rem; font-size: 0.7rem; color: var(--text-muted);">
                         <span><i class="far fa-clock"></i> ${item.timeStr || 'Intraday'}</span>
-                        <span style="color: #38bdf8; font-weight: 600;">View Chart →</span>
+                        <span style="color: #38bdf8; font-weight: 600;">View Full Chart →</span>
                     </div>
                 </div>
             `;
@@ -1794,6 +1829,82 @@ const App = {
 
         html += `</div>`;
         container.innerHTML = html;
+
+        // Render mini sparklines on each card!
+        items.slice(0, 12).forEach((item, idx) => {
+            this.renderScreenerCardSparkline(`screener-sparkline-${idx}`, item.cleanList);
+        });
+    },
+
+    renderScreenerCardSparkline(canvasId, ticks) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas || !Array.isArray(ticks) || ticks.length < 2) return;
+
+        const ctx = canvas.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = (rect.width || 220) * dpr;
+        canvas.height = (rect.height || 38) * dpr;
+        ctx.scale(dpr, dpr);
+
+        const width = rect.width || 220;
+        const height = rect.height || 38;
+
+        ctx.clearRect(0, 0, width, height);
+
+        const pcrVals = ticks.map(t => t.value).filter(v => typeof v === 'number' && !isNaN(v) && v > 0);
+        const spotVals = ticks.map(t => t.spot).filter(s => typeof s === 'number' && !isNaN(s) && s > 0);
+        if (pcrVals.length < 2) return;
+
+        const pcrMin = Math.min(...pcrVals);
+        const pcrMax = Math.max(...pcrVals);
+        const pcrRange = (pcrMax - pcrMin) || 0.001;
+
+        const hasSpot = spotVals.length >= 2;
+        const spotMin = hasSpot ? Math.min(...spotVals) : 0;
+        const spotMax = hasSpot ? Math.max(...spotVals) : 0;
+        const spotRange = (spotMax - spotMin) || 1;
+
+        const pts = ticks.map((t, i) => {
+            const x = (i / (ticks.length - 1)) * (width - 8) + 4;
+            const pRatio = (t.value - pcrMin) / pcrRange;
+            const pcrY = height - 4 - (pRatio * (height - 8));
+
+            let spotY = height / 2;
+            if (hasSpot && t.spot > 0) {
+                const sRatio = (t.spot - spotMin) / spotRange;
+                spotY = height - 4 - (sRatio * (height - 8));
+            }
+            return { x, pcrY, spotY };
+        });
+
+        // 1. Draw Spot Price Red Curve
+        if (hasSpot && pts.length > 1) {
+            ctx.beginPath();
+            ctx.lineWidth = 1.8;
+            ctx.strokeStyle = '#ef4444';
+            ctx.moveTo(pts[0].x, pts[0].spotY);
+            for (let i = 0; i < pts.length - 1; i++) {
+                const xc = (pts[i].x + pts[i + 1].x) / 2;
+                const yc = (pts[i].spotY + pts[i + 1].spotY) / 2;
+                ctx.quadraticCurveTo(pts[i].x, pts[i].spotY, xc, yc);
+            }
+            ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].spotY);
+            ctx.stroke();
+        }
+
+        // 2. Draw PCR Blue Curve
+        ctx.beginPath();
+        ctx.lineWidth = 2.0;
+        ctx.strokeStyle = '#38bdf8';
+        ctx.moveTo(pts[0].x, pts[0].pcrY);
+        for (let i = 0; i < pts.length - 1; i++) {
+            const xc = (pts[i].x + pts[i + 1].x) / 2;
+            const yc = (pts[i].pcrY + pts[i + 1].pcrY) / 2;
+            ctx.quadraticCurveTo(pts[i].x, pts[i].pcrY, xc, yc);
+        }
+        ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].pcrY);
+        ctx.stroke();
     },
 
     // ===== FULL-SCREEN PCR ANALYTICS & OI TREND WORKSPACE =====

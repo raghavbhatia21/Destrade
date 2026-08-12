@@ -107,12 +107,15 @@
                     <section class="card glass span-2" id="pcr-screener-card">
                         <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
                             <h3><i class="fas fa-bolt" style="color: #f59e0b;"></i> Dual Momentum PCR Screener</h3>
-                            <div class="screener-tabs" style="display: flex; gap: 0.4rem;">
-                                <button class="screener-tab-btn active" id="pcr-screener-btn-bull" onclick="App.switchPcrScreenerTab('bull')" style="padding: 0.35rem 0.75rem; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.18); color: #10b981; font-weight: 700; font-size: 0.78rem; cursor: pointer; transition: all 0.2s;">
-                                    <i class="fas fa-arrow-trend-up"></i> Bullish Surge (PCR ↑ & Price ↑)
+                            <div class="screener-tabs" style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                                <button class="screener-tab-btn active" id="pcr-screener-btn-explosive" onclick="App.switchPcrScreenerTab('explosive')" style="padding: 0.35rem 0.75rem; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.5); background: rgba(245, 158, 11, 0.2); color: #f59e0b; font-weight: 800; font-size: 0.78rem; cursor: pointer; transition: all 0.2s;">
+                                    <i class="fas fa-rocket"></i> Explosive Wave Surge (PCR ↑↑ & Price ↑↑)
+                                </button>
+                                <button class="screener-tab-btn" id="pcr-screener-btn-bull" onclick="App.switchPcrScreenerTab('bull')" style="padding: 0.35rem 0.75rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: var(--text-muted); font-weight: 700; font-size: 0.78rem; cursor: pointer; transition: all 0.2s;">
+                                    <i class="fas fa-arrow-trend-up"></i> Bullish Surge
                                 </button>
                                 <button class="screener-tab-btn" id="pcr-screener-btn-bear" onclick="App.switchPcrScreenerTab('bear')" style="padding: 0.35rem 0.75rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: var(--text-muted); font-weight: 700; font-size: 0.78rem; cursor: pointer; transition: all 0.2s;">
-                                    <i class="fas fa-arrow-trend-down"></i> Bearish Shift (PCR ↓ & Price ↓)
+                                    <i class="fas fa-arrow-trend-down"></i> Bearish Shift
                                 </button>
                             </div>
                         </div>

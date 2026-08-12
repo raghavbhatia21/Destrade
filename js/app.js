@@ -1655,6 +1655,12 @@ const App = {
         return hrs * 60 + mins;
     },
 
+    calculateDualSpikePowerScore(pcrMult, spotMult) {
+        const raw = (pcrMult * spotMult) * (pcrMult + spotMult);
+        let score = Math.round(40 + (Math.log2(raw + 1) * 8.5));
+        return Math.min(99, Math.max(50, score));
+    },
+
     renderScanHistoryTimeline() {
         const container = document.getElementById('scan-history-modal-body');
         if (!container) return;
@@ -1707,7 +1713,7 @@ const App = {
 
                 const pcrMultiplier = avgPcrDiff > 0 ? (Math.abs(singlePcrDiff) / avgPcrDiff) : 0;
                 const spotMultiplier = avgSpotDiff > 0 ? (Math.abs(singleSpotDiff) / avgSpotDiff) : 0;
-                const combinedScore = (pcrMultiplier * spotMultiplier) * (pcrMultiplier + spotMultiplier);
+                const powerScore = this.calculateDualSpikePowerScore(pcrMultiplier, spotMultiplier);
 
                 // Both PCR and Price MUST have spiked above average together on the single tick!
                 const isDualSpike = (isSingleBothRisen || isSingleBothFallen) && (pcrMultiplier >= 1.2 && spotMultiplier >= 1.2);
@@ -1728,9 +1734,7 @@ const App = {
 
                     if (isDualSpike && filterMode === 'spike') {
                         type = isSingleBothRisen ? 'BULLISH' : 'BEARISH';
-                        tag = isSingleBothRisen 
-                            ? `🔥 DUAL TICK SURGE (${pcrMultiplier.toFixed(1)}x PCR | ${spotMultiplier.toFixed(1)}x Price)` 
-                            : `🔥 DUAL TICK CRASH (${pcrMultiplier.toFixed(1)}x PCR | ${spotMultiplier.toFixed(1)}x Price)`;
+                        tag = isSingleBothRisen ? '🚀 DUAL SURGE' : '📉 DUAL CRASH';
                         tagBg = isSingleBothRisen ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)';
                         tagColor = isSingleBothRisen ? '#10b981' : '#ef4444';
                     } else if (isPcrBull && isPriceBull) {
@@ -1765,7 +1769,7 @@ const App = {
                         tagColor = '#f59e0b';
                     }
 
-                    const score = Math.min(100, Math.round((Math.abs(spotPct) * 40) + (Math.abs(pcrPct) * 10) + (combinedScore * 2)));
+                    const score = Math.min(100, Math.round((Math.abs(spotPct) * 40) + (Math.abs(pcrPct) * 10) + (powerScore * 0.5)));
 
                     timeMap[timeStr].push({
                         symbol: sym,
@@ -1782,7 +1786,7 @@ const App = {
                         isDualSpike,
                         pcrMultiplier,
                         spotMultiplier,
-                        combinedScore,
+                        powerScore,
                         score
                     });
                 }
@@ -1811,7 +1815,7 @@ const App = {
             totalEvents += events.length;
 
             if (filterMode === 'spike') {
-                events.sort((a, b) => b.combinedScore - a.combinedScore);
+                events.sort((a, b) => b.powerScore - a.powerScore);
             } else {
                 events.sort((a, b) => b.score - a.score);
             }
@@ -1831,6 +1835,10 @@ const App = {
                 const spotDiffStr = (e.spotDiff > 0 ? '+' : '') + e.spotDiff.toFixed(2);
                 const spotPctStr = (e.spotPct > 0 ? '+' : '') + Number(e.spotPct).toFixed(2) + '%';
 
+                const scorePill = filterMode === 'spike' 
+                    ? `<span style="font-family:'JetBrains Mono',monospace; font-weight:800; font-size:0.75rem; color:${e.tagColor}; background:${e.tagBg}; padding:0.15rem 0.45rem; border-radius:6px; border:1px solid ${e.tagColor}50;">${e.powerScore}<span style="font-size:0.6rem; opacity:0.7;">/100</span></span>`
+                    : `<span style="font-size: 0.55rem; padding: 0.08rem 0.35rem; border-radius: 3px; font-weight: 800; background: ${e.tagBg}; color: ${e.tagColor};">${e.tag}</span>`;
+
                 html += `
                     <div onclick="document.getElementById('scan-history-modal').classList.remove('active'); App.switchView('pcr-analytics'); App.changePcrSymbol('${e.symbol}');"
                          style="background: rgba(0,0,0,0.3); border: 1px solid ${e.tagColor}30; border-radius: 6px; padding: 0.5rem 0.65rem; cursor: pointer; transition: all 0.18s;"
@@ -1838,12 +1846,11 @@ const App = {
                          onmouseout="this.style.borderColor='${e.tagColor}30'; this.style.transform='none';">
                         
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;">
-                            <div style="font-weight: 700; color: #f8fafc; font-size: 0.85rem;">
+                            <div style="font-weight: 700; color: #f8fafc; font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem;">
                                 ${e.symbol}
+                                ${filterMode === 'spike' ? `<span style="font-size: 0.55rem; padding: 0.08rem 0.35rem; border-radius: 3px; font-weight: 800; background: ${e.tagBg}; color: ${e.tagColor};">${e.tag}</span>` : ''}
                             </div>
-                            <span style="font-size: 0.55rem; padding: 0.08rem 0.35rem; border-radius: 3px; font-weight: 800; background: ${e.tagBg}; color: ${e.tagColor};">
-                                ${e.tag}
-                            </span>
+                            ${scorePill}
                         </div>
 
                         <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.7rem; color: var(--text-muted);">

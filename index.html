@@ -322,10 +322,13 @@
             </div>
             <p style="margin-bottom: 1rem; font-size: 0.9rem; color: var(--text-muted);">Assign <b id="asm-symbol"
                     style="color: var(--text-bright)">---</b> to a sector:</p>
-            <div id="sector-assignment-list" class="metrics-list"
-                style="max-height: 300px; overflow-y: auto; margin-bottom: 1.5rem;">
-                <!-- Sectors injected by JS -->
+            <div style="text-align: right;">
+                <button class="btn btn-primary"
+                    onclick="document.getElementById('sector-assignment-modal').classList.remove('active')">Close</button>
             </div>
+        </div>
+    </div>
+
     <!-- Intraday Scan History Log Modal -->
     <div class="modal-overlay" id="scan-history-modal">
         <div class="modal-card glass" style="max-width: 850px; width: 95%; max-height: 85vh; display: flex; flex-direction: column;">
@@ -350,11 +353,11 @@
     </div>
 
     <!-- Firebase Config & App Initiation -->
-    <script src="js/lib/firebase-app.js?v=137"></script>
-    <script src="js/lib/firebase-database.js?v=137"></script>
-    <script src="js/firebase-config.js?v=137"></script>
-    <script src="js/nse-api.js?v=137"></script>
-    <script src="js/app.js?v=137"></script>
+    <script src="js/lib/firebase-app.js?v=138"></script>
+    <script src="js/lib/firebase-database.js?v=138"></script>
+    <script src="js/firebase-config.js?v=138"></script>
+    <script src="js/nse-api.js?v=138"></script>
+    <script src="js/app.js?v=138"></script>
 </body>
 
 </html>

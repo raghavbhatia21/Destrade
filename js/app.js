@@ -118,8 +118,38 @@ const App = {
                     }
                 }, () => {});
             }
+            // Auto-prefill full PCR history for Screener on startup
+            this.prefillAllPcrHistoryForScreener();
         } catch (e) {
             console.warn('Firebase Sync Warning:', e.message);
+        }
+    },
+
+    async prefillAllPcrHistoryForScreener() {
+        try {
+            const dateStr = this.getTargetTradingDateStr();
+            const url = `https://destrade-default-rtdb.firebaseio.com/pcr_history.json`;
+            const res = await fetch(url);
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data && typeof data === 'object') {
+                if (typeof this.state.pcrHistory !== 'object' || Array.isArray(this.state.pcrHistory)) {
+                    this.state.pcrHistory = {};
+                }
+                Object.keys(data).forEach(sym => {
+                    const dateObj = data[sym];
+                    if (dateObj && typeof dateObj === 'object') {
+                        const ticks = dateObj[dateStr] || dateObj[Object.keys(dateObj).pop()];
+                        if (Array.isArray(ticks)) {
+                            this.state.pcrHistory[sym] = ticks;
+                        }
+                    }
+                });
+                console.log(`🔥 Bulk prefilled ${Object.keys(this.state.pcrHistory).length} symbols for PCR Screener!`);
+                this.renderPcrIntradayScreener();
+            }
+        } catch (e) {
+            console.warn('Screener Bulk Prefill Warning:', e);
         }
     },
 
@@ -1628,7 +1658,18 @@ const App = {
             if (cleanList.length < 2) return;
 
             const latest = cleanList[cleanList.length - 1];
-            const prev = cleanList[Math.max(0, cleanList.length - 2)];
+            
+            // Smart multi-lookback strategy (~15m drift or last active tick)
+            let prev = cleanList[Math.max(0, cleanList.length - 4)];
+            if (prev && latest && (prev.spot === latest.spot || prev.value === latest.value) && cleanList.length > 4) {
+                for (let k = cleanList.length - 2; k >= 0; k--) {
+                    if (cleanList[k].spot !== latest.spot || cleanList[k].value !== latest.value) {
+                        prev = cleanList[k];
+                        break;
+                    }
+                }
+            }
+            if (!prev) prev = cleanList[Math.max(0, cleanList.length - 2)];
 
             const pcrCur = latest.value;
             const pcrPrev = prev.value;
@@ -1641,8 +1682,8 @@ const App = {
             const spotPct = spotPrev > 0 ? ((spotDiff / spotPrev) * 100) : 0;
 
             // Screening Condition Check:
-            // Bullish Surge: Both PCR is rising (pcrDiff > 0.0002) AND Spot Price is rising (spotDiff > 0)
-            // Bearish Shift: Both PCR is falling (pcrDiff < -0.0002) AND Spot Price is falling (spotDiff < 0)
+            // Bullish Surge: Both PCR is rising (pcrDiff > 0.0001) AND Spot Price is rising (spotDiff > 0)
+            // Bearish Shift: Both PCR is falling (pcrDiff < -0.0001) AND Spot Price is falling (spotDiff < 0)
             if (isBull) {
                 if (pcrDiff <= 0.0002 || spotDiff <= 0) return;
             } else {

@@ -1629,15 +1629,15 @@ const App = {
 
     filterScanHistoryLog(filter) {
         this.scanLogFilter = filter || 'all';
-        const btns = ['all', 'bull', 'bear', 'dual'];
+        const btns = ['all', 'bull', 'bear', 'dual', 'spike'];
         btns.forEach(b => {
             const btn = document.getElementById(`scan-log-btn-${b}`);
             if (btn) {
                 const isActive = (b === this.scanLogFilter);
                 btn.classList.toggle('active', isActive);
-                btn.style.background = isActive ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255,255,255,0.05)';
-                btn.style.borderColor = isActive ? '#38bdf8' : 'rgba(255,255,255,0.1)';
-                btn.style.color = isActive ? '#38bdf8' : 'var(--text-muted)';
+                btn.style.background = isActive ? (b === 'spike' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(56, 189, 248, 0.2)') : 'rgba(255,255,255,0.05)';
+                btn.style.borderColor = isActive ? (b === 'spike' ? '#f59e0b' : '#38bdf8') : 'rgba(255,255,255,0.1)';
+                btn.style.color = isActive ? (b === 'spike' ? '#f59e0b' : '#38bdf8') : 'var(--text-muted)';
             }
         });
         this.renderScanHistoryTimeline();
@@ -1661,6 +1661,7 @@ const App = {
 
         const pcrHist = this.state.pcrHistory || {};
         const symbols = Object.keys(pcrHist);
+        const filterMode = this.scanLogFilter || 'all';
 
         const timeMap = {};
 
@@ -1671,10 +1672,21 @@ const App = {
             const cleanList = this.sanitize5MinPcrList(rawList);
             if (cleanList.length < 4) return;
 
-            // Scan every 5-min tick of the day against 15m prior (3 ticks back)
+            // Compute All-Day Average 5-Min Tick Shifts for this symbol
+            let sumPcrDiff = 0, sumSpotDiff = 0, cnt = 0;
+            for (let k = 1; k < cleanList.length; k++) {
+                sumPcrDiff += Math.abs(cleanList[k].value - cleanList[k-1].value);
+                sumSpotDiff += Math.abs((cleanList[k].spot || 0) - (cleanList[k-1].spot || 0));
+                cnt++;
+            }
+            const avgPcrDiff = cnt > 0 ? (sumPcrDiff / cnt) : 0.001;
+            const avgSpotDiff = cnt > 0 ? (sumSpotDiff / cnt) : 1.0;
+
+            // Scan every tick
             for (let i = 3; i < cleanList.length; i++) {
                 const cur = cleanList[i];
-                const prev = cleanList[i - 3];
+                const prev = cleanList[i - 3]; // 15m window
+                const tickPrev = cleanList[i - 1]; // Single tick (5m)
 
                 const timeStr = cur.timeStr || '--';
                 const pcrCur = cur.value;
@@ -1687,13 +1699,25 @@ const App = {
                 const spotDiff = (spotCur && spotPrev) ? (spotCur - spotPrev) : 0;
                 const spotPct = spotPrev > 0 ? ((spotDiff / spotPrev) * 100) : 0;
 
+                // Single Tick Shift Analysis
+                const singlePcrDiff = pcrCur - tickPrev.value;
+                const singleSpotDiff = (spotCur && tickPrev.spot) ? (spotCur - tickPrev.spot) : 0;
+                const isSingleBothRisen = (singlePcrDiff > 0 && singleSpotDiff > 0);
+                const isSingleBothFallen = (singlePcrDiff < 0 && singleSpotDiff < 0);
+
+                const pcrMultiplier = avgPcrDiff > 0 ? (Math.abs(singlePcrDiff) / avgPcrDiff) : 0;
+                const spotMultiplier = avgSpotDiff > 0 ? (Math.abs(singleSpotDiff) / avgSpotDiff) : 0;
+                const maxMultiplier = Math.max(pcrMultiplier, spotMultiplier);
+
+                const isSpike = (isSingleBothRisen || isSingleBothFallen) && (pcrMultiplier >= 1.5 || spotMultiplier >= 1.5);
+
                 const isPcrBull = pcrPct > 1.0;
                 const isPriceBull = spotPct > 0.5;
 
                 const isPcrBear = pcrPct < -1.0;
                 const isPriceBear = spotPct < -0.5;
 
-                if (isPcrBull || isPriceBull || isPcrBear || isPriceBear) {
+                if (isPcrBull || isPriceBull || isPcrBear || isPriceBear || isSpike) {
                     if (!timeMap[timeStr]) timeMap[timeStr] = [];
 
                     let type = 'NEUTRAL';
@@ -1701,7 +1725,12 @@ const App = {
                     let tagBg = '';
                     let tagColor = '';
 
-                    if (isPcrBull && isPriceBull) {
+                    if (isSpike && filterMode === 'spike') {
+                        type = isSingleBothRisen ? 'BULLISH' : 'BEARISH';
+                        tag = isSingleBothRisen ? `⚡ TICK RALLY (${maxMultiplier.toFixed(1)}x DAY AVG)` : `⚡ TICK DROP (${maxMultiplier.toFixed(1)}x DAY AVG)`;
+                        tagBg = isSingleBothRisen ? 'rgba(245, 158, 11, 0.25)' : 'rgba(239, 68, 68, 0.25)';
+                        tagColor = isSingleBothRisen ? '#f59e0b' : '#ef4444';
+                    } else if (isPcrBull && isPriceBull) {
                         type = 'BULLISH';
                         tag = '🔥 DUAL SURGE';
                         tagBg = 'rgba(16, 185, 129, 0.25)';
@@ -1733,7 +1762,7 @@ const App = {
                         tagColor = '#f59e0b';
                     }
 
-                    const score = Math.min(100, Math.round((Math.abs(spotPct) * 40) + (Math.abs(pcrPct) * 10)));
+                    const score = Math.min(100, Math.round((Math.abs(spotPct) * 40) + (Math.abs(pcrPct) * 10) + (maxMultiplier * 10)));
 
                     timeMap[timeStr].push({
                         symbol: sym,
@@ -1747,13 +1776,13 @@ const App = {
                         spotCur,
                         spotDiff,
                         spotPct,
+                        isSpike,
+                        maxMultiplier,
                         score
                     });
                 }
             }
         });
-
-        const filterMode = this.scanLogFilter || 'all';
 
         // Sort timestamps chronologically descending (Latest time of day first)
         const sortedTimeObjects = Object.keys(timeMap).map(t => ({
@@ -1771,6 +1800,7 @@ const App = {
             if (filterMode === 'bull') events = events.filter(e => e.type === 'BULLISH');
             else if (filterMode === 'bear') events = events.filter(e => e.type === 'BEARISH');
             else if (filterMode === 'dual') events = events.filter(e => e.tag.includes('DUAL'));
+            else if (filterMode === 'spike') events = events.filter(e => e.isSpike);
 
             if (events.length === 0) return;
             totalEvents += events.length;

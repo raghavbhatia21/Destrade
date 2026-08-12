@@ -1643,6 +1643,18 @@ const App = {
         this.renderScanHistoryTimeline();
     },
 
+    parseTimeToMinutes(timeStr) {
+        if (!timeStr || typeof timeStr !== 'string') return 0;
+        const match = timeStr.match(/(\d+):(\d+)(?::(\d+))?\s*(AM|PM)/i);
+        if (!match) return 0;
+        let hrs = parseInt(match[1], 10);
+        const mins = parseInt(match[2], 10);
+        const ampm = match[4].toUpperCase();
+        if (ampm === 'PM' && hrs < 12) hrs += 12;
+        if (ampm === 'AM' && hrs === 12) hrs = 0;
+        return hrs * 60 + mins;
+    },
+
     renderScanHistoryTimeline() {
         const container = document.getElementById('scan-history-modal-body');
         if (!container) return;
@@ -1742,12 +1754,18 @@ const App = {
         });
 
         const filterMode = this.scanLogFilter || 'all';
-        const sortedTimes = Object.keys(timeMap).reverse(); // Reverse so latest timestamp is on top
+
+        // Sort timestamps chronologically descending (Latest time of day first)
+        const sortedTimeObjects = Object.keys(timeMap).map(t => ({
+            timeStr: t,
+            mins: this.parseTimeToMinutes(t)
+        })).sort((a, b) => b.mins - a.mins);
 
         let totalEvents = 0;
         let html = '';
 
-        sortedTimes.forEach(t => {
+        sortedTimeObjects.forEach(item => {
+            const t = item.timeStr;
             let events = timeMap[t] || [];
 
             if (filterMode === 'bull') events = events.filter(e => e.type === 'BULLISH');
@@ -1772,7 +1790,7 @@ const App = {
             events.forEach(e => {
                 const pcrDiffStr = (e.pcrDiff > 0 ? '+' : '') + e.pcrDiff.toFixed(4);
                 const spotDiffStr = (e.spotDiff > 0 ? '+' : '') + e.spotDiff.toFixed(2);
-                const spotPctStr = (e.spotPct > 0 ? '+' : '') + e.spotPct + '%';
+                const spotPctStr = (e.spotPct > 0 ? '+' : '') + Number(e.spotPct).toFixed(2) + '%';
 
                 html += `
                     <div onclick="document.getElementById('scan-history-modal').classList.remove('active'); App.switchView('pcr-analytics'); App.changePcrSymbol('${e.symbol}');"

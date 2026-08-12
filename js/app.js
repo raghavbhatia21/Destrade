@@ -380,6 +380,7 @@ const App = {
         this.renderMarketPulse();
         this.renderSectorQuickLook();
         this.renderWatchlist();
+        this.renderPcrIntradayScreener();
     },
 
     renderStatus() {
@@ -1582,6 +1583,175 @@ const App = {
                 </table>
             `;
         }
+    },
+
+    // ===== DUAL MOMENTUM INTRADAY PCR + PRICE SCREENER (Dashboard) =====
+    pcrScreenerTab: 'bull',
+
+    switchPcrScreenerTab(tab) {
+        this.pcrScreenerTab = tab || 'bull';
+        const btnBull = document.getElementById('pcr-screener-btn-bull');
+        const btnBear = document.getElementById('pcr-screener-btn-bear');
+        if (btnBull && btnBear) {
+            const isBull = this.pcrScreenerTab === 'bull';
+            btnBull.classList.toggle('active', isBull);
+            btnBear.classList.toggle('active', !isBull);
+            
+            btnBull.style.background = isBull ? 'rgba(16, 185, 129, 0.18)' : 'rgba(255,255,255,0.05)';
+            btnBull.style.borderColor = isBull ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255,255,255,0.1)';
+            btnBull.style.color = isBull ? '#10b981' : 'var(--text-muted)';
+
+            btnBear.style.background = !isBull ? 'rgba(239, 68, 68, 0.18)' : 'rgba(255,255,255,0.05)';
+            btnBear.style.borderColor = !isBull ? 'rgba(239, 68, 68, 0.4)' : 'rgba(255,255,255,0.1)';
+            btnBear.style.color = !isBull ? '#ef4444' : 'var(--text-muted)';
+        }
+        this.renderPcrIntradayScreener();
+    },
+
+    renderPcrIntradayScreener() {
+        const container = document.getElementById('pcr-intraday-screener-content');
+        if (!container) return;
+
+        const isBull = this.pcrScreenerTab !== 'bear';
+
+        // Read all stored PCR histories
+        const pcrHist = this.state.pcrHistory || {};
+        const symbols = Object.keys(pcrHist);
+
+        const items = [];
+
+        symbols.forEach(sym => {
+            const rawList = pcrHist[sym];
+            if (!Array.isArray(rawList) || rawList.length < 2) return;
+
+            const cleanList = this.sanitize5MinPcrList(rawList);
+            if (cleanList.length < 2) return;
+
+            const latest = cleanList[cleanList.length - 1];
+            const prev = cleanList[Math.max(0, cleanList.length - 2)];
+
+            const pcrCur = latest.value;
+            const pcrPrev = prev.value;
+            const pcrDiff = pcrCur - pcrPrev;
+            const pcrPct = pcrPrev > 0 ? ((pcrDiff / pcrPrev) * 100) : 0;
+
+            const spotCur = latest.spot || 0;
+            const spotPrev = prev.spot || 0;
+            const spotDiff = (spotCur && spotPrev) ? (spotCur - spotPrev) : 0;
+            const spotPct = spotPrev > 0 ? ((spotDiff / spotPrev) * 100) : 0;
+
+            // Screening Condition Check:
+            // Bullish Surge: Both PCR is rising (pcrDiff > 0.0002) AND Spot Price is rising (spotDiff > 0)
+            // Bearish Shift: Both PCR is falling (pcrDiff < -0.0002) AND Spot Price is falling (spotDiff < 0)
+            if (isBull) {
+                if (pcrDiff <= 0.0002 || spotDiff <= 0) return;
+            } else {
+                if (pcrDiff >= -0.0002 || spotDiff >= 0) return;
+            }
+
+            // Calculate Composite Momentum Score (0 to 100)
+            const absSpotPct = Math.abs(spotPct);
+            const absPcrPct = Math.abs(pcrPct);
+            const absPcrDiff = Math.abs(pcrDiff);
+
+            let rawScore = (absSpotPct * 40) + (absPcrPct * 25) + ((absPcrDiff / 0.04) * 35);
+            let score = Math.min(100, Math.max(10, Math.round(rawScore)));
+
+            items.push({
+                symbol: sym,
+                pcrCur,
+                pcrPrev,
+                pcrDiff,
+                pcrPct,
+                spotCur,
+                spotPrev,
+                spotDiff,
+                spotPct,
+                score,
+                timeStr: latest.timeStr || ''
+            });
+        });
+
+        // Sort items by Composite Score descending
+        items.sort((a, b) => b.score - a.score);
+
+        if (items.length === 0) {
+            container.innerHTML = `
+                <div style="text-align:center; padding: 2rem 1rem; color: var(--text-muted); font-size: 0.85rem; background: rgba(15, 23, 42, 0.4); border-radius: 10px; border: 1px dashed rgba(255,255,255,0.08);">
+                    <i class="fas ${isBull ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down'}" style="font-size: 1.4rem; margin-bottom: 0.4rem; opacity: 0.6; color: ${isBull ? '#10b981' : '#ef4444'};"></i><br>
+                    No stocks matching <strong>${isBull ? 'Bullish Surge (PCR ↑ & Price ↑)' : 'Bearish Shift (PCR ↓ & Price ↓)'}</strong> criteria in current tick.<br>
+                    <span style="font-size: 0.75rem; opacity: 0.7;">Live intraday dual-momentum engine scans all 218 F&O symbols.</span>
+                </div>
+            `;
+            return;
+        }
+
+        // Render Cards Grid
+        let html = `<div class="pcr-screener-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.85rem;">`;
+
+        items.slice(0, 12).forEach(item => {
+            const isExplosive = item.score >= 80;
+            const isHigh = item.score >= 60;
+            
+            const badgeText = isExplosive ? '🔥 EXPLOSIVE' : (isHigh ? '⚡ HIGH MOMENTUM' : '📈 BUILDING');
+            const badgeBg = isBull 
+                ? (isExplosive ? 'rgba(16, 185, 129, 0.25)' : 'rgba(16, 185, 129, 0.15)')
+                : (isExplosive ? 'rgba(239, 68, 68, 0.25)' : 'rgba(239, 68, 68, 0.15)');
+            const badgeColor = isBull ? '#10b981' : '#ef4444';
+
+            const pcrDiffStr = (item.pcrDiff > 0 ? '+' : '') + item.pcrDiff.toFixed(4);
+            const spotDiffStr = (item.spotDiff > 0 ? '+' : '') + item.spotDiff.toFixed(2);
+            const spotPctStr = (item.spotPct > 0 ? '+' : '') + item.spotPct.toFixed(2) + '%';
+
+            html += `
+                <div class="pcr-screener-item-card" onclick="App.switchView('pcr-analytics'); App.changePcrSymbol('${item.symbol}');" 
+                     style="background: rgba(15, 23, 42, 0.75); border: 1px solid ${isBull ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)'}; border-radius: 10px; padding: 0.85rem 1rem; cursor: pointer; transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;"
+                     onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 20px rgba(0,0,0,0.3)';"
+                     onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
+                    
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <div style="font-weight: 700; font-size: 0.95rem; color: #f8fafc; display: flex; align-items: center; gap: 0.4rem;">
+                            ${item.symbol}
+                            <span style="font-size: 0.62rem; padding: 0.12rem 0.4rem; border-radius: 4px; font-weight: 800; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeColor}40;">
+                                ${badgeText}
+                            </span>
+                        </div>
+                        <div style="font-size: 0.85rem; font-weight: 800; font-family: 'JetBrains Mono', monospace; color: ${badgeColor}; background: rgba(255,255,255,0.05); padding: 0.2rem 0.5rem; border-radius: 6px;">
+                            ${item.score}<span style="font-size: 0.65rem; opacity: 0.7;">/100</span>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; background: rgba(0,0,0,0.22); padding: 0.5rem 0.6rem; border-radius: 6px; font-size: 0.78rem;">
+                        <div>
+                            <div style="color: var(--text-muted); font-size: 0.68rem; margin-bottom: 0.1rem;">Spot Price</div>
+                            <div style="font-weight: 700; color: #f8fafc; font-family: 'JetBrains Mono', monospace;">
+                                ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}
+                            </div>
+                            <div style="font-size: 0.7rem; font-weight: 700; color: ${item.spotDiff >= 0 ? '#10b981' : '#ef4444'};">
+                                ${spotDiffStr} (${spotPctStr})
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="color: var(--text-muted); font-size: 0.68rem; margin-bottom: 0.1rem;">PCR Ratio</div>
+                            <div style="font-weight: 700; color: #38bdf8; font-family: 'JetBrains Mono', monospace;">
+                                ${item.pcrCur.toFixed(4)}
+                            </div>
+                            <div style="font-size: 0.7rem; font-weight: 700; color: ${item.pcrDiff >= 0 ? '#10b981' : '#ef4444'};">
+                                ${pcrDiffStr}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.5rem; font-size: 0.7rem; color: var(--text-muted);">
+                        <span><i class="far fa-clock"></i> ${item.timeStr || 'Intraday'}</span>
+                        <span style="color: #38bdf8; font-weight: 600;">View Chart →</span>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `</div>`;
+        container.innerHTML = html;
     },
 
     // ===== FULL-SCREEN PCR ANALYTICS & OI TREND WORKSPACE =====

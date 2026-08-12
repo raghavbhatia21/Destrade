@@ -1095,8 +1095,9 @@ const App = {
                         const sortedList = Array.from(mergedMap.values()).sort((a, b) => a.time - b.time);
                         this.state.pcrHistory[cleanSym] = sortedList;
 
-                        if (this.state.activeView === 'pcr-analytics') {
+                        if (this.state.activeView === 'pcr-analytics' && (cleanSym === (this.state.pcrAnalyticsSymbol || 'NIFTY'))) {
                             this.renderPcrAnalyticsChartCanvas(cleanSym);
+                            this.renderPcrSnapshotsTable(cleanSym);
                         } else if ((this.state.activeView === 'oi-clock' || this.state.activeView === 'option-chain' || this.state.activeView === 'symbol-overview') && (this.state.activeSymbol || 'NIFTY').toUpperCase().includes(cleanSym)) {
                             this.renderPcrChartCanvas(cleanSym);
                         }
@@ -2090,6 +2091,9 @@ const App = {
         // Ensure intraday history is prefilled from Firebase
         await this.prefillIntradayPcrHistory(cleanSym);
 
+        // Race condition guard: exit if active symbol changed while async fetching
+        if (cleanSym !== this.state.pcrAnalyticsSymbol) return;
+
         // Render full-screen chart canvas & snapshots table
         this.renderPcrAnalyticsChartCanvas(cleanSym);
         this.renderPcrSnapshotsTable(cleanSym);
@@ -2097,7 +2101,7 @@ const App = {
         // Setup 15-second auto-refresh timer for PCR view
         if (this._pcrAutoRefreshTimer) clearInterval(this._pcrAutoRefreshTimer);
         this._pcrAutoRefreshTimer = setInterval(() => {
-            if (this.state.activeView === 'pcr-analytics' && !this._stopPolling) {
+            if (this.state.activeView === 'pcr-analytics' && !this._stopPolling && this.state.pcrAnalyticsSymbol === cleanSym) {
                 this.renderPcrAnalyticsView(cleanSym);
             }
         }, 15000);
@@ -2488,7 +2492,18 @@ const App = {
             </div>
         `;
 
+        // Preserve user's scroll position before re-rendering HTML
+        const existingScrollEl = container.querySelector('.table-responsive');
+        const savedScrollTop = existingScrollEl ? existingScrollEl.scrollTop : 0;
+
         container.innerHTML = html;
+
+        if (savedScrollTop > 0) {
+            const newScrollEl = container.querySelector('.table-responsive');
+            if (newScrollEl) {
+                newScrollEl.scrollTop = savedScrollTop;
+            }
+        }
     },
 
     async shareTradeSignal(symbol, type, strike, price, margin, roi) {

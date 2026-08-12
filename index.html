@@ -107,9 +107,14 @@
                     <section class="card glass span-2" id="pcr-screener-card">
                         <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
                             <h3><i class="fas fa-bolt" style="color: #f59e0b;"></i> Intraday PCR & Price Momentum Radar</h3>
-                            <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">
-                                <i class="fas fa-satellite-dish" style="color: #38bdf8; margin-right: 0.3rem;"></i> Scanning 218 F&O Symbols Live
-                            </span>
+                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                <button onclick="App.openScanHistoryModal()" style="padding: 0.35rem 0.75rem; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-weight: 700; font-size: 0.78rem; cursor: pointer; transition: all 0.2s;">
+                                    <i class="fas fa-history"></i> 📜 View Full Scan History Log
+                                </button>
+                                <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">
+                                    <i class="fas fa-satellite-dish" style="color: #38bdf8; margin-right: 0.3rem;"></i> 218 F&O Live
+                                </span>
+                            </div>
                         </div>
                         <div class="card-content" id="pcr-intraday-screener-content" style="padding-top: 0.5rem;">
                             <div class="skeleton-loader"></div>
@@ -321,9 +326,25 @@
                 style="max-height: 300px; overflow-y: auto; margin-bottom: 1.5rem;">
                 <!-- Sectors injected by JS -->
             </div>
-            <div style="text-align: right;">
-                <button class="btn btn-primary"
-                    onclick="document.getElementById('sector-assignment-modal').classList.remove('active')">Close</button>
+    <!-- Intraday Scan History Log Modal -->
+    <div class="modal-overlay" id="scan-history-modal">
+        <div class="modal-card glass" style="max-width: 850px; width: 95%; max-height: 85vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.85rem;">
+                <div style="font-weight: 700; font-size: 1.1rem; color: #f8fafc; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fas fa-history" style="color: #38bdf8;"></i> Intraday Scan Timeline Log
+                </div>
+                <button class="close-btn" onclick="document.getElementById('scan-history-modal').classList.remove('active')">✕</button>
+            </div>
+            
+            <div style="display: flex; gap: 0.5rem; margin: 0.85rem 0; flex-wrap: wrap;">
+                <button class="scan-log-filter-btn active" id="scan-log-btn-all" onclick="App.filterScanHistoryLog('all')" style="padding: 0.3rem 0.65rem; border-radius: 6px; border: 1px solid #38bdf8; background: rgba(56, 189, 248, 0.2); color: #38bdf8; font-weight: 700; font-size: 0.75rem; cursor: pointer;">All Signals</button>
+                <button class="scan-log-filter-btn" id="scan-log-btn-bull" onclick="App.filterScanHistoryLog('bull')" style="padding: 0.3rem 0.65rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: var(--text-muted); font-weight: 700; font-size: 0.75rem; cursor: pointer;">🟢 Bullish Only</button>
+                <button class="scan-log-filter-btn" id="scan-log-btn-bear" onclick="App.filterScanHistoryLog('bear')" style="padding: 0.3rem 0.65rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: var(--text-muted); font-weight: 700; font-size: 0.75rem; cursor: pointer;">🔴 Bearish Only</button>
+                <button class="scan-log-filter-btn" id="scan-log-btn-dual" onclick="App.filterScanHistoryLog('dual')" style="padding: 0.3rem 0.65rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: var(--text-muted); font-weight: 700; font-size: 0.75rem; cursor: pointer;">🔥 Dual Signals</button>
+            </div>
+
+            <div id="scan-history-modal-body" style="flex: 1; overflow-y: auto; padding-right: 0.4rem;">
+                <!-- Timeline injected by JS -->
             </div>
         </div>
     </div>

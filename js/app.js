@@ -1616,6 +1616,211 @@ const App = {
         }
     },
 
+    // ===== INTRADAY SCAN TIMELINE LOG MODAL =====
+    scanLogFilter: 'all', // 'all', 'bull', 'bear', 'dual'
+
+    openScanHistoryModal() {
+        const modal = document.getElementById('scan-history-modal');
+        if (modal) {
+            modal.classList.add('active');
+            this.renderScanHistoryTimeline();
+        }
+    },
+
+    filterScanHistoryLog(filter) {
+        this.scanLogFilter = filter || 'all';
+        const btns = ['all', 'bull', 'bear', 'dual'];
+        btns.forEach(b => {
+            const btn = document.getElementById(`scan-log-btn-${b}`);
+            if (btn) {
+                const isActive = (b === this.scanLogFilter);
+                btn.classList.toggle('active', isActive);
+                btn.style.background = isActive ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255,255,255,0.05)';
+                btn.style.borderColor = isActive ? '#38bdf8' : 'rgba(255,255,255,0.1)';
+                btn.style.color = isActive ? '#38bdf8' : 'var(--text-muted)';
+            }
+        });
+        this.renderScanHistoryTimeline();
+    },
+
+    renderScanHistoryTimeline() {
+        const container = document.getElementById('scan-history-modal-body');
+        if (!container) return;
+
+        const pcrHist = this.state.pcrHistory || {};
+        const symbols = Object.keys(pcrHist);
+
+        const timeMap = {};
+
+        symbols.forEach(sym => {
+            const rawList = pcrHist[sym];
+            if (!Array.isArray(rawList) || rawList.length < 4) return;
+
+            const cleanList = this.sanitize5MinPcrList(rawList);
+            if (cleanList.length < 4) return;
+
+            // Scan every 5-min tick of the day against 15m prior (3 ticks back)
+            for (let i = 3; i < cleanList.length; i++) {
+                const cur = cleanList[i];
+                const prev = cleanList[i - 3];
+
+                const timeStr = cur.timeStr || '--';
+                const pcrCur = cur.value;
+                const pcrPrev = prev.value;
+                const pcrDiff = pcrCur - pcrPrev;
+                const pcrPct = pcrPrev > 0 ? ((pcrDiff / pcrPrev) * 100) : 0;
+
+                const spotCur = cur.spot || 0;
+                const spotPrev = prev.spot || 0;
+                const spotDiff = (spotCur && spotPrev) ? (spotCur - spotPrev) : 0;
+                const spotPct = spotPrev > 0 ? ((spotDiff / spotPrev) * 100) : 0;
+
+                const isPcrBull = pcrPct > 1.0;
+                const isPriceBull = spotPct > 0.5;
+
+                const isPcrBear = pcrPct < -1.0;
+                const isPriceBear = spotPct < -0.5;
+
+                if (isPcrBull || isPriceBull || isPcrBear || isPriceBear) {
+                    if (!timeMap[timeStr]) timeMap[timeStr] = [];
+
+                    let type = 'NEUTRAL';
+                    let tag = '';
+                    let tagBg = '';
+                    let tagColor = '';
+
+                    if (isPcrBull && isPriceBull) {
+                        type = 'BULLISH';
+                        tag = '🔥 DUAL SURGE';
+                        tagBg = 'rgba(16, 185, 129, 0.25)';
+                        tagColor = '#10b981';
+                    } else if (isPcrBull) {
+                        type = 'BULLISH';
+                        tag = `📈 PCR RALLY (+${pcrPct.toFixed(1)}%)`;
+                        tagBg = 'rgba(56, 189, 248, 0.2)';
+                        tagColor = '#38bdf8';
+                    } else if (isPriceBull) {
+                        type = 'BULLISH';
+                        tag = `⚡ PRICE UP (+${spotPct.toFixed(1)}%)`;
+                        tagBg = 'rgba(245, 158, 11, 0.2)';
+                        tagColor = '#f59e0b';
+                    } else if (isPcrBear && isPriceBear) {
+                        type = 'BEARISH';
+                        tag = '🔥 DUAL DROP';
+                        tagBg = 'rgba(239, 68, 68, 0.25)';
+                        tagColor = '#ef4444';
+                    } else if (isPcrBear) {
+                        type = 'BEARISH';
+                        tag = `📉 PCR DROP (${pcrPct.toFixed(1)}%)`;
+                        tagBg = 'rgba(239, 68, 68, 0.2)';
+                        tagColor = '#ef4444';
+                    } else if (isPriceBear) {
+                        type = 'BEARISH';
+                        tag = `⚡ PRICE DOWN (${spotPct.toFixed(1)}%)`;
+                        tagBg = 'rgba(245, 158, 11, 0.2)';
+                        tagColor = '#f59e0b';
+                    }
+
+                    const score = Math.min(100, Math.round((Math.abs(spotPct) * 40) + (Math.abs(pcrPct) * 10)));
+
+                    timeMap[timeStr].push({
+                        symbol: sym,
+                        type,
+                        tag,
+                        tagBg,
+                        tagColor,
+                        pcrCur,
+                        pcrDiff,
+                        pcrPct,
+                        spotCur,
+                        spotDiff,
+                        spotPct,
+                        score
+                    });
+                }
+            }
+        });
+
+        const filterMode = this.scanLogFilter || 'all';
+        const sortedTimes = Object.keys(timeMap).reverse(); // Reverse so latest timestamp is on top
+
+        let totalEvents = 0;
+        let html = '';
+
+        sortedTimes.forEach(t => {
+            let events = timeMap[t] || [];
+
+            if (filterMode === 'bull') events = events.filter(e => e.type === 'BULLISH');
+            else if (filterMode === 'bear') events = events.filter(e => e.type === 'BEARISH');
+            else if (filterMode === 'dual') events = events.filter(e => e.tag.includes('DUAL'));
+
+            if (events.length === 0) return;
+            totalEvents += events.length;
+
+            events.sort((a, b) => b.score - a.score);
+
+            html += `
+                <div style="margin-bottom: 1rem; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 0.75rem 1rem;">
+                    <div style="font-weight: 800; font-size: 0.88rem; color: #38bdf8; margin-bottom: 0.6rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 0.4rem;">
+                        <span><i class="far fa-clock"></i> ${t} IST</span>
+                        <span style="font-size: 0.72rem; padding: 0.1rem 0.4rem; background: rgba(56,189,248,0.15); border-radius: 4px; color: #38bdf8; font-weight:700;">${events.length} Signals</span>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0.5rem;">
+            `;
+
+            events.forEach(e => {
+                const pcrDiffStr = (e.pcrDiff > 0 ? '+' : '') + e.pcrDiff.toFixed(4);
+                const spotDiffStr = (e.spotDiff > 0 ? '+' : '') + e.spotDiff.toFixed(2);
+                const spotPctStr = (e.spotPct > 0 ? '+' : '') + e.spotPct + '%';
+
+                html += `
+                    <div onclick="document.getElementById('scan-history-modal').classList.remove('active'); App.switchView('pcr-analytics'); App.changePcrSymbol('${e.symbol}');"
+                         style="background: rgba(0,0,0,0.3); border: 1px solid ${e.tagColor}30; border-radius: 6px; padding: 0.5rem 0.65rem; cursor: pointer; transition: all 0.18s;"
+                         onmouseover="this.style.borderColor='${e.tagColor}'; this.style.transform='translateY(-1px)';"
+                         onmouseout="this.style.borderColor='${e.tagColor}30'; this.style.transform='none';">
+                        
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;">
+                            <div style="font-weight: 700; color: #f8fafc; font-size: 0.85rem;">
+                                ${e.symbol}
+                            </div>
+                            <span style="font-size: 0.55rem; padding: 0.08rem 0.35rem; border-radius: 3px; font-weight: 800; background: ${e.tagBg}; color: ${e.tagColor};">
+                                ${e.tag}
+                            </span>
+                        </div>
+
+                        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.7rem; color: var(--text-muted);">
+                            <span>Spot: <strong style="color: #f8fafc;">₹${e.spotCur ? e.spotCur.toLocaleString() : '---'}</strong></span>
+                            <span style="color: ${e.spotDiff >= 0 ? '#10b981' : '#ef4444'}; font-weight:700;">${spotDiffStr} (${spotPctStr})</span>
+                        </div>
+
+                        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.7rem; color: var(--text-muted); margin-top: 0.15rem;">
+                            <span>PCR: <strong style="color: #38bdf8;">${e.pcrCur.toFixed(4)}</strong></span>
+                            <span style="color: ${e.pcrDiff >= 0 ? '#10b981' : '#ef4444'}; font-weight:700;">15m: ${pcrDiffStr}</span>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                    </div>
+                </div>
+            `;
+        });
+
+        if (totalEvents === 0) {
+            container.innerHTML = `
+                <div style="text-align:center; padding: 3rem 1rem; color: var(--text-muted); font-size: 0.85rem;">
+                    <i class="fas fa-history" style="font-size: 1.8rem; margin-bottom: 0.5rem; opacity: 0.5;"></i><br>
+                    No historical scan signals recorded for the selected filter yet.
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = html;
+    },
+
     // ===== INTRADAY PCR & PRICE MOMENTUM RADAR (Dashboard) =====
     renderPcrIntradayScreener() {
         const container = document.getElementById('pcr-intraday-screener-content');

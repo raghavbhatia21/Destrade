@@ -1976,18 +1976,50 @@ const App = {
             let powerScore = Math.round(45 + (harmonicPct * 22) + (avgMultiplier * 4));
             powerScore = Math.min(99, Math.max(50, powerScore));
 
-            if (spotDiff > 0 || pcrDiff > 0) {
-                let tag = (spotDiff > 0 && pcrDiff > 0) ? '🔥 DUAL SURGE' : (pcrDiff > 0 ? '📈 PCR RALLY' : '⚡ PRICE UP');
-                let tagBg = (spotDiff > 0 && pcrDiff > 0) ? 'rgba(16, 185, 129, 0.25)' : (pcrDiff > 0 ? 'rgba(56, 189, 248, 0.2)' : 'rgba(245, 158, 11, 0.2)');
-                let tagColor = (spotDiff > 0 && pcrDiff > 0) ? '#10b981' : (pcrDiff > 0 ? '#38bdf8' : '#f59e0b');
-                bullList.push({ symbol: sym, pcrCur, pcrDiff, pcrPct, spotCur, spotDiff, spotPct, powerScore, tag, tagBg, tagColor, timeStr: latest.timeStr || '' });
+            // 1. Strict Dual Trend Alignment Guard:
+            // Single tick movement AND 15-minute trend MUST move in the exact same direction!
+            const isBullishAligned = (singleSpotDiff > 0 && spotDiff > 0) && (singlePcrDiff > 0 && pcrDiff > 0);
+            const isBearishAligned = (singleSpotDiff < 0 && spotDiff < 0) && (singlePcrDiff < 0 && pcrDiff < 0);
+
+            if (!isBullishAligned && !isBearishAligned) return; // REMOVE ALL PCR-ONLY OR PRICE-ONLY NOISE!
+
+            // 2. Minimum Volatility Floor
+            const isSignificantPcr = Math.abs(pcrPct) >= 0.5 || Math.abs(pcrDiff) >= 0.002;
+            const isSignificantSpot = Math.abs(spotPct) >= 0.10;
+            if (!isSignificantPcr || !isSignificantSpot) return;
+
+            if (isBullishAligned) {
+                bullList.push({
+                    symbol: sym,
+                    pcrCur,
+                    pcrDiff,
+                    pcrPct,
+                    spotCur,
+                    spotDiff,
+                    spotPct,
+                    powerScore,
+                    tag: '🚀 PURE DUAL SURGE',
+                    tagBg: 'rgba(16, 185, 129, 0.25)',
+                    tagColor: '#10b981',
+                    timeStr: latest.timeStr || ''
+                });
             }
 
-            if (spotDiff < 0 || pcrDiff < 0) {
-                let tag = (spotDiff < 0 && pcrDiff < 0) ? '🔥 DUAL DROP' : (pcrDiff < 0 ? '📉 PCR DROP' : '⚡ PRICE DOWN');
-                let tagBg = (spotDiff < 0 && pcrDiff < 0) ? 'rgba(239, 68, 68, 0.25)' : (pcrDiff < 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)');
-                let tagColor = (spotDiff < 0 && pcrDiff < 0) ? '#ef4444' : (pcrDiff < 0 ? '#ef4444' : '#f59e0b');
-                bearList.push({ symbol: sym, pcrCur, pcrDiff, pcrPct, spotCur, spotDiff, spotPct, powerScore, tag, tagBg, tagColor, timeStr: latest.timeStr || '' });
+            if (isBearishAligned) {
+                bearList.push({
+                    symbol: sym,
+                    pcrCur,
+                    pcrDiff,
+                    pcrPct,
+                    spotCur,
+                    spotDiff,
+                    spotPct,
+                    powerScore,
+                    tag: '📉 PURE DUAL CRASH',
+                    tagBg: 'rgba(239, 68, 68, 0.25)',
+                    tagColor: '#ef4444',
+                    timeStr: latest.timeStr || ''
+                });
             }
         });
 
@@ -2000,15 +2032,15 @@ const App = {
         if (topBull.length === 0 && topBear.length === 0) {
             container.innerHTML = `
                 <div style="text-align:center; padding: 2rem; color: var(--text-muted); font-size: 0.85rem;">
-                    <i class="fas fa-satellite-dish fa-spin" style="font-size: 1.5rem; color: #38bdf8; margin-bottom: 0.5rem;"></i><br>
-                    Connecting to live intraday market stream for 218 F&O symbols...
+                    <i class="fas fa-bolt" style="font-size: 1.5rem; color: #f59e0b; margin-bottom: 0.5rem;"></i><br>
+                    Scanning live 5-minute ticks for Pure Dual Action (PCR & Price synchronized breakouts)...
                 </div>
             `;
             return;
         }
 
         const renderRows = (list, isBull) => {
-            if (list.length === 0) return `<div style="text-align:center; padding:1.5rem; color:var(--text-muted); font-size:0.78rem;">No active ${isBull ? 'bullish' : 'bearish'} shifts detected in current 15m window.</div>`;
+            if (list.length === 0) return `<div style="text-align:center; padding:1.5rem; color:var(--text-muted); font-size:0.78rem;">No live ${isBull ? 'bullish dual surges' : 'bearish dual crashes'} active in current tick window.</div>`;
 
             return list.map((item, idx) => {
                 const pcrDiffStr = (item.pcrDiff > 0 ? '+' : '') + item.pcrDiff.toFixed(4);
@@ -2050,22 +2082,22 @@ const App = {
 
         container.innerHTML = `
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 1rem;">
-                <!-- Left: Bullish Leaders -->
+                <!-- Left: Live Bullish Dual Surges -->
                 <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 10px; padding: 0.85rem 1rem;">
                     <div style="font-weight: 700; color: #10b981; font-size: 0.88rem; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;">
-                        <span><i class="fas fa-arrow-trend-up"></i> 🟢 Top 5 Bullish Momentum Leaders</span>
-                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(16, 185, 129, 0.15); border-radius: 4px; color: #10b981; font-weight:800;">POWER SCORE</span>
+                        <span><i class="fas fa-arrow-trend-up"></i> 🟢 Live Bullish Dual Surges</span>
+                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(16, 185, 129, 0.15); border-radius: 4px; color: #10b981; font-weight:800;">DUAL ACTION MODE</span>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                         ${renderRows(topBull, true)}
                     </div>
                 </div>
 
-                <!-- Right: Bearish Leaders -->
+                <!-- Right: Live Bearish Dual Crashes -->
                 <div style="background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 10px; padding: 0.85rem 1rem;">
                     <div style="font-weight: 700; color: #ef4444; font-size: 0.88rem; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;">
-                        <span><i class="fas fa-arrow-trend-down"></i> 🔴 Top 5 Bearish Momentum Leaders</span>
-                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(239, 68, 68, 0.15); border-radius: 4px; color: #ef4444; font-weight:800;">POWER SCORE</span>
+                        <span><i class="fas fa-arrow-trend-down"></i> 🔴 Live Bearish Dual Crashes</span>
+                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(239, 68, 68, 0.15); border-radius: 4px; color: #ef4444; font-weight:800;">DUAL ACTION MODE</span>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                         ${renderRows(topBear, false)}

@@ -2046,6 +2046,52 @@ const App = {
         this.sendPhoneNotification(title, body);
     },
 
+    previousTop5Bias: { bull: [], bear: [] },
+
+    checkAndTriggerTop5BiasAlerts(topBull, topBear) {
+        if (!this.phoneAlertsEnabled) return;
+
+        const currentBullSyms = topBull.map(x => x.symbol);
+        const currentBearSyms = topBear.map(x => x.symbol);
+
+        // First run initialization: set baseline
+        if (this.previousTop5Bias.bull.length === 0 && this.previousTop5Bias.bear.length === 0) {
+            this.previousTop5Bias = { bull: currentBullSyms, bear: currentBearSyms };
+            return;
+        }
+
+        // Check new Bullish Leaders
+        topBull.forEach((item, idx) => {
+            if (!this.previousTop5Bias.bull.includes(item.symbol)) {
+                const rank = idx + 1;
+                const pcr1hDiffStr = (item.pcr1hDiff > 0 ? '+' : '') + item.pcr1hDiff.toFixed(4);
+                const pcr1hPctStr = (item.pcr1hPct > 0 ? '+' : '') + item.pcr1hPct.toFixed(1) + '%';
+                const title = `🟢 NEW 1-HR BIAS LEADER (#${rank}): ${item.symbol}`;
+                const body = `${item.symbol} entered Top 5 Bullish Bias Leaders! 1h PCR Shift: ${pcr1hDiffStr} (${pcr1hPctStr}) | Spot: ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}.`;
+
+                this.sendPhoneNotification(title, body);
+                this.showToast(`🎯 New Top ${rank} Bullish Bias Leader: ${item.symbol}!`);
+            }
+        });
+
+        // Check new Bearish Leaders
+        topBear.forEach((item, idx) => {
+            if (!this.previousTop5Bias.bear.includes(item.symbol)) {
+                const rank = idx + 1;
+                const pcr1hDiffStr = (item.pcr1hDiff > 0 ? '+' : '') + item.pcr1hDiff.toFixed(4);
+                const pcr1hPctStr = (item.pcr1hPct > 0 ? '+' : '') + item.pcr1hPct.toFixed(1) + '%';
+                const title = `🔴 NEW 1-HR BIAS LEADER (#${rank}): ${item.symbol}`;
+                const body = `${item.symbol} entered Top 5 Bearish Bias Leaders! 1h PCR Shift: ${pcr1hDiffStr} (${pcr1hPctStr}) | Spot: ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}.`;
+
+                this.sendPhoneNotification(title, body);
+                this.showToast(`🎯 New Top ${rank} Bearish Bias Leader: ${item.symbol}!`);
+            }
+        });
+
+        // Update stored previous Top 5
+        this.previousTop5Bias = { bull: currentBullSyms, bear: currentBearSyms };
+    },
+
     radarMode: 'dual',
 
     setRadarMode(mode) {
@@ -2212,6 +2258,10 @@ const App = {
 
         const topBull = bullList.slice(0, 5);
         const topBear = bearList.slice(0, 5);
+
+        if (this.radarMode === '1hr') {
+            this.checkAndTriggerTop5BiasAlerts(topBull, topBear);
+        }
 
         if (topBull.length === 0 && topBear.length === 0) {
             container.innerHTML = `

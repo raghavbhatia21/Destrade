@@ -1872,9 +1872,7 @@ const App = {
                 const spotDiffStr = (e.spotDiff > 0 ? '+' : '') + e.spotDiff.toFixed(2);
                 const spotPctStr = (e.spotPct > 0 ? '+' : '') + Number(e.spotPct).toFixed(2) + '%';
 
-                const scorePill = filterMode === 'spike' 
-                    ? `<span style="font-family:'JetBrains Mono',monospace; font-weight:800; font-size:0.75rem; color:${e.tagColor}; background:${e.tagBg}; padding:0.15rem 0.45rem; border-radius:6px; border:1px solid ${e.tagColor}50;">${e.powerScore}<span style="font-size:0.6rem; opacity:0.7;">/100</span></span>`
-                    : `<span style="font-size: 0.55rem; padding: 0.08rem 0.35rem; border-radius: 3px; font-weight: 800; background: ${e.tagBg}; color: ${e.tagColor};">${e.tag}</span>`;
+                const scorePill = `<span style="font-family:'JetBrains Mono',monospace; font-weight:800; font-size:0.75rem; color:${e.tagColor}; background:${e.tagBg}; padding:0.15rem 0.45rem; border-radius:6px; border:1px solid ${e.tagColor}50;">${e.powerScore || e.score}<span style="font-size:0.65rem; opacity:0.75;">/100</span></span>`;
 
                 html += `
                     <div onclick="document.getElementById('scan-history-modal').classList.remove('active'); App.switchView('pcr-analytics'); App.changePcrSymbol('${e.symbol}');"
@@ -1883,9 +1881,9 @@ const App = {
                          onmouseout="this.style.borderColor='${e.tagColor}30'; this.style.transform='none';">
                         
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;">
-                            <div style="font-weight: 700; color: #f8fafc; font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem;">
+                            <div style="font-weight: 700; color: #f8fafc; font-size: 0.85rem; display: flex; align-items: center; gap: 0.35rem;">
                                 ${e.symbol}
-                                ${filterMode === 'spike' ? `<span style="font-size: 0.55rem; padding: 0.08rem 0.35rem; border-radius: 3px; font-weight: 800; background: ${e.tagBg}; color: ${e.tagColor};">${e.tag}</span>` : ''}
+                                <span style="font-size: 0.55rem; padding: 0.08rem 0.35rem; border-radius: 3px; font-weight: 800; background: ${e.tagBg}; color: ${e.tagColor};">${e.tag}</span>
                             </div>
                             ${scorePill}
                         </div>

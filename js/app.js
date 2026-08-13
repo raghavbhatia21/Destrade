@@ -1114,26 +1114,38 @@ const App = {
         const valid = rawList.filter(item => item && typeof item === 'object' && typeof item.value === 'number' && !isNaN(item.value) && item.value > 0);
         if (valid.length === 0) return [];
 
+        // Calculate Midnight IST for Today to filter out previous days' leftover ticks
+        const now = new Date();
+        const istDateStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+        const todayMidnightIst = Math.floor(new Date(istDateStr + 'T00:00:00+05:30').getTime() / 1000);
+
+        const todayValid = valid.filter(item => {
+            const timeSec = item.time || (item.timestamp ? Math.floor(item.timestamp / 1000) : 0);
+            return timeSec >= todayMidnightIst;
+        });
+
+        const targetList = todayValid.length >= 2 ? todayValid : valid;
+
         // Forward-fill missing spot prices so spot never drops to 0 creating red vertical lines
         let lastValidSpot = 0;
-        for (let i = 0; i < valid.length; i++) {
-            const s = parseFloat(valid[i].spot) || 0;
+        for (let i = 0; i < targetList.length; i++) {
+            const s = parseFloat(targetList[i].spot) || 0;
             if (s > 0) lastValidSpot = s;
-            else if (lastValidSpot > 0) valid[i].spot = lastValidSpot;
+            else if (lastValidSpot > 0) targetList[i].spot = lastValidSpot;
         }
 
         // Sort strictly ascending by epoch timestamp
-        valid.sort((a, b) => (a.time || a.timestamp || 0) - (b.time || b.timestamp || 0));
+        targetList.sort((a, b) => (a.time || a.timestamp || 0) - (b.time || b.timestamp || 0));
 
         // Identify if original entries with AM/PM or non-300sec exist
-        const hasOriginals = valid.some(item => {
+        const hasOriginals = targetList.some(item => {
             const str = item.timeStr || '';
             const isExactStr = /[ap]m/i.test(str);
             const isExactSec = (item.time || 0) % 300 !== 0;
             return isExactStr || isExactSec;
         });
 
-        let filtered = valid;
+        let filtered = targetList;
         if (hasOriginals) {
             // Filter out synthetic 24h bucket entries (time % 300 === 0 and 24h HH:MM without am/pm)
             filtered = valid.filter(item => {

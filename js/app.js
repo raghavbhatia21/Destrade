@@ -1284,8 +1284,8 @@ const App = {
         const timeStr = this.getISTTimeString();
         const lastEntry = list[list.length - 1];
 
-        // Record ticks strictly every 5 minutes (300 seconds)
-        if (!lastEntry || (nowSec - lastEntry.time) >= 300) {
+        // Record ticks every 3 minutes (>= 150 seconds)
+        if (!lastEntry || (nowSec - lastEntry.time) >= 150) {
             list.push({ time: nowSec, timeStr: timeStr, value: parseFloat(pcrVal), spot: parseFloat(underlying) || 0 });
             if (list.length > 2500) list.shift();
 

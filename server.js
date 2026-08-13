@@ -242,8 +242,8 @@ async function executeMarketSync() {
 
                     const lastEntry = list[list.length - 1];
                     
-                    // Enforce strict 5-minute ticks (>= 240 seconds)
-                    if (!lastEntry || (nowSec - lastEntry.time) >= 240) {
+                    // Record ticks every 3 minutes (>= 150 seconds)
+                    if (!lastEntry || (nowSec - lastEntry.time) >= 150) {
                         list.push({
                             time: nowSec,
                             timeStr: timeStr,
@@ -251,7 +251,7 @@ async function executeMarketSync() {
                             spot: data.spot
                         });
 
-                        await firebasePut(path, list.slice(-150));
+                        await firebasePut(path, list.slice(-250));
                         console.log(`  ✅ ${sym}: PCR ${data.pcr} (Spot: ₹${data.spot}) saved!`);
                     }
                 }
@@ -323,10 +323,10 @@ server.listen(PORT, () => {
     // Run initial check on startup
     executeMarketSync().catch(console.error);
 
-    // Continuous 2-minute interval loop during market hours
+    // Continuous 1-minute interval loop during market hours for 3-minute tick precision
     setInterval(() => {
         executeMarketSync().catch(console.error);
-    }, 2 * 60 * 1000);
+    }, 60 * 1000);
 
     // Self-ping every 5 minutes to prevent Render free instance from sleeping
     const selfUrl = process.env.RENDER_EXTERNAL_URL || 'https://destrade-market-worker.onrender.com';

@@ -260,7 +260,7 @@ async function executeMarketSync() {
     }
 
     lastSyncStatus = {
-        lastRun: ist.toISOString(),
+        lastRun: iso,
         status: 'Active (24/7 Cloud Worker)',
         dateStr: dateStr,
         symbolsSynced: Object.keys(summary).length,

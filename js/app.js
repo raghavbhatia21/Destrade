@@ -1739,95 +1739,51 @@ const App = {
                 const isSignificantPcr = Math.abs(pcrPct) >= 0.8 || Math.abs(pcrDiff) >= 0.003;
                 const isSignificantSpot = Math.abs(spotPct) >= 0.15;
 
-                // Genuine Dual Spike:
+                // Genuine Dual Tick Spike ONLY:
                 // Must be trend-aligned, feelable PCR shift, significant price movement, and both PCR & Spot multipliers >= 1.2x of day average!
                 const isDualSpike = (isBullishAligned || isBearishAligned) && isSignificantPcr && isSignificantSpot && (pcrMultiplier >= 1.2 && spotMultiplier >= 1.2);
 
-                const isPcrBull = pcrPct > 1.0;
-                const isPriceBull = spotPct > 0.5;
+                if (!isDualSpike) continue; // REMOVE ALL DEFAULT SIGNALS! ONLY KEEP DUAL TICK SPIKES!
 
-                const isPcrBear = pcrPct < -1.0;
-                const isPriceBear = spotPct < -0.5;
-
-                if (isPcrBull || isPriceBull || isPcrBear || isPriceBear || isDualSpike) {
-                    // 3. 30-Minute Symbol Cooling-Off Rule:
-                    // If this symbol already triggered a signal in the last 30 minutes, suppress it to prevent repeated clutter!
-                    if (lastTriggeredMins[sym] && (tickMins - lastTriggeredMins[sym]) < 30) {
-                        continue;
-                    }
-                    lastTriggeredMins[sym] = tickMins;
-
-                    if (!timeMap[timeStr]) timeMap[timeStr] = [];
-
-                    let type = 'NEUTRAL';
-                    let tag = '';
-                    let tagBg = '';
-                    let tagColor = '';
-
-                    if (isDualSpike && filterMode === 'spike') {
-                        type = isBullishAligned ? 'BULLISH' : 'BEARISH';
-                        tag = isBullishAligned ? '🚀 PURE DUAL SURGE' : '📉 PURE DUAL CRASH';
-                        tagBg = isBullishAligned ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)';
-                        tagColor = isBullishAligned ? '#10b981' : '#ef4444';
-                    } else if (isPcrBull && isPriceBull) {
-                        type = 'BULLISH';
-                        tag = '🔥 DUAL SURGE';
-                        tagBg = 'rgba(16, 185, 129, 0.25)';
-                        tagColor = '#10b981';
-                    } else if (isPcrBull) {
-                        type = 'BULLISH';
-                        tag = `📈 PCR RALLY (+${pcrPct.toFixed(1)}%)`;
-                        tagBg = 'rgba(56, 189, 248, 0.2)';
-                        tagColor = '#38bdf8';
-                    } else if (isPriceBull) {
-                        type = 'BULLISH';
-                        tag = `⚡ PRICE UP (+${spotPct.toFixed(1)}%)`;
-                        tagBg = 'rgba(245, 158, 11, 0.2)';
-                        tagColor = '#f59e0b';
-                    } else if (isPcrBear && isPriceBear) {
-                        type = 'BEARISH';
-                        tag = '🔥 DUAL DROP';
-                        tagBg = 'rgba(239, 68, 68, 0.25)';
-                        tagColor = '#ef4444';
-                    } else if (isPcrBear) {
-                        type = 'BEARISH';
-                        tag = `📉 PCR DROP (${pcrPct.toFixed(1)}%)`;
-                        tagBg = 'rgba(239, 68, 68, 0.2)';
-                        tagColor = '#ef4444';
-                    } else if (isPriceBear) {
-                        type = 'BEARISH';
-                        tag = `⚡ PRICE DOWN (${spotPct.toFixed(1)}%)`;
-                        tagBg = 'rgba(245, 158, 11, 0.2)';
-                        tagColor = '#f59e0b';
-                    }
-
-                    // HARMONIC DUAL SCORE: Geometric mean of Spot % AND PCR %!
-                    // Both MUST move strongly together to achieve a high score!
-                    const absSpotPct = Math.abs(spotPct);
-                    const absPcrPct = Math.abs(pcrPct);
-                    const harmonicPct = Math.sqrt(absSpotPct * absPcrPct);
-                    let rawScore = 45 + (harmonicPct * 22) + (avgMultiplier * 4);
-                    const powerScore = Math.min(99, Math.max(50, Math.round(rawScore)));
-
-                    timeMap[timeStr].push({
-                        symbol: sym,
-                        type,
-                        tag,
-                        tagBg,
-                        tagColor,
-                        pcrCur,
-                        pcrDiff,
-                        pcrPct,
-                        spotCur,
-                        spotDiff,
-                        spotPct,
-                        isDualSpike,
-                        pcrMultiplier,
-                        spotMultiplier,
-                        powerScore,
-                        score: powerScore
-                    });
+                // 3. 30-Minute Symbol Cooling-Off Rule:
+                // If this symbol already triggered a signal in the last 30 minutes, suppress it to prevent repeated clutter!
+                if (lastTriggeredMins[sym] && (tickMins - lastTriggeredMins[sym]) < 30) {
+                    continue;
                 }
+                lastTriggeredMins[sym] = tickMins;
+
+                if (!timeMap[timeStr]) timeMap[timeStr] = [];
+
+                const type = isBullishAligned ? 'BULLISH' : 'BEARISH';
+                const tag = isBullishAligned ? '🚀 PURE DUAL SURGE' : '📉 PURE DUAL CRASH';
+                const tagBg = isBullishAligned ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)';
+                const tagColor = isBullishAligned ? '#10b981' : '#ef4444';
+
+                // HARMONIC DUAL SCORE: Geometric mean of Spot % AND PCR %!
+                const absSpotPct = Math.abs(spotPct);
+                const absPcrPct = Math.abs(pcrPct);
+                const harmonicPct = Math.sqrt(absSpotPct * absPcrPct);
+                let rawScore = 45 + (harmonicPct * 22) + (avgMultiplier * 4);
+                const powerScore = Math.min(99, Math.max(50, Math.round(rawScore)));
+
+                timeMap[timeStr].push({
+                    symbol: sym,
+                    type,
+                    tag,
+                    tagBg,
+                    tagColor,
+                    pcrCur,
+                    pcrDiff,
+                    pcrPct,
+                    spotCur,
+                    spotDiff,
+                    spotPct,
+                    isDualSpike: true,
+                    pcrMultiplier,
+                    spotMultiplier,
+                    powerScore,
+                    score: powerScore
+                });
             }
         });
 

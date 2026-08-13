@@ -2046,6 +2046,29 @@ const App = {
         this.sendPhoneNotification(title, body);
     },
 
+    radarMode: 'dual',
+
+    setRadarMode(mode) {
+        this.radarMode = mode;
+        const btnDual = document.getElementById('radar-mode-dual');
+        const btn1hr = document.getElementById('radar-mode-1hr');
+
+        if (btnDual && btn1hr) {
+            if (mode === '1hr') {
+                btnDual.style.background = 'transparent';
+                btnDual.style.color = 'var(--text-muted)';
+                btn1hr.style.background = 'rgba(56, 189, 248, 0.2)';
+                btn1hr.style.color = '#38bdf8';
+            } else {
+                btnDual.style.background = 'rgba(16, 185, 129, 0.2)';
+                btnDual.style.color = '#10b981';
+                btn1hr.style.background = 'transparent';
+                btn1hr.style.color = 'var(--text-muted)';
+            }
+        }
+        this.renderPcrIntradayScreener();
+    },
+
     // ===== INTRADAY PCR & PRICE MOMENTUM RADAR (Dashboard) =====
     renderPcrIntradayScreener() {
         const container = document.getElementById('pcr-intraday-screener-content');
@@ -2065,96 +2088,127 @@ const App = {
             if (cleanList.length < 2) return;
 
             const latest = cleanList[cleanList.length - 1];
-            const tick15m = cleanList[Math.max(0, cleanList.length - 4)];
-
             const pcrCur = latest.value;
-            const pcrPrev = tick15m.value;
-            const pcrDiff = pcrCur - pcrPrev;
-            const pcrPct = pcrPrev > 0 ? ((pcrDiff / pcrPrev) * 100) : 0;
-
             const spotCur = latest.spot || 0;
-            const spotPrev = tick15m.spot || 0;
-            const spotDiff = (spotCur && spotPrev) ? (spotCur - spotPrev) : 0;
-            const spotPct = spotPrev > 0 ? ((spotDiff / spotPrev) * 100) : 0;
 
-            // Compute All-Day Average 5-Min Tick Shifts for this symbol
-            let sumPcrDiff = 0, sumSpotDiff = 0, cnt = 0;
-            for (let k = 1; k < cleanList.length; k++) {
-                sumPcrDiff += Math.abs(cleanList[k].value - cleanList[k-1].value);
-                sumSpotDiff += Math.abs((cleanList[k].spot || 0) - (cleanList[k-1].spot || 0));
-                cnt++;
-            }
-            const avgPcrDiff = cnt > 0 ? (sumPcrDiff / cnt) : 0.001;
-            const avgSpotDiff = cnt > 0 ? (sumSpotDiff / cnt) : 1.0;
+            if (this.radarMode === '1hr') {
+                // ===== 1-HOUR MARKET BIAS MODE =====
+                // Look back 15 ticks (~60-75 mins)
+                const tick1hAgo = cleanList[Math.max(0, cleanList.length - 15)];
+                const pcr1h = tick1hAgo.value;
+                const pcr1hDiff = pcrCur - pcr1h;
+                const pcr1hPct = pcr1h > 0 ? ((pcr1hDiff / pcr1h) * 100) : 0;
 
-            const tickPrev = cleanList[cleanList.length - 2] || tick15m;
-            const singlePcrDiff = pcrCur - tickPrev.value;
-            const singleSpotDiff = (spotCur && tickPrev.spot) ? (spotCur - tickPrev.spot) : 0;
+                const spot1h = tick1hAgo.spot || 0;
+                const spot1hDiff = (spotCur && spot1h) ? (spotCur - spot1h) : 0;
+                const spot1hPct = spot1h > 0 ? ((spot1hDiff / spot1h) * 100) : 0;
 
-            const pcrMultiplier = avgPcrDiff > 0 ? (Math.abs(singlePcrDiff) / avgPcrDiff) : 0;
-            const spotMultiplier = avgSpotDiff > 0 ? (Math.abs(singleSpotDiff) / avgSpotDiff) : 0;
-            const avgMultiplier = (pcrMultiplier + spotMultiplier) / 2;
-
-            const absSpotPct = Math.abs(spotPct);
-            const absPcrPct = Math.abs(pcrPct);
-            const harmonicPct = Math.sqrt(absSpotPct * absPcrPct);
-
-            let powerScore = Math.round(45 + (harmonicPct * 22) + (avgMultiplier * 4));
-            powerScore = Math.min(99, Math.max(50, powerScore));
-
-            // 1. Strict Dual Trend Alignment Guard:
-            // Single tick movement AND 15-minute trend MUST move in the exact same direction!
-            const isBullishAligned = (singleSpotDiff > 0 && spotDiff > 0) && (singlePcrDiff > 0 && pcrDiff > 0);
-            const isBearishAligned = (singleSpotDiff < 0 && spotDiff < 0) && (singlePcrDiff < 0 && pcrDiff < 0);
-
-            if (!isBullishAligned && !isBearishAligned) return; // REMOVE ALL PCR-ONLY OR PRICE-ONLY NOISE!
-
-            // 2. Minimum Volatility Floor
-            const isSignificantPcr = Math.abs(pcrPct) >= 0.5 || Math.abs(pcrDiff) >= 0.002;
-            const isSignificantSpot = Math.abs(spotPct) >= 0.10;
-            if (!isSignificantPcr || !isSignificantSpot) return;
-
-            if (isBullishAligned) {
                 const item = {
                     symbol: sym,
                     pcrCur,
-                    pcrDiff,
-                    pcrPct,
+                    pcr1h,
+                    pcr1hDiff,
+                    pcr1hPct,
                     spotCur,
-                    spotDiff,
-                    spotPct,
-                    powerScore,
-                    tag: '🚀 PURE DUAL SURGE',
-                    tagBg: 'rgba(16, 185, 129, 0.25)',
-                    tagColor: '#10b981',
+                    spot1hDiff,
+                    spot1hPct,
                     timeStr: latest.timeStr || ''
                 };
-                bullList.push(item);
-                this.checkAndTriggerHighPowerAlert(item);
-            }
 
-            if (isBearishAligned) {
-                const item = {
-                    symbol: sym,
-                    pcrCur,
-                    pcrDiff,
-                    pcrPct,
-                    spotCur,
-                    spotDiff,
-                    spotPct,
-                    powerScore,
-                    tag: '📉 PURE DUAL CRASH',
-                    tagBg: 'rgba(239, 68, 68, 0.25)',
-                    tagColor: '#ef4444',
-                    timeStr: latest.timeStr || ''
-                };
-                bearList.push(item);
-                this.checkAndTriggerHighPowerAlert(item);
+                if (pcr1hDiff > 0) bullList.push(item);
+                if (pcr1hDiff < 0) bearList.push(item);
+
+            } else {
+                // ===== LIVE DUAL ACTION MODE =====
+                const tick15m = cleanList[Math.max(0, cleanList.length - 4)];
+                const pcrPrev = tick15m.value;
+                const pcrDiff = pcrCur - pcrPrev;
+                const pcrPct = pcrPrev > 0 ? ((pcrDiff / pcrPrev) * 100) : 0;
+
+                const spotPrev = tick15m.spot || 0;
+                const spotDiff = (spotCur && spotPrev) ? (spotCur - spotPrev) : 0;
+                const spotPct = spotPrev > 0 ? ((spotDiff / spotPrev) * 100) : 0;
+
+                let sumPcrDiff = 0, sumSpotDiff = 0, cnt = 0;
+                for (let k = 1; k < cleanList.length; k++) {
+                    sumPcrDiff += Math.abs(cleanList[k].value - cleanList[k-1].value);
+                    sumSpotDiff += Math.abs((cleanList[k].spot || 0) - (cleanList[k-1].spot || 0));
+                    cnt++;
+                }
+                const avgPcrDiff = cnt > 0 ? (sumPcrDiff / cnt) : 0.001;
+                const avgSpotDiff = cnt > 0 ? (sumSpotDiff / cnt) : 1.0;
+
+                const tickPrev = cleanList[cleanList.length - 2] || tick15m;
+                const singlePcrDiff = pcrCur - tickPrev.value;
+                const singleSpotDiff = (spotCur && tickPrev.spot) ? (spotCur - tickPrev.spot) : 0;
+
+                const pcrMultiplier = avgPcrDiff > 0 ? (Math.abs(singlePcrDiff) / avgPcrDiff) : 0;
+                const spotMultiplier = avgSpotDiff > 0 ? (Math.abs(singleSpotDiff) / avgSpotDiff) : 0;
+                const avgMultiplier = (pcrMultiplier + spotMultiplier) / 2;
+
+                const absSpotPct = Math.abs(spotPct);
+                const absPcrPct = Math.abs(pcrPct);
+                const harmonicPct = Math.sqrt(absSpotPct * absPcrPct);
+
+                let powerScore = Math.round(45 + (harmonicPct * 22) + (avgMultiplier * 4));
+                powerScore = Math.min(99, Math.max(50, powerScore));
+
+                const isBullishAligned = (singleSpotDiff > 0 && spotDiff > 0) && (singlePcrDiff > 0 && pcrDiff > 0);
+                const isBearishAligned = (singleSpotDiff < 0 && spotDiff < 0) && (singlePcrDiff < 0 && pcrDiff < 0);
+
+                if (!isBullishAligned && !isBearishAligned) return;
+
+                const isSignificantPcr = Math.abs(pcrPct) >= 0.5 || Math.abs(pcrDiff) >= 0.002;
+                const isSignificantSpot = Math.abs(spotPct) >= 0.10;
+                if (!isSignificantPcr || !isSignificantSpot) return;
+
+                if (isBullishAligned) {
+                    const item = {
+                        symbol: sym,
+                        pcrCur,
+                        pcrDiff,
+                        pcrPct,
+                        spotCur,
+                        spotDiff,
+                        spotPct,
+                        powerScore,
+                        tag: '🚀 PURE DUAL SURGE',
+                        tagBg: 'rgba(16, 185, 129, 0.25)',
+                        tagColor: '#10b981',
+                        timeStr: latest.timeStr || ''
+                    };
+                    bullList.push(item);
+                    this.checkAndTriggerHighPowerAlert(item);
+                }
+
+                if (isBearishAligned) {
+                    const item = {
+                        symbol: sym,
+                        pcrCur,
+                        pcrDiff,
+                        pcrPct,
+                        spotCur,
+                        spotDiff,
+                        spotPct,
+                        powerScore,
+                        tag: '📉 PURE DUAL CRASH',
+                        tagBg: 'rgba(239, 68, 68, 0.25)',
+                        tagColor: '#ef4444',
+                        timeStr: latest.timeStr || ''
+                    };
+                    bearList.push(item);
+                    this.checkAndTriggerHighPowerAlert(item);
+                }
             }
         });
 
-        bullList.sort((a, b) => b.powerScore - a.powerScore);
-        bearList.sort((a, b) => b.powerScore - a.powerScore);
+        if (this.radarMode === '1hr') {
+            bullList.sort((a, b) => b.pcr1hDiff - a.pcr1hDiff);
+            bearList.sort((a, b) => a.pcr1hDiff - b.pcr1hDiff);
+        } else {
+            bullList.sort((a, b) => b.powerScore - a.powerScore);
+            bearList.sort((a, b) => b.powerScore - a.powerScore);
+        }
 
         const topBull = bullList.slice(0, 5);
         const topBear = bearList.slice(0, 5);
@@ -2170,9 +2224,54 @@ const App = {
         }
 
         const renderRows = (list, isBull) => {
-            if (list.length === 0) return `<div style="text-align:center; padding:1.5rem; color:var(--text-muted); font-size:0.78rem;">No live ${isBull ? 'bullish dual surges' : 'bearish dual crashes'} active in current tick window.</div>`;
+            if (list.length === 0) {
+                return `<div style="text-align:center; padding:1.5rem; color:var(--text-muted); font-size:0.78rem;">No ${isBull ? 'bullish' : 'bearish'} shifts active in selected mode.</div>`;
+            }
 
             return list.map((item, idx) => {
+                if (this.radarMode === '1hr') {
+                    const pcr1hDiffStr = (item.pcr1hDiff > 0 ? '+' : '') + item.pcr1hDiff.toFixed(4);
+                    const pcr1hPctStr = (item.pcr1hPct > 0 ? '+' : '') + item.pcr1hPct.toFixed(1) + '%';
+                    const spot1hDiffStr = (item.spot1hDiff > 0 ? '+' : '') + item.spot1hDiff.toFixed(2);
+                    const spot1hPctStr = (item.spot1hPct > 0 ? '+' : '') + item.spot1hPct.toFixed(2) + '%';
+                    const tagColor = isBull ? '#10b981' : '#ef4444';
+                    const tagBg = isBull ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)';
+
+                    return `
+                        <div class="radar-row" onclick="App.switchView('pcr-analytics'); App.changePcrSymbol('${item.symbol}');"
+                             style="display: flex; align-items: center; justify-content: space-between; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 0.6rem 0.85rem; cursor: pointer; transition: all 0.18s;"
+                             onmouseover="this.style.borderColor='${tagColor}80'; this.style.transform='translateX(${isBull ? '3px' : '-3px'})';"
+                             onmouseout="this.style.borderColor='rgba(255,255,255,0.06)'; this.style.transform='none';">
+                            
+                            <div style="display: flex; align-items: center; gap: 0.6rem;">
+                                <div style="width: 22px; height: 22px; border-radius: 50%; background: ${tagBg}; color: ${tagColor}; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.72rem;">
+                                    #${idx + 1}
+                                </div>
+                                <div>
+                                    <div style="font-weight: 700; color: #f8fafc; font-size: 0.88rem; display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
+                                        ${item.symbol}
+                                        <span style="font-size: 0.58rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 800; background: ${tagBg}; color: ${tagColor}; border: 1px solid ${tagColor}40;">
+                                            ${isBull ? '🎯 1H PCR RALLY' : '🎯 1H PCR DROP'}
+                                        </span>
+                                    </div>
+                                    <div style="font-size: 0.7rem; color: var(--text-muted);">
+                                        Spot: <strong style="color: #f8fafc;">₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}</strong> <span style="color: ${item.spot1hDiff >= 0 ? '#10b981' : '#ef4444'}; font-weight:700;">(1h: ${spot1hDiffStr} | ${spot1hPctStr})</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="text-align: right;">
+                                <div style="font-family:'JetBrains Mono',monospace; font-weight:800; font-size:0.85rem; color:${tagColor}; background:${tagBg}; padding:0.2rem 0.55rem; border-radius:6px; border:1px solid ${tagColor}50;">
+                                    1h: ${pcr1hDiffStr} <span style="font-size:0.68rem; opacity:0.85;">(${pcr1hPctStr})</span>
+                                </div>
+                                <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.1rem;">
+                                    PCR: <strong style="color: #38bdf8;">${item.pcrCur.toFixed(4)}</strong>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
                 const pcrDiffStr = (item.pcrDiff > 0 ? '+' : '') + item.pcrDiff.toFixed(4);
                 const spotDiffStr = (item.spotDiff > 0 ? '+' : '') + item.spotDiff.toFixed(2);
                 const spotPctStr = (item.spotPct > 0 ? '+' : '') + item.spotPct.toFixed(2) + '%';
@@ -2210,24 +2309,26 @@ const App = {
             }).join('');
         };
 
+        const is1hr = (this.radarMode === '1hr');
+
         container.innerHTML = `
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 1rem;">
-                <!-- Left: Live Bullish Dual Surges -->
+                <!-- Left: Bullish Leaders -->
                 <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 10px; padding: 0.85rem 1rem;">
                     <div style="font-weight: 700; color: #10b981; font-size: 0.88rem; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;">
-                        <span><i class="fas fa-arrow-trend-up"></i> 🟢 Live Bullish Dual Surges</span>
-                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(16, 185, 129, 0.15); border-radius: 4px; color: #10b981; font-weight:800;">DUAL ACTION MODE</span>
+                        <span><i class="fas fa-arrow-trend-up"></i> ${is1hr ? '🟢 Top 5 Bullish 1-Hour Bias Leaders' : '🟢 Live Bullish Dual Surges'}</span>
+                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(16, 185, 129, 0.15); border-radius: 4px; color: #10b981; font-weight:800;">${is1hr ? 'MAX 1H PCR EXPANSION' : 'DUAL ACTION MODE'}</span>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                         ${renderRows(topBull, true)}
                     </div>
                 </div>
 
-                <!-- Right: Live Bearish Dual Crashes -->
+                <!-- Right: Bearish Leaders -->
                 <div style="background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 10px; padding: 0.85rem 1rem;">
                     <div style="font-weight: 700; color: #ef4444; font-size: 0.88rem; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;">
-                        <span><i class="fas fa-arrow-trend-down"></i> 🔴 Live Bearish Dual Crashes</span>
-                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(239, 68, 68, 0.15); border-radius: 4px; color: #ef4444; font-weight:800;">DUAL ACTION MODE</span>
+                        <span><i class="fas fa-arrow-trend-down"></i> ${is1hr ? '🔴 Top 5 Bearish 1-Hour Bias Leaders' : '🔴 Live Bearish Dual Crashes'}</span>
+                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(239, 68, 68, 0.15); border-radius: 4px; color: #ef4444; font-weight:800;">${is1hr ? 'MAX 1H PCR COLLAPSE' : 'DUAL ACTION MODE'}</span>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                         ${renderRows(topBear, false)}

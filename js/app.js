@@ -1924,23 +1924,72 @@ const App = {
     phoneAlertsEnabled: localStorage.getItem('destrade_phone_alerts') === 'true',
     alertCooldowns: {},
 
-    async togglePhoneAlerts() {
-        if (!this.phoneAlertsEnabled) {
-            let granted = false;
-            if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications) {
+    getLocalNotificationsPlugin() {
+        if (window.Capacitor) {
+            if (window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications) {
+                return window.Capacitor.Plugins.LocalNotifications;
+            }
+            if (typeof window.Capacitor.registerPlugin === 'function') {
                 try {
-                    const res = await window.Capacitor.Plugins.LocalNotifications.requestPermissions();
-                    granted = (res.display === 'granted');
+                    const plugin = window.Capacitor.registerPlugin('LocalNotifications');
+                    if (plugin) return plugin;
                 } catch(e) {}
             }
-            if (!granted && 'Notification' in window) {
-                const res = await Notification.requestPermission();
-                granted = (res === 'granted');
+        }
+        return null;
+    },
+
+    async initAndroidNotificationChannel() {
+        const LN = this.getLocalNotificationsPlugin();
+        if (!LN || typeof LN.createChannel !== 'function') return;
+        try {
+            await LN.createChannel({
+                id: 'destrade_high_alerts',
+                name: 'Destrade Breakout Alerts',
+                description: 'High priority notifications for 70+ Power Score stock breakouts',
+                importance: 5, // MAX importance (makes sound, banner & vibration)
+                visibility: 1, // PUBLIC
+                sound: 'beep.wav',
+                vibration: true,
+                lights: true,
+                lightColor: '#10b981'
+            });
+            console.log('✅ Android Notification Channel destrade_high_alerts initialized!');
+        } catch(e) {
+            console.warn('Channel creation error:', e);
+        }
+    },
+
+    async togglePhoneAlerts() {
+        if (!this.phoneAlertsEnabled) {
+            const LN = this.getLocalNotificationsPlugin();
+            let granted = false;
+
+            if (LN && typeof LN.requestPermissions === 'function') {
+                try {
+                    const res = await LN.requestPermissions();
+                    console.log('Capacitor LocalNotifications permission response:', res);
+                    granted = (res && (res.display === 'granted' || res.receive === 'granted'));
+                } catch(e) {
+                    console.warn('LocalNotifications permission request failed:', e);
+                }
             }
+
+            if (!granted && 'Notification' in window) {
+                try {
+                    const res = await Notification.requestPermission();
+                    granted = (res === 'granted');
+                } catch(e) {}
+            }
+
+            await this.initAndroidNotificationChannel();
+
             this.phoneAlertsEnabled = true;
             localStorage.setItem('destrade_phone_alerts', 'true');
             this.showToast('🔔 Phone Alerts Enabled for Power Scores > 70!');
-            this.sendPhoneNotification('⚡ Destrade Phone Alerts Active!', 'You will receive instant notifications whenever any stock achieves a 70+ Power Score!');
+
+            // Send test welcome notification
+            await this.sendPhoneNotification('⚡ Destrade Phone Alerts Active!', 'You will receive instant phone notifications whenever any stock crosses 70+ Power Score!');
         } else {
             this.phoneAlertsEnabled = false;
             localStorage.setItem('destrade_phone_alerts', 'false');
@@ -1966,7 +2015,7 @@ const App = {
     },
 
     async sendPhoneNotification(title, body) {
-        // 1. Audio Beep Tone Alert
+        // 1. Web Audio Beep Tone Alert
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
             const osc = ctx.createOscillator();
@@ -1981,22 +2030,32 @@ const App = {
         } catch(e) {}
 
         // 2. Native Capacitor Android Notification
-        if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications) {
+        const LN = this.getLocalNotificationsPlugin();
+        if (LN && typeof LN.schedule === 'function') {
             try {
-                await window.Capacitor.Plugins.LocalNotifications.schedule({
+                await this.initAndroidNotificationChannel();
+
+                const notifId = Math.floor(Math.random() * 900000) + 100000;
+                const notifObj = {
                     notifications: [{
                         title: title,
                         body: body,
-                        id: Math.floor(Math.random() * 100000),
+                        id: notifId,
                         schedule: { at: new Date(Date.now() + 100) },
+                        channelId: 'destrade_high_alerts',
                         sound: null,
                         attachments: null,
-                        actionTypeId: "",
+                        actionTypeId: '',
                         extra: null
                     }]
-                });
+                };
+
+                const res = await LN.schedule(notifObj);
+                console.log('✅ Android Capacitor LocalNotification Scheduled:', res);
                 return;
-            } catch(e) { console.warn('Capacitor local notification failed:', e); }
+            } catch(e) {
+                console.warn('Capacitor local notification schedule failed:', e);
+            }
         }
 
         // 3. Web Browser System Notification

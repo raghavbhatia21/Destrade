@@ -65,6 +65,7 @@ const App = {
         try { this.setupVisibilityAPI(); } catch (e) { console.warn(e); }
         try { this.setupPcrSearchClickOutside(); } catch (e) { console.warn(e); }
         try { this.setupPcrCanvasResizeListener(); } catch (e) { console.warn(e); }
+        try { this.updatePhoneAlertsButtonUI(); } catch (e) { console.warn(e); }
     },
 
     setupPcrCanvasResizeListener() {
@@ -1920,6 +1921,116 @@ const App = {
         container.innerHTML = html;
     },
 
+    phoneAlertsEnabled: localStorage.getItem('destrade_phone_alerts') === 'true',
+    alertCooldowns: {},
+
+    async togglePhoneAlerts() {
+        if (!this.phoneAlertsEnabled) {
+            let granted = false;
+            if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications) {
+                try {
+                    const res = await window.Capacitor.Plugins.LocalNotifications.requestPermissions();
+                    granted = (res.display === 'granted');
+                } catch(e) {}
+            }
+            if (!granted && 'Notification' in window) {
+                const res = await Notification.requestPermission();
+                granted = (res === 'granted');
+            }
+            this.phoneAlertsEnabled = true;
+            localStorage.setItem('destrade_phone_alerts', 'true');
+            this.showToast('🔔 Phone Alerts Enabled for Power Scores > 70!');
+            this.sendPhoneNotification('⚡ Destrade Phone Alerts Active!', 'You will receive instant notifications whenever any stock achieves a 70+ Power Score!');
+        } else {
+            this.phoneAlertsEnabled = false;
+            localStorage.setItem('destrade_phone_alerts', 'false');
+            this.showToast('🔕 Phone Alerts Disabled');
+        }
+        this.updatePhoneAlertsButtonUI();
+    },
+
+    updatePhoneAlertsButtonUI() {
+        const btn = document.getElementById('btn-toggle-phone-alerts');
+        if (!btn) return;
+        if (this.phoneAlertsEnabled) {
+            btn.style.background = 'rgba(16, 185, 129, 0.2)';
+            btn.style.border = '1px solid #10b981';
+            btn.style.color = '#10b981';
+            btn.innerHTML = '<i class="fas fa-bell"></i> 🔔 Alerts ON (>70 Score)';
+        } else {
+            btn.style.background = 'rgba(245, 158, 11, 0.15)';
+            btn.style.border = '1px solid rgba(245, 158, 11, 0.4)';
+            btn.style.color = '#f59e0b';
+            btn.innerHTML = '<i class="fas fa-bell"></i> 🔔 Phone Alerts (>70 Score)';
+        }
+    },
+
+    async sendPhoneNotification(title, body) {
+        // 1. Audio Beep Tone Alert
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, ctx.currentTime);
+            gain.gain.setValueAtTime(0.3, ctx.currentTime);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.35);
+        } catch(e) {}
+
+        // 2. Native Capacitor Android Notification
+        if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications) {
+            try {
+                await window.Capacitor.Plugins.LocalNotifications.schedule({
+                    notifications: [{
+                        title: title,
+                        body: body,
+                        id: Math.floor(Math.random() * 100000),
+                        schedule: { at: new Date(Date.now() + 100) },
+                        sound: null,
+                        attachments: null,
+                        actionTypeId: "",
+                        extra: null
+                    }]
+                });
+                return;
+            } catch(e) { console.warn('Capacitor local notification failed:', e); }
+        }
+
+        // 3. Web Browser System Notification
+        if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+                new Notification(title, {
+                    body: body,
+                    icon: 'https://destrade-default-rtdb.firebaseio.com/favicon.ico'
+                });
+            } catch(e) {}
+        }
+    },
+
+    checkAndTriggerHighPowerAlert(item) {
+        if (!this.phoneAlertsEnabled || item.powerScore < 70) return;
+
+        const now = Date.now();
+        const lastSent = this.alertCooldowns[item.symbol] || 0;
+        // 15-minute cooldown per symbol
+        if (now - lastSent < 15 * 60 * 1000) return;
+
+        this.alertCooldowns[item.symbol] = now;
+
+        const isBull = item.tag.includes('SURGE') || item.spotDiff >= 0;
+        const emoji = isBull ? '🚀' : '📉';
+        const spotPctStr = (item.spotPct > 0 ? '+' : '') + item.spotPct.toFixed(2) + '%';
+        const pcrDiffStr = (item.pcrDiff > 0 ? '+' : '') + item.pcrDiff.toFixed(4);
+
+        const title = `${emoji} ${item.symbol} (${item.powerScore}/100 Power Score)`;
+        const body = `Spot: ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'} (${spotPctStr}) | PCR: ${pcrDiffStr}. ${item.tag}!`;
+
+        this.sendPhoneNotification(title, body);
+    },
+
     // ===== INTRADAY PCR & PRICE MOMENTUM RADAR (Dashboard) =====
     renderPcrIntradayScreener() {
         const container = document.getElementById('pcr-intraday-screener-content');
@@ -1989,7 +2100,7 @@ const App = {
             if (!isSignificantPcr || !isSignificantSpot) return;
 
             if (isBullishAligned) {
-                bullList.push({
+                const item = {
                     symbol: sym,
                     pcrCur,
                     pcrDiff,
@@ -2002,11 +2113,13 @@ const App = {
                     tagBg: 'rgba(16, 185, 129, 0.25)',
                     tagColor: '#10b981',
                     timeStr: latest.timeStr || ''
-                });
+                };
+                bullList.push(item);
+                this.checkAndTriggerHighPowerAlert(item);
             }
 
             if (isBearishAligned) {
-                bearList.push({
+                const item = {
                     symbol: sym,
                     pcrCur,
                     pcrDiff,
@@ -2019,7 +2132,9 @@ const App = {
                     tagBg: 'rgba(239, 68, 68, 0.25)',
                     tagColor: '#ef4444',
                     timeStr: latest.timeStr || ''
-                });
+                };
+                bearList.push(item);
+                this.checkAndTriggerHighPowerAlert(item);
             }
         });
 

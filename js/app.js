@@ -1951,26 +1951,48 @@ const App = {
             const spotDiff = (spotCur && spotPrev) ? (spotCur - spotPrev) : 0;
             const spotPct = spotPrev > 0 ? ((spotDiff / spotPrev) * 100) : 0;
 
-            const bullScore = (spotPct * 50) + (pcrPct * 8) + (pcrDiff * 200);
-            const bearScore = (-spotPct * 50) + (-pcrPct * 8) + (-pcrDiff * 200);
+            // Compute All-Day Average 5-Min Tick Shifts for this symbol
+            let sumPcrDiff = 0, sumSpotDiff = 0, cnt = 0;
+            for (let k = 1; k < cleanList.length; k++) {
+                sumPcrDiff += Math.abs(cleanList[k].value - cleanList[k-1].value);
+                sumSpotDiff += Math.abs((cleanList[k].spot || 0) - (cleanList[k-1].spot || 0));
+                cnt++;
+            }
+            const avgPcrDiff = cnt > 0 ? (sumPcrDiff / cnt) : 0.001;
+            const avgSpotDiff = cnt > 0 ? (sumSpotDiff / cnt) : 1.0;
+
+            const tickPrev = cleanList[cleanList.length - 2] || tick15m;
+            const singlePcrDiff = pcrCur - tickPrev.value;
+            const singleSpotDiff = (spotCur && tickPrev.spot) ? (spotCur - tickPrev.spot) : 0;
+
+            const pcrMultiplier = avgPcrDiff > 0 ? (Math.abs(singlePcrDiff) / avgPcrDiff) : 0;
+            const spotMultiplier = avgSpotDiff > 0 ? (Math.abs(singleSpotDiff) / avgSpotDiff) : 0;
+            const avgMultiplier = (pcrMultiplier + spotMultiplier) / 2;
+
+            const absSpotPct = Math.abs(spotPct);
+            const absPcrPct = Math.abs(pcrPct);
+            const harmonicPct = Math.sqrt(absSpotPct * absPcrPct);
+
+            let powerScore = Math.round(45 + (harmonicPct * 22) + (avgMultiplier * 4));
+            powerScore = Math.min(99, Math.max(50, powerScore));
 
             if (spotDiff > 0 || pcrDiff > 0) {
                 let tag = (spotDiff > 0 && pcrDiff > 0) ? '🔥 DUAL SURGE' : (pcrDiff > 0 ? '📈 PCR RALLY' : '⚡ PRICE UP');
                 let tagBg = (spotDiff > 0 && pcrDiff > 0) ? 'rgba(16, 185, 129, 0.25)' : (pcrDiff > 0 ? 'rgba(56, 189, 248, 0.2)' : 'rgba(245, 158, 11, 0.2)');
                 let tagColor = (spotDiff > 0 && pcrDiff > 0) ? '#10b981' : (pcrDiff > 0 ? '#38bdf8' : '#f59e0b');
-                bullList.push({ symbol: sym, pcrCur, pcrDiff, pcrPct, spotCur, spotDiff, spotPct, score: bullScore, tag, tagBg, tagColor, timeStr: latest.timeStr || '' });
+                bullList.push({ symbol: sym, pcrCur, pcrDiff, pcrPct, spotCur, spotDiff, spotPct, powerScore, tag, tagBg, tagColor, timeStr: latest.timeStr || '' });
             }
 
             if (spotDiff < 0 || pcrDiff < 0) {
                 let tag = (spotDiff < 0 && pcrDiff < 0) ? '🔥 DUAL DROP' : (pcrDiff < 0 ? '📉 PCR DROP' : '⚡ PRICE DOWN');
                 let tagBg = (spotDiff < 0 && pcrDiff < 0) ? 'rgba(239, 68, 68, 0.25)' : (pcrDiff < 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)');
                 let tagColor = (spotDiff < 0 && pcrDiff < 0) ? '#ef4444' : (pcrDiff < 0 ? '#ef4444' : '#f59e0b');
-                bearList.push({ symbol: sym, pcrCur, pcrDiff, pcrPct, spotCur, spotDiff, spotPct, score: bearScore, tag, tagBg, tagColor, timeStr: latest.timeStr || '' });
+                bearList.push({ symbol: sym, pcrCur, pcrDiff, pcrPct, spotCur, spotDiff, spotPct, powerScore, tag, tagBg, tagColor, timeStr: latest.timeStr || '' });
             }
         });
 
-        bullList.sort((a, b) => b.score - a.score);
-        bearList.sort((a, b) => b.score - a.score);
+        bullList.sort((a, b) => b.powerScore - a.powerScore);
+        bearList.sort((a, b) => b.powerScore - a.powerScore);
 
         const topBull = bullList.slice(0, 5);
         const topBear = bearList.slice(0, 5);
@@ -2017,12 +2039,9 @@ const App = {
                         </div>
 
                         <div style="text-align: right;">
-                            <div style="font-size: 0.85rem; font-weight: 800; font-family: 'JetBrains Mono', monospace; color: #38bdf8;">
-                                ${item.pcrCur.toFixed(4)}
-                            </div>
-                            <div style="font-size: 0.7rem; font-weight: 700; color: ${isBull ? '#10b981' : '#ef4444'}; font-family: 'JetBrains Mono', monospace;">
-                                15m: ${pcrDiffStr}
-                            </div>
+                            <span style="font-family:'JetBrains Mono',monospace; font-weight:800; font-size:0.82rem; color:${item.tagColor}; background:${item.tagBg}; padding:0.2rem 0.55rem; border-radius:6px; border:1px solid ${item.tagColor}50;">
+                                ${item.powerScore}<span style="font-size:0.65rem; opacity:0.75;">/100</span>
+                            </span>
                         </div>
                     </div>
                 `;
@@ -2035,7 +2054,7 @@ const App = {
                 <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 10px; padding: 0.85rem 1rem;">
                     <div style="font-weight: 700; color: #10b981; font-size: 0.88rem; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;">
                         <span><i class="fas fa-arrow-trend-up"></i> 🟢 Top 5 Bullish Momentum Leaders</span>
-                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(16, 185, 129, 0.15); border-radius: 4px; color: #10b981; font-weight:800;">15M DRIFT</span>
+                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(16, 185, 129, 0.15); border-radius: 4px; color: #10b981; font-weight:800;">POWER SCORE</span>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                         ${renderRows(topBull, true)}
@@ -2046,7 +2065,7 @@ const App = {
                 <div style="background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 10px; padding: 0.85rem 1rem;">
                     <div style="font-weight: 700; color: #ef4444; font-size: 0.88rem; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;">
                         <span><i class="fas fa-arrow-trend-down"></i> 🔴 Top 5 Bearish Momentum Leaders</span>
-                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(239, 68, 68, 0.15); border-radius: 4px; color: #ef4444; font-weight:800;">15M DRIFT</span>
+                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(239, 68, 68, 0.15); border-radius: 4px; color: #ef4444; font-weight:800;">POWER SCORE</span>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                         ${renderRows(topBear, false)}

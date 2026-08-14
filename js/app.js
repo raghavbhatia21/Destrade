@@ -2130,7 +2130,7 @@ const App = {
             const latest = cleanList[cleanList.length - 1];
             const oldest = cleanList[0];
 
-            // REQUIREMENT 1: Must have at least 30 minutes of tick history to evaluate 1-hour bias!
+            // REQUIREMENT 1: Must have at least 30 minutes of tick history to evaluate 1-hour PCR shift!
             if ((latest.time - oldest.time) < 1800) return;
 
             // REQUIREMENT 2: Find tick closest to 1 hour ago (~3600 seconds prior)
@@ -2156,22 +2156,6 @@ const App = {
             const spot1hDiff = (spotCur && spot1h) ? (spotCur - spot1h) : 0;
             const spot1hPct = spot1h > 0 ? ((spot1hDiff / spot1h) * 100) : 0;
 
-            // REQUIREMENT 3: Minimum Significance Filter (Noise Reduction)
-            const absPcrDiff = Math.abs(pcr1hDiff);
-            const absPcrPct = Math.abs(pcr1hPct);
-            const absSpotPct = Math.abs(spot1hPct);
-
-            if (absPcrDiff < 0.005 && absPcrPct < 1.0) return; // Skip tiny PCR noise
-
-            // REQUIREMENT 4: Synchronized Price Alignment (Dual Direction)
-            const isBullish = (pcr1hDiff > 0 && spot1hDiff >= 0);
-            const isBearish = (pcr1hDiff < 0 && spot1hDiff <= 0);
-
-            if (!isBullish && !isBearish) return; // Skip non-aligned divergence
-
-            // Composite Trustable Bias Score for Ranking
-            const compositeScore = (absPcrPct * 1.5) + (absSpotPct * 2.5) + (absPcrDiff * 100);
-
             const item = {
                 symbol: sym,
                 pcrCur,
@@ -2181,17 +2165,17 @@ const App = {
                 spotCur,
                 spot1hDiff,
                 spot1hPct,
-                compositeScore,
                 timeStr: latest.timeStr || ''
             };
 
-            if (isBullish) bullList.push(item);
-            if (isBearish) bearList.push(item);
+            // Categorize by Pure PCR Direction over the last 1 hour
+            if (pcr1hDiff > 0) bullList.push(item);
+            if (pcr1hDiff < 0) bearList.push(item);
         });
 
-        // Rank by Composite Trustable Bias Score descending
-        bullList.sort((a, b) => b.compositeScore - a.compositeScore);
-        bearList.sort((a, b) => b.compositeScore - a.compositeScore);
+        // Rank strictly by 1-Hour PCR Shift magnitude (Pure PCR Movers)
+        bullList.sort((a, b) => b.pcr1hDiff - a.pcr1hDiff);  // Highest positive PCR expansion first
+        bearList.sort((a, b) => a.pcr1hDiff - b.pcr1hDiff);  // Highest negative PCR collapse first
 
         return {
             bull: bullList,

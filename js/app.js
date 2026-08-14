@@ -122,12 +122,31 @@ const App = {
                         if (this.state.activeView === 'sectors' || this.state.activeView === 'dashboard') this.render();
                     }
                 }, () => {});
+                // 24/7 Cloud Background Alert Listener
+                db.ref('latest_alert').on('value', snap => {
+                    if (snap.exists()) {
+                        const alert = snap.val();
+                        if (alert && alert.timestamp && (Date.now() - alert.timestamp < 300000)) {
+                            this.handleServerAlert(alert);
+                        }
+                    }
+                }, () => {});
             }
             // Auto-prefill full PCR history for Screener on startup
             this.prefillAllPcrHistoryForScreener();
         } catch (e) {
             console.warn('Firebase Sync Warning:', e.message);
         }
+    },
+
+    handleServerAlert(alert) {
+        if (!this.phoneAlertsEnabled || !alert || !alert.id) return;
+        if (!this._seenServerAlerts) this._seenServerAlerts = new Set();
+        if (this._seenServerAlerts.has(alert.id)) return;
+        this._seenServerAlerts.add(alert.id);
+
+        this.sendPhoneNotification(alert.title, alert.body);
+        this.showToast(`🔔 ${alert.title}`);
     },
 
     async prefillAllPcrHistoryForScreener() {

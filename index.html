@@ -366,6 +366,17 @@
     <script src="js/firebase-config.js?v=138"></script>
     <script src="js/nse-api.js?v=138"></script>
     <script src="js/app.js?v=138"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').then(reg => {
+                    console.log('✅ Destrade ServiceWorker Active:', reg.scope);
+                }).catch(err => {
+                    console.warn('ServiceWorker registration error:', err);
+                });
+            });
+        }
+    </script>
 </body>
 
 </html>

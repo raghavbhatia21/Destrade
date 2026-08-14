@@ -208,7 +208,7 @@ async function executeMarketSync() {
         console.log('🌴 Market Closed (Weekend). Skipping sync.');
         lastSyncStatus = { lastRun: iso, status: 'Market Closed (Weekend)', dateStr, symbolsSynced: 0 };
         await firebasePut('/cron_status.json', lastSyncStatus);
-        return;
+        return false; // signal: not market hours
     }
 
     // Check Market Hours (09:10 AM to 03:40 PM IST)
@@ -219,17 +219,21 @@ async function executeMarketSync() {
         console.log('🌙 Outside Market Hours (09:15 - 15:30 IST). Skipping sync.');
         lastSyncStatus = { lastRun: iso, status: 'Outside Market Hours', dateStr, symbolsSynced: 0 };
         await firebasePut('/cron_status.json', lastSyncStatus);
-        return;
+        return false; // signal: not market hours
     }
 
-    console.log(`⚡ Market Live! Syncing ${SYMBOLS.length} F&O symbols to Firebase...`);
+    console.log(`⚡ Market Live! Scanning ${SYMBOLS.length} F&O symbols continuously...`);
 
     const summary = {};
-    const BATCH_SIZE = 10;
     const nowSec = Math.floor(Date.now() / 1000);
+    const BATCH_SIZE = 10;
+    const BATCH_DELAY_MS = 1000;
 
     for (let i = 0; i < SYMBOLS.length; i += BATCH_SIZE) {
         const batch = SYMBOLS.slice(i, i + BATCH_SIZE);
+        const batchIdx = Math.floor(i / BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(SYMBOLS.length / BATCH_SIZE);
+
         await Promise.all(batch.map(async (sym) => {
             try {
                 const data = await fetchOptionChainPCR(sym);
@@ -252,23 +256,75 @@ async function executeMarketSync() {
                         });
 
                         await firebasePut(path, list.slice(-250));
-                        console.log(`  ✅ ${sym}: PCR ${data.pcr} (Spot: ₹${data.spot}) saved!`);
                     }
                 }
             } catch (err) {}
         }));
+
+        // Log batch progress every 5 batches
+        if (batchIdx % 5 === 0 || batchIdx === totalBatches) {
+            console.log(`  📦 Batch ${batchIdx}/${totalBatches} done (${Object.keys(summary).length} symbols synced so far)`);
+        }
+
+        // Pause between batches to avoid hammering the API
+        if (i + BATCH_SIZE < SYMBOLS.length) {
+            await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
+        }
     }
 
     lastSyncStatus = {
         lastRun: iso,
-        status: 'Active (24/7 Cloud Worker)',
+        status: 'Active (Continuous Scanner)',
         dateStr: dateStr,
         symbolsSynced: Object.keys(summary).length,
         summary: summary
     };
 
     await firebasePut('/cron_status.json', lastSyncStatus);
-    console.log(`🎉 24/7 Market Sync Pass Completed! Synced ${Object.keys(summary).length}/${SYMBOLS.length} symbols!`);
+    console.log(`🎉 Full Scan Cycle Completed! Synced ${Object.keys(summary).length}/${SYMBOLS.length} symbols!`);
+    return true; // signal: market is live
+}
+
+// ===== CONTINUOUS SCANNING ENGINE =====
+// Instead of fixed intervals, runs back-to-back scans during market hours
+// with a small cooldown between cycles. This prevents Render from sleeping.
+let isScanRunning = false;
+let cycleCount = 0;
+
+async function continuousScanLoop() {
+    if (isScanRunning) {
+        console.log('⚠️ Previous scan cycle still running. Skipping overlap.');
+        return;
+    }
+
+    isScanRunning = true;
+    cycleCount++;
+    const cycleStart = Date.now();
+    console.log(`\n🔄 ===== SCAN CYCLE #${cycleCount} STARTING =====`);
+
+    try {
+        const isMarketLive = await executeMarketSync();
+
+        const elapsed = ((Date.now() - cycleStart) / 1000).toFixed(1);
+        console.log(`⏱️ Cycle #${cycleCount} completed in ${elapsed}s`);
+
+        if (isMarketLive) {
+            // Market is live: wait only 5 seconds between full cycles
+            // Each cycle takes ~22-30s (22 batches × 1s pause), so effective rate is ~1 full scan every ~30s
+            console.log('⚡ Market live — starting next cycle in 5 seconds...');
+            setTimeout(continuousScanLoop, 5 * 1000);
+        } else {
+            // Outside market hours: check every 2 minutes
+            console.log('🌙 Market closed — re-checking in 2 minutes...');
+            setTimeout(continuousScanLoop, 2 * 60 * 1000);
+        }
+    } catch (err) {
+        console.error('❌ Scan cycle error:', err);
+        // On error, retry after 30 seconds
+        setTimeout(continuousScanLoop, 30 * 1000);
+    } finally {
+        isScanRunning = false;
+    }
 }
 
 // Start HTTP Server for Render / Railway Healthcheck, Proxy & Manual Trigger
@@ -310,27 +366,25 @@ const server = http.createServer(async (req, res) => {
     } else {
         res.writeHead(200);
         res.end(JSON.stringify({
-            app: 'Destrade Pro Autonomous 24/7 Cloud Market Worker & CORS Proxy',
+            app: 'Destrade Pro Continuous 24/7 Cloud Scanner & CORS Proxy',
             uptime: Math.floor(process.uptime()) + ' seconds',
+            scanCycles: cycleCount,
             status: lastSyncStatus
         }, null, 2));
     }
 });
 
 server.listen(PORT, () => {
-    console.log(`🌐 Destrade Cloud Worker HTTP Health Server running on port ${PORT}`);
+    console.log(`🌐 Destrade Continuous Cloud Scanner running on port ${PORT}`);
     
-    // Run initial check on startup
-    executeMarketSync().catch(console.error);
+    // Start the continuous scan loop immediately
+    continuousScanLoop();
 
-    // Continuous 1-minute interval loop during market hours for 3-minute tick precision
-    setInterval(() => {
-        executeMarketSync().catch(console.error);
-    }, 60 * 1000);
-
-    // Self-ping every 5 minutes to prevent Render free instance from sleeping
+    // Self-ping every 4 minutes to prevent Render free instance from sleeping
     const selfUrl = process.env.RENDER_EXTERNAL_URL || 'https://destrade-market-worker.onrender.com';
     setInterval(() => {
         https.get(`${selfUrl}/`, () => {}).on('error', () => {});
-    }, 5 * 60 * 1000);
+        console.log(`🏓 Self-ping sent to keep Render alive`);
+    }, 4 * 60 * 1000);
 });
+

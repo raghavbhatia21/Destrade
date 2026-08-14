@@ -66,6 +66,10 @@ const App = {
         try { this.setupPcrSearchClickOutside(); } catch (e) { console.warn(e); }
         try { this.setupPcrCanvasResizeListener(); } catch (e) { console.warn(e); }
         try { this.updatePhoneAlertsButtonUI(); } catch (e) { console.warn(e); }
+        // Auto-restore Android notification channel if alerts were previously enabled
+        if (this.phoneAlertsEnabled) {
+            try { this.initAndroidNotificationChannel(); } catch (e) { console.warn(e); }
+        }
     },
 
     setupPcrCanvasResizeListener() {
@@ -2259,8 +2263,36 @@ const App = {
         const topBull = bullList.slice(0, 5);
         const topBear = bearList.slice(0, 5);
 
-        if (this.radarMode === '1hr') {
-            this.checkAndTriggerTop5BiasAlerts(topBull, topBear);
+        // ===== ALWAYS compute 1hr bias leaderboard for notifications (regardless of UI mode) =====
+        if (this.phoneAlertsEnabled) {
+            const bias1hBull = [];
+            const bias1hBear = [];
+
+            symbols.forEach(sym => {
+                const rawList = pcrHist[sym];
+                if (!Array.isArray(rawList) || rawList.length < 2) return;
+                const cleanList = this.sanitize5MinPcrList(rawList);
+                if (cleanList.length < 2) return;
+
+                const latest = cleanList[cleanList.length - 1];
+                const pcrCur = latest.value;
+                const spotCur = latest.spot || 0;
+                const tick1hAgo = cleanList[Math.max(0, cleanList.length - 15)];
+                const pcr1h = tick1hAgo.value;
+                const pcr1hDiff = pcrCur - pcr1h;
+                const pcr1hPct = pcr1h > 0 ? ((pcr1hDiff / pcr1h) * 100) : 0;
+                const spot1h = tick1hAgo.spot || 0;
+                const spot1hDiff = (spotCur && spot1h) ? (spotCur - spot1h) : 0;
+                const spot1hPct = spot1h > 0 ? ((spot1hDiff / spot1h) * 100) : 0;
+
+                const item = { symbol: sym, pcrCur, pcr1h, pcr1hDiff, pcr1hPct, spotCur, spot1hDiff, spot1hPct };
+                if (pcr1hDiff > 0) bias1hBull.push(item);
+                if (pcr1hDiff < 0) bias1hBear.push(item);
+            });
+
+            bias1hBull.sort((a, b) => b.pcr1hDiff - a.pcr1hDiff);
+            bias1hBear.sort((a, b) => a.pcr1hDiff - b.pcr1hDiff);
+            this.checkAndTriggerTop5BiasAlerts(bias1hBull.slice(0, 5), bias1hBear.slice(0, 5));
         }
 
         if (topBull.length === 0 && topBear.length === 0) {

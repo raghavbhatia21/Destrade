@@ -2114,6 +2114,93 @@ const App = {
         this.sendPhoneNotification(title, body);
     },
 
+    compute1HourMarketBiasList() {
+        const pcrHist = this.state.pcrHistory || {};
+        const symbols = Object.keys(pcrHist);
+        const bullList = [];
+        const bearList = [];
+
+        symbols.forEach(sym => {
+            const rawList = pcrHist[sym];
+            if (!Array.isArray(rawList) || rawList.length < 2) return;
+
+            const cleanList = this.sanitize5MinPcrList(rawList);
+            if (cleanList.length < 2) return;
+
+            const latest = cleanList[cleanList.length - 1];
+            const oldest = cleanList[0];
+
+            // REQUIREMENT 1: Must have at least 30 minutes of tick history to evaluate 1-hour bias!
+            if ((latest.time - oldest.time) < 1800) return;
+
+            // REQUIREMENT 2: Find tick closest to 1 hour ago (~3600 seconds prior)
+            const targetTime = latest.time - 3600;
+            let tick1hAgo = cleanList[0];
+            let minDelta = Math.abs(tick1hAgo.time - targetTime);
+
+            for (let i = 1; i < cleanList.length - 1; i++) {
+                const delta = Math.abs(cleanList[i].time - targetTime);
+                if (delta < minDelta) {
+                    minDelta = delta;
+                    tick1hAgo = cleanList[i];
+                }
+            }
+
+            const pcrCur = latest.value;
+            const pcr1h = tick1hAgo.value;
+            const pcr1hDiff = pcrCur - pcr1h;
+            const pcr1hPct = pcr1h > 0 ? ((pcr1hDiff / pcr1h) * 100) : 0;
+
+            const spotCur = latest.spot || 0;
+            const spot1h = tick1hAgo.spot || 0;
+            const spot1hDiff = (spotCur && spot1h) ? (spotCur - spot1h) : 0;
+            const spot1hPct = spot1h > 0 ? ((spot1hDiff / spot1h) * 100) : 0;
+
+            // REQUIREMENT 3: Minimum Significance Filter (Noise Reduction)
+            const absPcrDiff = Math.abs(pcr1hDiff);
+            const absPcrPct = Math.abs(pcr1hPct);
+            const absSpotPct = Math.abs(spot1hPct);
+
+            if (absPcrDiff < 0.005 && absPcrPct < 1.0) return; // Skip tiny PCR noise
+
+            // REQUIREMENT 4: Synchronized Price Alignment (Dual Direction)
+            const isBullish = (pcr1hDiff > 0 && spot1hDiff >= 0);
+            const isBearish = (pcr1hDiff < 0 && spot1hDiff <= 0);
+
+            if (!isBullish && !isBearish) return; // Skip non-aligned divergence
+
+            // Composite Trustable Bias Score for Ranking
+            const compositeScore = (absPcrPct * 1.5) + (absSpotPct * 2.5) + (absPcrDiff * 100);
+
+            const item = {
+                symbol: sym,
+                pcrCur,
+                pcr1h,
+                pcr1hDiff,
+                pcr1hPct,
+                spotCur,
+                spot1hDiff,
+                spot1hPct,
+                compositeScore,
+                timeStr: latest.timeStr || ''
+            };
+
+            if (isBullish) bullList.push(item);
+            if (isBearish) bearList.push(item);
+        });
+
+        // Rank by Composite Trustable Bias Score descending
+        bullList.sort((a, b) => b.compositeScore - a.compositeScore);
+        bearList.sort((a, b) => b.compositeScore - a.compositeScore);
+
+        return {
+            bull: bullList,
+            bear: bearList,
+            topBull: bullList.slice(0, 5),
+            topBear: bearList.slice(0, 5)
+        };
+    },
+
     previousTop5Bias: { bull: [], bear: [] },
 
     checkAndTriggerTop5BiasAlerts(topBull, topBear) {
@@ -2191,49 +2278,35 @@ const App = {
         const pcrHist = this.state.pcrHistory || {};
         const symbols = Object.keys(pcrHist);
 
-        const bullList = [];
-        const bearList = [];
+        // Always compute high-precision 1-Hour Market Bias Leaderboard
+        const bias1h = this.compute1HourMarketBiasList();
 
-        symbols.forEach(sym => {
-            const rawList = pcrHist[sym];
-            if (!Array.isArray(rawList) || rawList.length < 2) return;
+        // Always check for 1-Hour Bias Notifications
+        if (this.phoneAlertsEnabled) {
+            this.checkAndTriggerTop5BiasAlerts(bias1h.topBull, bias1h.topBear);
+        }
 
-            const cleanList = this.sanitize5MinPcrList(rawList);
-            if (cleanList.length < 2) return;
+        let topBull = [];
+        let topBear = [];
 
-            const latest = cleanList[cleanList.length - 1];
-            const pcrCur = latest.value;
-            const spotCur = latest.spot || 0;
+        if (this.radarMode === '1hr') {
+            topBull = bias1h.topBull;
+            topBear = bias1h.topBear;
+        } else {
+            // Live Dual Action Mode
+            const bullList = [];
+            const bearList = [];
 
-            if (this.radarMode === '1hr') {
-                // ===== 1-HOUR MARKET BIAS MODE =====
-                // Look back 15 ticks (~60-75 mins)
-                const tick1hAgo = cleanList[Math.max(0, cleanList.length - 15)];
-                const pcr1h = tick1hAgo.value;
-                const pcr1hDiff = pcrCur - pcr1h;
-                const pcr1hPct = pcr1h > 0 ? ((pcr1hDiff / pcr1h) * 100) : 0;
+            symbols.forEach(sym => {
+                const rawList = pcrHist[sym];
+                if (!Array.isArray(rawList) || rawList.length < 2) return;
+                const cleanList = this.sanitize5MinPcrList(rawList);
+                if (cleanList.length < 2) return;
 
-                const spot1h = tick1hAgo.spot || 0;
-                const spot1hDiff = (spotCur && spot1h) ? (spotCur - spot1h) : 0;
-                const spot1hPct = spot1h > 0 ? ((spot1hDiff / spot1h) * 100) : 0;
+                const latest = cleanList[cleanList.length - 1];
+                const pcrCur = latest.value;
+                const spotCur = latest.spot || 0;
 
-                const item = {
-                    symbol: sym,
-                    pcrCur,
-                    pcr1h,
-                    pcr1hDiff,
-                    pcr1hPct,
-                    spotCur,
-                    spot1hDiff,
-                    spot1hPct,
-                    timeStr: latest.timeStr || ''
-                };
-
-                if (pcr1hDiff > 0) bullList.push(item);
-                if (pcr1hDiff < 0) bearList.push(item);
-
-            } else {
-                // ===== LIVE DUAL ACTION MODE =====
                 const tick15m = cleanList[Math.max(0, cleanList.length - 4)];
                 const pcrPrev = tick15m.value;
                 const pcrDiff = pcrCur - pcrPrev;
@@ -2313,50 +2386,13 @@ const App = {
                     bearList.push(item);
                     this.checkAndTriggerHighPowerAlert(item);
                 }
-            }
-        });
-
-        if (this.radarMode === '1hr') {
-            bullList.sort((a, b) => b.pcr1hDiff - a.pcr1hDiff);
-            bearList.sort((a, b) => a.pcr1hDiff - b.pcr1hDiff);
-        } else {
-            bullList.sort((a, b) => b.powerScore - a.powerScore);
-            bearList.sort((a, b) => b.powerScore - a.powerScore);
-        }
-
-        const topBull = bullList.slice(0, 5);
-        const topBear = bearList.slice(0, 5);
-
-        // ===== ALWAYS compute 1hr bias leaderboard for notifications (regardless of UI mode) =====
-        if (this.phoneAlertsEnabled) {
-            const bias1hBull = [];
-            const bias1hBear = [];
-
-            symbols.forEach(sym => {
-                const rawList = pcrHist[sym];
-                if (!Array.isArray(rawList) || rawList.length < 2) return;
-                const cleanList = this.sanitize5MinPcrList(rawList);
-                if (cleanList.length < 2) return;
-
-                const latest = cleanList[cleanList.length - 1];
-                const pcrCur = latest.value;
-                const spotCur = latest.spot || 0;
-                const tick1hAgo = cleanList[Math.max(0, cleanList.length - 15)];
-                const pcr1h = tick1hAgo.value;
-                const pcr1hDiff = pcrCur - pcr1h;
-                const pcr1hPct = pcr1h > 0 ? ((pcr1hDiff / pcr1h) * 100) : 0;
-                const spot1h = tick1hAgo.spot || 0;
-                const spot1hDiff = (spotCur && spot1h) ? (spotCur - spot1h) : 0;
-                const spot1hPct = spot1h > 0 ? ((spot1hDiff / spot1h) * 100) : 0;
-
-                const item = { symbol: sym, pcrCur, pcr1h, pcr1hDiff, pcr1hPct, spotCur, spot1hDiff, spot1hPct };
-                if (pcr1hDiff > 0) bias1hBull.push(item);
-                if (pcr1hDiff < 0) bias1hBear.push(item);
             });
 
-            bias1hBull.sort((a, b) => b.pcr1hDiff - a.pcr1hDiff);
-            bias1hBear.sort((a, b) => a.pcr1hDiff - b.pcr1hDiff);
-            this.checkAndTriggerTop5BiasAlerts(bias1hBull.slice(0, 5), bias1hBear.slice(0, 5));
+            bullList.sort((a, b) => b.powerScore - a.powerScore);
+            bearList.sort((a, b) => b.powerScore - a.powerScore);
+
+            topBull = bullList.slice(0, 5);
+            topBear = bearList.slice(0, 5);
         }
 
         if (topBull.length === 0 && topBear.length === 0) {

@@ -1344,8 +1344,11 @@ const App = {
         const timeStr = this.getISTTimeString();
         const lastEntry = list[list.length - 1];
 
-        // Record ticks every 3 minutes (>= 150 seconds)
-        if (!lastEntry || (nowSec - lastEntry.time) >= 150) {
+        // Write new tick whenever PCR or Spot value actually changed (no time gate)
+        const pcrChanged = !lastEntry || lastEntry.value !== parseFloat(pcrVal);
+        const spotChanged = !lastEntry || lastEntry.spot !== (parseFloat(underlying) || 0);
+
+        if (pcrChanged || spotChanged) {
             list.push({ time: nowSec, timeStr: timeStr, value: parseFloat(pcrVal), spot: parseFloat(underlying) || 0 });
             if (list.length > 2500) list.shift();
 
@@ -1374,7 +1377,7 @@ const App = {
                     const merged = Array.from(mergedMap.values())
                         .filter(x => x && typeof x.value === 'number' && x.value > 0)
                         .sort((a, b) => a.time - b.time)
-                        .slice(-150);
+                        .slice(-500);
                     this.state.pcrHistory[sym] = merged;
                     fbRef.set(merged).catch(() => {});
                 }).catch(() => {});

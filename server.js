@@ -246,8 +246,11 @@ async function executeMarketSync() {
 
                     const lastEntry = list[list.length - 1];
                     
-                    // Record ticks every 3 minutes (>= 150 seconds)
-                    if (!lastEntry || (nowSec - lastEntry.time) >= 150) {
+                    // Write new tick whenever PCR or Spot actually changed (no time gate)
+                    const pcrChanged = !lastEntry || lastEntry.value !== data.pcr;
+                    const spotChanged = !lastEntry || lastEntry.spot !== data.spot;
+
+                    if (pcrChanged || spotChanged) {
                         list.push({
                             time: nowSec,
                             timeStr: timeStr,
@@ -255,7 +258,7 @@ async function executeMarketSync() {
                             spot: data.spot
                         });
 
-                        await firebasePut(path, list.slice(-250));
+                        await firebasePut(path, list.slice(-500));
                     }
                 }
             } catch (err) {}

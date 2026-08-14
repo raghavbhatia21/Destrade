@@ -165,11 +165,17 @@ const App = {
         if (this._pcrAutoRefreshStarted) return;
         this._pcrAutoRefreshStarted = true;
 
-        const PCR_REFRESH_INTERVAL = 90 * 1000; // 90 seconds
+        const PCR_REFRESH_INTERVAL = 120 * 1000; // 120 seconds (Ultra-Lean Free Tier Compliant)
 
         const refreshLoop = async () => {
             if (!this.isLiveMarketHours()) {
                 setTimeout(refreshLoop, 60 * 1000); // Check again in 60s if market opens
+                return;
+            }
+
+            // Pause background network fetches when tab/app is minimized to save bandwidth
+            if (document.hidden) {
+                setTimeout(refreshLoop, PCR_REFRESH_INTERVAL);
                 return;
             }
 
@@ -209,7 +215,7 @@ const App = {
             setTimeout(refreshLoop, PCR_REFRESH_INTERVAL);
         };
 
-        // First refresh after 90 seconds (initial prefill already ran)
+        // First refresh after 120 seconds (initial prefill already ran)
         setTimeout(refreshLoop, PCR_REFRESH_INTERVAL);
     },
 

@@ -197,6 +197,10 @@ async function fetchOptionChainPCR(symbol) {
     };
 }
 
+// In-memory cache to prevent redundant Firebase GET requests and keep bandwidth ultra-low (Free Tier Safe)
+let memoryHistoryCache = {};
+let memoryCacheDateStr = '';
+
 async function executeMarketSync() {
     const istInfo = getISTInfo();
     const { day, totalMin, dateStr, timeStr, iso } = istInfo;
@@ -222,6 +226,13 @@ async function executeMarketSync() {
         return false; // signal: not market hours
     }
 
+    // Reset memory cache on new day
+    if (dateStr !== memoryCacheDateStr) {
+        memoryHistoryCache = {};
+        memoryCacheDateStr = dateStr;
+        console.log(`📅 New trading day detected (${dateStr}). In-memory cache reset.`);
+    }
+
     console.log(`⚡ Market Live! Scanning ${SYMBOLS.length} F&O symbols continuously...`);
 
     const summary = {};
@@ -241,16 +252,23 @@ async function executeMarketSync() {
                     summary[sym] = { pcr: data.pcr, spot: data.spot };
 
                     const path = `/pcr_history/${sym}/${dateStr}.json`;
-                    const existing = await firebaseGet(path);
-                    const list = Array.isArray(existing) ? existing : (existing ? Object.values(existing) : []);
 
+                    // Load baseline from Firebase only ONCE per day if not in memory
+                    if (!memoryHistoryCache[sym]) {
+                        const existing = await firebaseGet(path);
+                        memoryHistoryCache[sym] = Array.isArray(existing) ? existing : (existing ? Object.values(existing) : []);
+                    }
+
+                    const list = memoryHistoryCache[sym];
                     const lastEntry = list[list.length - 1];
+                    const timeElapsed = lastEntry ? (nowSec - lastEntry.time) : 999;
                     
-                    // Write new tick whenever PCR or Spot actually changed (no time gate)
-                    const pcrChanged = !lastEntry || lastEntry.value !== data.pcr;
-                    const spotChanged = !lastEntry || lastEntry.spot !== data.spot;
+                    // Ultra-Lean Free Tier Safe Rule:
+                    // Require min 120 seconds (2 mins) between ticks AND a meaningful PCR or Spot price shift
+                    const pcrChanged = !lastEntry || Math.abs(lastEntry.value - data.pcr) >= 0.0001;
+                    const spotChanged = !lastEntry || Math.abs(lastEntry.spot - data.spot) >= 0.05;
 
-                    if (pcrChanged || spotChanged) {
+                    if (timeElapsed >= 120 && (pcrChanged || spotChanged)) {
                         list.push({
                             time: nowSec,
                             timeStr: timeStr,
@@ -258,7 +276,11 @@ async function executeMarketSync() {
                             spot: data.spot
                         });
 
-                        await firebasePut(path, list.slice(-500));
+                        // Keep max 250 ticks per symbol per day (~8 hours of 2-min ticks)
+                        const trimmedList = list.slice(-250);
+                        memoryHistoryCache[sym] = trimmedList;
+
+                        await firebasePut(path, trimmedList);
                     }
                 }
             } catch (err) {}
@@ -277,7 +299,7 @@ async function executeMarketSync() {
 
     lastSyncStatus = {
         lastRun: iso,
-        status: 'Active (Continuous Scanner)',
+        status: 'Active (Continuous Scanner - Free Tier Optimized)',
         dateStr: dateStr,
         symbolsSynced: Object.keys(summary).length,
         summary: summary

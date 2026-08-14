@@ -156,6 +156,61 @@ const App = {
         } catch (e) {
             console.warn('Screener Bulk Prefill Warning:', e);
         }
+
+        // Start auto-refresh loop for continuous chart updates
+        this.startPcrHistoryAutoRefresh();
+    },
+
+    startPcrHistoryAutoRefresh() {
+        if (this._pcrAutoRefreshStarted) return;
+        this._pcrAutoRefreshStarted = true;
+
+        const PCR_REFRESH_INTERVAL = 90 * 1000; // 90 seconds
+
+        const refreshLoop = async () => {
+            if (!this.isLiveMarketHours()) {
+                setTimeout(refreshLoop, 60 * 1000); // Check again in 60s if market opens
+                return;
+            }
+
+            try {
+                const dateStr = this.getTargetTradingDateStr();
+                const url = `https://destrade-default-rtdb.firebaseio.com/pcr_history.json`;
+                const res = await fetch(url);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && typeof data === 'object') {
+                        let updatedCount = 0;
+                        Object.keys(data).forEach(sym => {
+                            const dateObj = data[sym];
+                            if (dateObj && typeof dateObj === 'object') {
+                                const ticks = dateObj[dateStr] || dateObj[Object.keys(dateObj).pop()];
+                                if (Array.isArray(ticks)) {
+                                    const oldLen = (this.state.pcrHistory[sym] || []).length;
+                                    if (ticks.length !== oldLen) updatedCount++;
+                                    this.state.pcrHistory[sym] = ticks;
+                                }
+                            }
+                        });
+                        if (updatedCount > 0) {
+                            console.log(`🔄 PCR Auto-Refresh: ${updatedCount} symbols updated with new ticks`);
+                            this.renderPcrIntradayScreener();
+                            // Also refresh the PCR chart if user is viewing one
+                            if (this.state.activeView === 'pcr-analytics' && this.state.pcrAnalyticsSymbol) {
+                                this.renderPcrAnalyticsChartCanvas(this.state.pcrAnalyticsSymbol);
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('PCR Auto-Refresh Warning:', e);
+            }
+
+            setTimeout(refreshLoop, PCR_REFRESH_INTERVAL);
+        };
+
+        // First refresh after 90 seconds (initial prefill already ran)
+        setTimeout(refreshLoop, PCR_REFRESH_INTERVAL);
     },
 
     setupViews() {

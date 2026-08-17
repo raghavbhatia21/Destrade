@@ -321,6 +321,7 @@ async function executeMarketSync() {
 // ===== 24/7 SERVER-SIDE BACKGROUND ALERT ENGINE =====
 const serverAlertCooldowns = {};
 let previousTop5BiasSymbols = { bull: [], bear: [] };
+let lastServerGlobalNotificationTime = 0;
 
 async function evaluateServerSideAlerts(dateStr, timeStr) {
     const symbols = Object.keys(memoryHistoryCache);
@@ -362,7 +363,7 @@ async function evaluateServerSideAlerts(dateStr, timeStr) {
             if (pcr1hDiff < 0) biasBear.push(item);
         }
 
-        // Live High-Power Score Check (>70 Score)
+        // Live High-Power Score Check (>75 Score)
         const tick15m = cleanList[Math.max(0, cleanList.length - 4)];
         const pcrCur = latest.value;
         const pcrPrev = tick15m.value;
@@ -383,19 +384,24 @@ async function evaluateServerSideAlerts(dateStr, timeStr) {
             let powerScore = Math.round(45 + (harmonicPct * 22));
             powerScore = Math.min(99, Math.max(50, powerScore));
 
-            if (powerScore >= 70) {
-                const lastSent = serverAlertCooldowns[sym + '_power'] || 0;
-                if (nowMs - lastSent >= 15 * 60 * 1000) {
-                    serverAlertCooldowns[sym + '_power'] = nowMs;
-                    const emoji = isBullishAligned ? '🚀' : '📉';
-                    const tag = isBullishAligned ? 'PURE DUAL SURGE' : 'PURE DUAL CRASH';
-                    const title = `${emoji} ${sym} (${powerScore}/100 Power Score)`;
-                    const body = `Spot: ₹${spotCur ? spotCur.toLocaleString() : '---'} (${spotPct > 0 ? '+' : ''}${spotPct.toFixed(2)}%) | PCR Shift: ${pcrDiff > 0 ? '+' : ''}${pcrDiff.toFixed(4)}. ${tag}!`;
+            if (powerScore >= 75) {
+                // Global Anti-Spam Rate Limiter: Minimum 3 minutes between ANY alerts
+                if (nowMs - lastServerGlobalNotificationTime >= 3 * 60 * 1000) {
+                    const lastSent = serverAlertCooldowns[sym + '_power'] || 0;
+                    if (nowMs - lastSent >= 30 * 60 * 1000) { // 30-min per-symbol cooldown
+                        serverAlertCooldowns[sym + '_power'] = nowMs;
+                        lastServerGlobalNotificationTime = nowMs;
 
-                    const alertObj = { id: `alert_${nowMs}_${sym}`, symbol: sym, title, body, powerScore, timeStr, timestamp: nowMs };
-                    firebasePut(`/live_alerts/${sym}.json`, alertObj).catch(() => {});
-                    firebasePut(`/latest_alert.json`, alertObj).catch(() => {});
-                    console.log(`🔔 [SERVER ALERT DETECTED] ${title} - ${body}`);
+                        const emoji = isBullishAligned ? '🚀' : '📉';
+                        const tag = isBullishAligned ? 'PURE DUAL SURGE' : 'PURE DUAL CRASH';
+                        const title = `${emoji} ${sym} (${powerScore}/100 Power Score)`;
+                        const body = `Spot: ₹${spotCur ? spotCur.toLocaleString() : '---'} (${spotPct > 0 ? '+' : ''}${spotPct.toFixed(2)}%) | PCR Shift: ${pcrDiff > 0 ? '+' : ''}${pcrDiff.toFixed(4)}. ${tag}!`;
+
+                        const alertObj = { id: `alert_${nowMs}_${sym}`, symbol: sym, title, body, powerScore, timeStr, timestamp: nowMs };
+                        firebasePut(`/live_alerts/${sym}.json`, alertObj).catch(() => {});
+                        firebasePut(`/latest_alert.json`, alertObj).catch(() => {});
+                        console.log(`🔔 [SERVER ALERT DETECTED] ${title} - ${body}`);
+                    }
                 }
             }
         }
@@ -412,35 +418,55 @@ async function evaluateServerSideAlerts(dateStr, timeStr) {
 
     if (previousTop5BiasSymbols.bull.length > 0 || previousTop5BiasSymbols.bear.length > 0) {
         topBull.forEach((item, idx) => {
-            if (!previousTop5BiasSymbols.bull.includes(item.symbol)) {
-                const rank = idx + 1;
-                const lastSent = serverAlertCooldowns[item.symbol + '_bias'] || 0;
-                if (nowMs - lastSent >= 15 * 60 * 1000) {
-                    serverAlertCooldowns[item.symbol + '_bias'] = nowMs;
-                    const title = `🟢 NEW 1-HR BIAS LEADER (#${rank}): ${item.symbol}`;
-                    const body = `${item.symbol} entered Top 5 Bullish Bias Leaders! 1h PCR Shift: ${item.pcr1hDiff > 0 ? '+' : ''}${item.pcr1hDiff.toFixed(4)} (${item.pcr1hPct > 0 ? '+' : ''}${item.pcr1hPct.toFixed(1)}%) | Spot: ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}.`;
+            // Require minimum PCR shift magnitude: |pcr1hDiff| >= 0.0250 or |pcr1hPct| >= 3.0%
+            const absDiff = Math.abs(item.pcr1hDiff);
+            const absPct = Math.abs(item.pcr1hPct);
+            if (absDiff < 0.0250 && absPct < 3.0) return;
 
-                    const alertObj = { id: `alert_${nowMs}_${item.symbol}_bias`, symbol: item.symbol, title, body, rank, timeStr, timestamp: nowMs };
-                    firebasePut(`/live_alerts/${item.symbol}_bias.json`, alertObj).catch(() => {});
-                    firebasePut(`/latest_alert.json`, alertObj).catch(() => {});
-                    console.log(`🔔 [SERVER BIAS ALERT DETECTED] ${title} - ${body}`);
+            if (!previousTop5BiasSymbols.bull.includes(item.symbol)) {
+                // Global Anti-Spam Rate Limiter: Minimum 3 minutes between ANY alerts
+                if (nowMs - lastServerGlobalNotificationTime >= 3 * 60 * 1000) {
+                    const lastSent = serverAlertCooldowns[item.symbol + '_bias'] || 0;
+                    if (nowMs - lastSent >= 30 * 60 * 1000) { // 30-min per-symbol cooldown
+                        serverAlertCooldowns[item.symbol + '_bias'] = nowMs;
+                        lastServerGlobalNotificationTime = nowMs;
+
+                        const rank = idx + 1;
+                        const title = `🟢 NEW 1-HR BIAS LEADER (#${rank}): ${item.symbol}`;
+                        const body = `${item.symbol} entered Top 5 Bullish Bias Leaders! 1h PCR Shift: ${item.pcr1hDiff > 0 ? '+' : ''}${item.pcr1hDiff.toFixed(4)} (${item.pcr1hPct > 0 ? '+' : ''}${item.pcr1hPct.toFixed(1)}%) | Spot: ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}.`;
+
+                        const alertObj = { id: `alert_${nowMs}_${item.symbol}_bias`, symbol: item.symbol, title, body, rank, timeStr, timestamp: nowMs };
+                        firebasePut(`/live_alerts/${item.symbol}_bias.json`, alertObj).catch(() => {});
+                        firebasePut(`/latest_alert.json`, alertObj).catch(() => {});
+                        console.log(`🔔 [SERVER BIAS ALERT DETECTED] ${title} - ${body}`);
+                    }
                 }
             }
         });
 
         topBear.forEach((item, idx) => {
-            if (!previousTop5BiasSymbols.bear.includes(item.symbol)) {
-                const rank = idx + 1;
-                const lastSent = serverAlertCooldowns[item.symbol + '_bias'] || 0;
-                if (nowMs - lastSent >= 15 * 60 * 1000) {
-                    serverAlertCooldowns[item.symbol + '_bias'] = nowMs;
-                    const title = `🔴 NEW 1-HR BIAS LEADER (#${rank}): ${item.symbol}`;
-                    const body = `${item.symbol} entered Top 5 Bearish Bias Leaders! 1h PCR Shift: ${item.pcr1hDiff.toFixed(4)} (${item.pcr1hPct.toFixed(1)}%) | Spot: ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}.`;
+            // Require minimum PCR shift magnitude: |pcr1hDiff| >= 0.0250 or |pcr1hPct| >= 3.0%
+            const absDiff = Math.abs(item.pcr1hDiff);
+            const absPct = Math.abs(item.pcr1hPct);
+            if (absDiff < 0.0250 && absPct < 3.0) return;
 
-                    const alertObj = { id: `alert_${nowMs}_${item.symbol}_bias`, symbol: item.symbol, title, body, rank, timeStr, timestamp: nowMs };
-                    firebasePut(`/live_alerts/${item.symbol}_bias.json`, alertObj).catch(() => {});
-                    firebasePut(`/latest_alert.json`, alertObj).catch(() => {});
-                    console.log(`🔔 [SERVER BIAS ALERT DETECTED] ${title} - ${body}`);
+            if (!previousTop5BiasSymbols.bear.includes(item.symbol)) {
+                // Global Anti-Spam Rate Limiter: Minimum 3 minutes between ANY alerts
+                if (nowMs - lastServerGlobalNotificationTime >= 3 * 60 * 1000) {
+                    const lastSent = serverAlertCooldowns[item.symbol + '_bias'] || 0;
+                    if (nowMs - lastSent >= 30 * 60 * 1000) { // 30-min per-symbol cooldown
+                        serverAlertCooldowns[item.symbol + '_bias'] = nowMs;
+                        lastServerGlobalNotificationTime = nowMs;
+
+                        const rank = idx + 1;
+                        const title = `🔴 NEW 1-HR BIAS LEADER (#${rank}): ${item.symbol}`;
+                        const body = `${item.symbol} entered Top 5 Bearish Bias Leaders! 1h PCR Shift: ${item.pcr1hDiff.toFixed(4)} (${item.pcr1hPct.toFixed(1)}%) | Spot: ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}.`;
+
+                        const alertObj = { id: `alert_${nowMs}_${item.symbol}_bias`, symbol: item.symbol, title, body, rank, timeStr, timestamp: nowMs };
+                        firebasePut(`/live_alerts/${item.symbol}_bias.json`, alertObj).catch(() => {});
+                        firebasePut(`/latest_alert.json`, alertObj).catch(() => {});
+                        console.log(`🔔 [SERVER BIAS ALERT DETECTED] ${title} - ${body}`);
+                    }
                 }
             }
         });

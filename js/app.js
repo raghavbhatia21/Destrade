@@ -2048,16 +2048,27 @@ const App = {
             btn.style.background = 'rgba(16, 185, 129, 0.2)';
             btn.style.border = '1px solid #10b981';
             btn.style.color = '#10b981';
-            btn.innerHTML = '<i class="fas fa-bell"></i> 🔔 Alerts ON (>70 Score)';
-        } else {
-            btn.style.background = 'rgba(245, 158, 11, 0.15)';
+btn.style.background = 'rgba(245, 158, 11, 0.15)';
             btn.style.border = '1px solid rgba(245, 158, 11, 0.4)';
             btn.style.color = '#f59e0b';
             btn.innerHTML = '<i class="fas fa-bell"></i> 🔔 Phone Alerts (>70 Score)';
         }
     },
 
+    _lastGlobalNotificationTime: 0,
+    biasAlertCooldowns: {},
+
     async sendPhoneNotification(title, body) {
+        if (!this.phoneAlertsEnabled) return;
+
+        // Global Anti-Spam Rate Limiter: Minimum 3 minutes (180,000 ms) between ANY notifications
+        const now = Date.now();
+        if (now - this._lastGlobalNotificationTime < 3 * 60 * 1000) {
+            console.log('🔕 Notification rate limited (less than 3 mins since last notification)');
+            return;
+        }
+        this._lastGlobalNotificationTime = now;
+
         // 1. Web Audio Beep Tone Alert
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -2113,12 +2124,12 @@ const App = {
     },
 
     checkAndTriggerHighPowerAlert(item) {
-        if (!this.phoneAlertsEnabled || item.powerScore < 70) return;
+        if (!this.phoneAlertsEnabled || item.powerScore < 75) return; // Strict 75+ Power Score threshold
 
         const now = Date.now();
         const lastSent = this.alertCooldowns[item.symbol] || 0;
-        // 15-minute cooldown per symbol
-        if (now - lastSent < 15 * 60 * 1000) return;
+        // 30-minute cooldown per symbol
+        if (now - lastSent < 30 * 60 * 1000) return;
 
         this.alertCooldowns[item.symbol] = now;
 
@@ -2126,9 +2137,6 @@ const App = {
         const emoji = isBull ? '🚀' : '📉';
         const spotPctStr = (item.spotPct > 0 ? '+' : '') + item.spotPct.toFixed(2) + '%';
         const pcrDiffStr = (item.pcrDiff > 0 ? '+' : '') + item.pcrDiff.toFixed(4);
-
-        const title = `${emoji} ${item.symbol} (${item.powerScore}/100 Power Score)`;
-        const body = `Spot: ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'} (${spotPctStr}) | PCR: ${pcrDiffStr}. ${item.tag}!`;
 
         this.sendPhoneNotification(title, body);
     },
@@ -2218,9 +2226,21 @@ const App = {
             return;
         }
 
+        const now = Date.now();
+
         // Check new Bullish Leaders
         topBull.forEach((item, idx) => {
+            // Require minimum PCR shift magnitude: |pcr1hDiff| >= 0.0250 or |pcr1hPct| >= 3.0%
+            const absDiff = Math.abs(item.pcr1hDiff);
+            const absPct = Math.abs(item.pcr1hPct);
+            if (absDiff < 0.0250 && absPct < 3.0) return;
+
+            const lastSent = this.biasAlertCooldowns[item.symbol] || 0;
+            // 30-minute cooldown PER SYMBOL for bias alerts
+            if (now - lastSent < 30 * 60 * 1000) return;
+
             if (!this.previousTop5Bias.bull.includes(item.symbol)) {
+                this.biasAlertCooldowns[item.symbol] = now;
                 const rank = idx + 1;
                 const pcr1hDiffStr = (item.pcr1hDiff > 0 ? '+' : '') + item.pcr1hDiff.toFixed(4);
                 const pcr1hPctStr = (item.pcr1hPct > 0 ? '+' : '') + item.pcr1hPct.toFixed(1) + '%';
@@ -2234,7 +2254,17 @@ const App = {
 
         // Check new Bearish Leaders
         topBear.forEach((item, idx) => {
+            // Require minimum PCR shift magnitude: |pcr1hDiff| >= 0.0250 or |pcr1hPct| >= 3.0%
+            const absDiff = Math.abs(item.pcr1hDiff);
+            const absPct = Math.abs(item.pcr1hPct);
+            if (absDiff < 0.0250 && absPct < 3.0) return;
+
+            const lastSent = this.biasAlertCooldowns[item.symbol] || 0;
+            // 30-minute cooldown PER SYMBOL for bias alerts
+            if (now - lastSent < 30 * 60 * 1000) return;
+
             if (!this.previousTop5Bias.bear.includes(item.symbol)) {
+                this.biasAlertCooldowns[item.symbol] = now;
                 const rank = idx + 1;
                 const pcr1hDiffStr = (item.pcr1hDiff > 0 ? '+' : '') + item.pcr1hDiff.toFixed(4);
                 const pcr1hPctStr = (item.pcr1hPct > 0 ? '+' : '') + item.pcr1hPct.toFixed(1) + '%';

@@ -184,7 +184,7 @@ const App = {
         if (this._pcrAutoRefreshStarted) return;
         this._pcrAutoRefreshStarted = true;
 
-        const PCR_REFRESH_INTERVAL = 120 * 1000; // 120 seconds (Ultra-Lean Free Tier Compliant)
+        const PCR_REFRESH_INTERVAL = 30 * 1000; // 30 seconds live refresh for Market Bias
 
         const refreshLoop = async () => {
             if (!this.isLiveMarketHours()) {
@@ -210,16 +210,28 @@ const App = {
                             const dateObj = data[sym];
                             if (dateObj && typeof dateObj === 'object') {
                                 const ticks = dateObj[dateStr] || dateObj[Object.keys(dateObj).pop()];
-                                if (Array.isArray(ticks)) {
-                                    const oldLen = (this.state.pcrHistory[sym] || []).length;
-                                    if (ticks.length !== oldLen) updatedCount++;
+                                if (Array.isArray(ticks) && ticks.length > 0) {
+                                    const oldList = this.state.pcrHistory[sym] || [];
+                                    const oldLast = oldList[oldList.length - 1];
+                                    const newLast = ticks[ticks.length - 1];
+
+                                    const isUpdated = !oldLast || 
+                                                      ticks.length !== oldList.length || 
+                                                      oldLast.time !== newLast.time || 
+                                                      oldLast.value !== newLast.value || 
+                                                      oldLast.spot !== newLast.spot;
+
+                                    if (isUpdated) updatedCount++;
                                     this.state.pcrHistory[sym] = ticks;
                                 }
                             }
                         });
+
+                        // Always re-render Market Bias Screener on every refresh cycle
+                        this.renderPcrIntradayScreener();
+
                         if (updatedCount > 0) {
-                            console.log(`🔄 PCR Auto-Refresh: ${updatedCount} symbols updated with new ticks`);
-                            this.renderPcrIntradayScreener();
+                            console.log(`🔄 PCR Auto-Refresh: ${updatedCount} symbols updated with new live data`);
                             // Also refresh the PCR chart if user is viewing one
                             if (this.state.activeView === 'pcr-analytics' && this.state.pcrAnalyticsSymbol) {
                                 this.renderPcrAnalyticsChartCanvas(this.state.pcrAnalyticsSymbol);
@@ -234,7 +246,7 @@ const App = {
             setTimeout(refreshLoop, PCR_REFRESH_INTERVAL);
         };
 
-        // First refresh after 120 seconds (initial prefill already ran)
+        // First refresh after 30 seconds
         setTimeout(refreshLoop, PCR_REFRESH_INTERVAL);
     },
 

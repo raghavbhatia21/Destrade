@@ -570,11 +570,24 @@ server.listen(PORT, () => {
     // Start the continuous scan loop immediately
     continuousScanLoop();
 
-    // Self-ping every 4 minutes to prevent Render free instance from sleeping
-    const selfUrl = process.env.RENDER_EXTERNAL_URL || 'https://destrade-market-worker.onrender.com';
+    // Keep-Alive Self-Ping Engine (every 2 minutes to prevent Render free instance from sleeping)
+    const selfUrls = [
+        process.env.RENDER_EXTERNAL_URL,
+        'https://destrade.onrender.com',
+        'https://destrade-market-worker.onrender.com'
+    ].filter(Boolean);
+
     setInterval(() => {
-        https.get(`${selfUrl}/`, () => {}).on('error', () => {});
-        console.log(`🏓 Self-ping sent to keep Render alive`);
-    }, 4 * 60 * 1000);
+        selfUrls.forEach(url => {
+            try {
+                const client = url.startsWith('https') ? https : http;
+                client.get(`${url}/ping`, (res) => {
+                    console.log(`🏓 Self-ping to ${url} succeeded (status: ${res.statusCode})`);
+                }).on('error', (err) => {
+                    console.warn(`🏓 Self-ping to ${url} notice:`, err.message);
+                });
+            } catch(e) {}
+        });
+    }, 2 * 60 * 1000);
 });
 

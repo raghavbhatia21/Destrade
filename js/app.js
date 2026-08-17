@@ -224,9 +224,10 @@ const App = {
             setTimeout(snapshotLoop, SNAPSHOT_INTERVAL);
         };
 
-        // --- SLOW FULL HISTORY LOOP (5 min) ---
+        // --- SLOW FULL HISTORY LOOP (5 min - ONLY when viewing PCR Analytics) ---
         const fullRefreshLoop = async () => {
-            if (document.hidden) {
+            // Only fetch heavy 2.5MB history if user is actively viewing PCR Analytics chart
+            if (document.hidden || this.state.activeView !== 'pcr-analytics') {
                 setTimeout(fullRefreshLoop, FULL_REFRESH_INTERVAL);
                 return;
             }

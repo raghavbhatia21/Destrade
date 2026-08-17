@@ -1241,7 +1241,7 @@ const App = {
         let filtered = targetList;
         if (hasOriginals) {
             // Filter out synthetic 24h bucket entries (time % 300 === 0 and 24h HH:MM without am/pm)
-            filtered = valid.filter(item => {
+            filtered = targetList.filter(item => {
                 const str = (item.timeStr || '').trim();
                 const isSynthetic = (item.time % 300 === 0) && (/^\d{2}:\d{2}$/.test(str));
                 return !isSynthetic;

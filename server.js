@@ -306,7 +306,32 @@ async function executeMarketSync() {
     };
 
     await firebasePut('/cron_status.json', lastSyncStatus);
-    console.log(`🎉 Full Scan Cycle Completed! Synced ${Object.keys(summary).length}/${SYMBOLS.length} symbols!`);
+
+    // Write lightweight snapshot: only latest tick per symbol (~30KB vs ~2.5MB full history)
+    // Client polls this every 30s for near-real-time Market Bias updates
+    const snapshot = {};
+    for (const sym of Object.keys(memoryHistoryCache)) {
+        const list = memoryHistoryCache[sym];
+        if (Array.isArray(list) && list.length > 0) {
+            const latest = list[list.length - 1];
+            // Also include the tick closest to 1 hour ago for 1h bias calculation
+            const targetTime = latest.time - 3600;
+            let tick1hAgo = list[0];
+            let minDelta = Math.abs(tick1hAgo.time - targetTime);
+            for (let i = 1; i < list.length - 1; i++) {
+                const delta = Math.abs(list[i].time - targetTime);
+                if (delta < minDelta) { minDelta = delta; tick1hAgo = list[i]; }
+            }
+            snapshot[sym] = {
+                cur: { time: latest.time, value: latest.value, spot: latest.spot, timeStr: latest.timeStr },
+                h1: { time: tick1hAgo.time, value: tick1hAgo.value, spot: tick1hAgo.spot },
+                len: list.length
+            };
+        }
+    }
+    await firebasePut('/pcr_snapshot.json', snapshot);
+
+    console.log(`🎉 Full Scan Cycle Completed! Synced ${Object.keys(summary).length}/${SYMBOLS.length} symbols! Snapshot: ${Object.keys(snapshot).length} symbols.`);
 
     // Run 24/7 Server-Side Background Alert Detection
     try {

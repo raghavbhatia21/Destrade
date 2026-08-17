@@ -184,13 +184,76 @@ const App = {
         if (this._pcrAutoRefreshStarted) return;
         this._pcrAutoRefreshStarted = true;
 
-        // Use 60s during live market, 120s outside market hours
-        const getLiveInterval = () => this.isLiveMarketHours() ? 60 * 1000 : 120 * 1000;
+        // Fast 30s snapshot polling for near-real-time Market Bias
+        const SNAPSHOT_INTERVAL = 30 * 1000;
+        // Slower full history refresh every 5 minutes (for PCR charts)
+        const FULL_REFRESH_INTERVAL = 5 * 60 * 1000;
 
-        const refreshLoop = async () => {
-            // Pause background network fetches when tab/app is minimized to save bandwidth
+        // --- FAST SNAPSHOT LOOP (30s) ---
+        const snapshotLoop = async () => {
             if (document.hidden) {
-                setTimeout(refreshLoop, getLiveInterval());
+                setTimeout(snapshotLoop, SNAPSHOT_INTERVAL);
+                return;
+            }
+
+            try {
+                const res = await fetch('https://destrade-default-rtdb.firebaseio.com/pcr_snapshot.json');
+                if (res.ok) {
+                    const snapshot = await res.json();
+                    if (snapshot && typeof snapshot === 'object') {
+                        this._liveSnapshot = snapshot;
+                        this._snapshotLastUpdated = Date.now();
+
+                        // Merge latest ticks into local pcrHistory for chart rendering
+                        let updatedCount = 0;
+                        Object.keys(snapshot).forEach(sym => {
+                            const s = snapshot[sym];
+                            if (!s || !s.cur) return;
+                            const oldList = this.state.pcrHistory[sym] || [];
+                            const oldLast = oldList[oldList.length - 1];
+                            if (!oldLast || oldLast.time !== s.cur.time || oldLast.value !== s.cur.value) {
+                                // Append new tick to local history
+                                if (oldLast && oldLast.time !== s.cur.time) {
+                                    oldList.push({
+                                        time: s.cur.time,
+                                        timeStr: s.cur.timeStr || '',
+                                        value: s.cur.value,
+                                        spot: s.cur.spot || 0
+                                    });
+                                    // Keep max 250
+                                    if (oldList.length > 250) oldList.shift();
+                                    this.state.pcrHistory[sym] = oldList;
+                                } else if (!oldLast) {
+                                    this.state.pcrHistory[sym] = [{
+                                        time: s.cur.time,
+                                        timeStr: s.cur.timeStr || '',
+                                        value: s.cur.value,
+                                        spot: s.cur.spot || 0
+                                    }];
+                                }
+                                updatedCount++;
+                            }
+                        });
+
+                        // Re-render Market Bias with latest snapshot data
+                        this.renderPcrIntradayScreener();
+
+                        if (updatedCount > 0) {
+                            console.log(`⚡ Snapshot Refresh: ${updatedCount}/${Object.keys(snapshot).length} symbols updated`);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Snapshot Refresh Warning:', e);
+            }
+
+            setTimeout(snapshotLoop, SNAPSHOT_INTERVAL);
+        };
+
+        // --- SLOW FULL HISTORY LOOP (5 min) ---
+        const fullRefreshLoop = async () => {
+            if (document.hidden) {
+                setTimeout(fullRefreshLoop, FULL_REFRESH_INTERVAL);
                 return;
             }
 
@@ -201,49 +264,86 @@ const App = {
                 if (res.ok) {
                     const data = await res.json();
                     if (data && typeof data === 'object') {
-                        let updatedCount = 0;
                         Object.keys(data).forEach(sym => {
                             const dateObj = data[sym];
                             if (dateObj && typeof dateObj === 'object') {
                                 const ticks = dateObj[dateStr] || dateObj[Object.keys(dateObj).pop()];
                                 if (Array.isArray(ticks) && ticks.length > 0) {
-                                    const oldList = this.state.pcrHistory[sym] || [];
-                                    const oldLast = oldList[oldList.length - 1];
-                                    const newLast = ticks[ticks.length - 1];
-
-                                    const isUpdated = !oldLast || 
-                                                      ticks.length !== oldList.length || 
-                                                      oldLast.time !== newLast.time || 
-                                                      oldLast.value !== newLast.value || 
-                                                      oldLast.spot !== newLast.spot;
-
-                                    if (isUpdated) updatedCount++;
                                     this.state.pcrHistory[sym] = ticks;
                                 }
                             }
                         });
-
-                        // Always re-render Market Bias Screener on every refresh cycle
-                        this.renderPcrIntradayScreener();
-
-                        if (updatedCount > 0) {
-                            console.log(`🔄 PCR Auto-Refresh: ${updatedCount} symbols updated with new live data`);
-                            // Also refresh the PCR chart if user is viewing one
-                            if (this.state.activeView === 'pcr-analytics' && this.state.pcrAnalyticsSymbol) {
-                                this.renderPcrAnalyticsChartCanvas(this.state.pcrAnalyticsSymbol);
-                            }
+                        console.log(`🔄 Full History Refresh: ${Object.keys(data).length} symbols reloaded`);
+                        // Refresh PCR chart if user is viewing one
+                        if (this.state.activeView === 'pcr-analytics' && this.state.pcrAnalyticsSymbol) {
+                            this.renderPcrAnalyticsChartCanvas(this.state.pcrAnalyticsSymbol);
                         }
                     }
                 }
             } catch (e) {
-                console.warn('PCR Auto-Refresh Warning:', e);
+                console.warn('Full History Refresh Warning:', e);
             }
 
-            setTimeout(refreshLoop, getLiveInterval());
+            setTimeout(fullRefreshLoop, FULL_REFRESH_INTERVAL);
         };
 
-        // First refresh after 60 seconds (initial prefill already ran)
-        setTimeout(refreshLoop, 60 * 1000);
+        // Start snapshot loop immediately (first tick in 5 seconds)
+        setTimeout(snapshotLoop, 5 * 1000);
+        // Start full history loop after 5 minutes
+        setTimeout(fullRefreshLoop, FULL_REFRESH_INTERVAL);
+    },
+
+    // Fast 1-Hour Bias computation using server-precomputed snapshot (no sanitize overhead)
+    compute1HourMarketBiasFromSnapshot() {
+        const snapshot = this._liveSnapshot;
+        if (!snapshot || typeof snapshot !== 'object') return null;
+
+        const bullList = [];
+        const bearList = [];
+
+        Object.keys(snapshot).forEach(sym => {
+            const s = snapshot[sym];
+            if (!s || !s.cur || !s.h1) return;
+            if (s.cur.value <= 0 || s.h1.value <= 0) return;
+
+            // Require at least 30 minutes between h1 and cur ticks
+            if ((s.cur.time - s.h1.time) < 1800) return;
+
+            const pcrCur = s.cur.value;
+            const pcr1h = s.h1.value;
+            const pcr1hDiff = pcrCur - pcr1h;
+            const pcr1hPct = pcr1h > 0 ? ((pcr1hDiff / pcr1h) * 100) : 0;
+
+            const spotCur = s.cur.spot || 0;
+            const spot1h = s.h1.spot || 0;
+            const spot1hDiff = (spotCur && spot1h) ? (spotCur - spot1h) : 0;
+            const spot1hPct = spot1h > 0 ? ((spot1hDiff / spot1h) * 100) : 0;
+
+            const item = {
+                symbol: sym,
+                pcrCur,
+                pcr1h,
+                pcr1hDiff,
+                pcr1hPct,
+                spotCur,
+                spot1hDiff,
+                spot1hPct,
+                timeStr: s.cur.timeStr || ''
+            };
+
+            if (pcr1hDiff > 0) bullList.push(item);
+            if (pcr1hDiff < 0) bearList.push(item);
+        });
+
+        bullList.sort((a, b) => b.pcr1hDiff - a.pcr1hDiff);
+        bearList.sort((a, b) => a.pcr1hDiff - b.pcr1hDiff);
+
+        return {
+            bull: bullList,
+            bear: bearList,
+            topBull: bullList.slice(0, 5),
+            topBear: bearList.slice(0, 5)
+        };
     },
 
     setupViews() {
@@ -2324,8 +2424,8 @@ const App = {
         const pcrHist = this.state.pcrHistory || {};
         const symbols = Object.keys(pcrHist);
 
-        // Always compute high-precision 1-Hour Market Bias Leaderboard
-        const bias1h = this.compute1HourMarketBiasList();
+        // Use fast snapshot-based 1h bias when available, fallback to full history computation
+        const bias1h = this.compute1HourMarketBiasFromSnapshot() || this.compute1HourMarketBiasList();
 
         // Always check for 1-Hour Bias Notifications
         if (this.phoneAlertsEnabled) {

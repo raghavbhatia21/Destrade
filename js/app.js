@@ -56,6 +56,7 @@ const App = {
         console.log('🚀 Destrade Pro Initializing...');
         try { this.setupFirebaseSync(); } catch (e) { console.warn(e); }
         try { this.initFirebaseTimeEngine('NIFTY'); } catch (e) { console.warn(e); }
+        try { this.initCapacitorPushNotifications(); } catch (e) { console.warn(e); }
         try { this.setupViews(); } catch (e) { console.warn(e); }
         try { this.setupListeners(); } catch (e) { console.warn(e); }
         try { this.startClock(); } catch (e) { console.warn(e); }
@@ -2088,6 +2089,45 @@ const App = {
             }
         }
         return null;
+    },
+
+    initCapacitorPushNotifications() {
+        if (!window.Capacitor) return;
+        const Push = (window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications) ? window.Capacitor.Plugins.PushNotifications : null;
+        if (!Push) return;
+
+        try {
+            if (typeof Push.requestPermissions === 'function') {
+                Push.requestPermissions().then(result => {
+                    if (result && (result.receive === 'granted' || result.display === 'granted')) {
+                        Push.register();
+                    }
+                }).catch(() => {});
+            } else if (typeof Push.register === 'function') {
+                Push.register();
+            }
+
+            Push.addListener('registration', token => {
+                console.log('📱 FCM Native Push Token:', token.value);
+                if (token && token.value) {
+                    const devId = localStorage.getItem('destrade_device_id') || ('dev_' + Math.floor(Math.random()*1000000));
+                    localStorage.setItem('destrade_device_id', devId);
+                    if (window.firebase && window.firebase.database) {
+                        window.firebase.database().ref(`fcm_tokens/${devId}`).set({ token: token.value, updatedAt: Date.now() }).catch(() => {});
+                    }
+                }
+            });
+
+            Push.addListener('registrationError', error => {
+                console.warn('FCM Push Registration Error:', error);
+            });
+
+            Push.addListener('pushNotificationReceived', notification => {
+                console.log('🔔 Push Received in App:', notification);
+            });
+        } catch(e) {
+            console.warn('PushNotifications registration notice:', e);
+        }
     },
 
     async initAndroidNotificationChannel() {

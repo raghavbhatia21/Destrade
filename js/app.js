@@ -184,17 +184,13 @@ const App = {
         if (this._pcrAutoRefreshStarted) return;
         this._pcrAutoRefreshStarted = true;
 
-        const PCR_REFRESH_INTERVAL = 30 * 1000; // 30 seconds live refresh for Market Bias
+        // Use 60s during live market, 120s outside market hours
+        const getLiveInterval = () => this.isLiveMarketHours() ? 60 * 1000 : 120 * 1000;
 
         const refreshLoop = async () => {
-            if (!this.isLiveMarketHours()) {
-                setTimeout(refreshLoop, 60 * 1000); // Check again in 60s if market opens
-                return;
-            }
-
             // Pause background network fetches when tab/app is minimized to save bandwidth
             if (document.hidden) {
-                setTimeout(refreshLoop, PCR_REFRESH_INTERVAL);
+                setTimeout(refreshLoop, getLiveInterval());
                 return;
             }
 
@@ -243,11 +239,11 @@ const App = {
                 console.warn('PCR Auto-Refresh Warning:', e);
             }
 
-            setTimeout(refreshLoop, PCR_REFRESH_INTERVAL);
+            setTimeout(refreshLoop, getLiveInterval());
         };
 
-        // First refresh after 30 seconds
-        setTimeout(refreshLoop, PCR_REFRESH_INTERVAL);
+        // First refresh after 60 seconds (initial prefill already ran)
+        setTimeout(refreshLoop, 60 * 1000);
     },
 
     setupViews() {
@@ -2060,10 +2056,12 @@ const App = {
             btn.style.background = 'rgba(16, 185, 129, 0.2)';
             btn.style.border = '1px solid #10b981';
             btn.style.color = '#10b981';
-btn.style.background = 'rgba(245, 158, 11, 0.15)';
+            btn.innerHTML = '<i class="fas fa-bell"></i> 🔔 Alerts ON (>75 Score)';
+        } else {
+            btn.style.background = 'rgba(245, 158, 11, 0.15)';
             btn.style.border = '1px solid rgba(245, 158, 11, 0.4)';
             btn.style.color = '#f59e0b';
-            btn.innerHTML = '<i class="fas fa-bell"></i> 🔔 Phone Alerts (>70 Score)';
+            btn.innerHTML = '<i class="fas fa-bell"></i> 🔔 Phone Alerts (>75 Score)';
         }
     },
 
@@ -2149,6 +2147,9 @@ btn.style.background = 'rgba(245, 158, 11, 0.15)';
         const emoji = isBull ? '🚀' : '📉';
         const spotPctStr = (item.spotPct > 0 ? '+' : '') + item.spotPct.toFixed(2) + '%';
         const pcrDiffStr = (item.pcrDiff > 0 ? '+' : '') + item.pcrDiff.toFixed(4);
+
+        const title = `${emoji} ${item.symbol} (${item.powerScore}/100 Power Score)`;
+        const body = `Spot: ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'} (${spotPctStr}) | PCR: ${pcrDiffStr}. ${item.tag}!`;
 
         this.sendPhoneNotification(title, body);
     },

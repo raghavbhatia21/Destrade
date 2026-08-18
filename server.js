@@ -276,8 +276,8 @@ async function executeMarketSync() {
                     const pcrChanged = !lastEntry || Math.abs(lastEntry.value - data.pcr) >= 0.0001;
                     const spotChanged = !lastEntry || Math.abs(lastEntry.spot - data.spot) >= 0.05;
 
-                    // Record history tick every 45 seconds if PCR or spot changed
-                    if (timeElapsed >= 45 && (pcrChanged || spotChanged)) {
+                    // Record history tick every 45 seconds if PCR or spot changed, or every 120 seconds to advance chart timeline
+                    if ((timeElapsed >= 45 && (pcrChanged || spotChanged)) || timeElapsed >= 120) {
                         list.push({
                             time: nowSec,
                             timeStr: timeStr,

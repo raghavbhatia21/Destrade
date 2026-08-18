@@ -1559,6 +1559,18 @@ const App = {
 
         // Sanitize & deduplicate to strict 5-minute ticks
         let data = this.sanitize5MinPcrList(rawList);
+        if (this._liveSnapshot && this._liveSnapshot[sym] && this._liveSnapshot[sym].cur) {
+            const cur = this._liveSnapshot[sym].cur;
+            const lastTickTime = data.length > 0 ? (data[data.length - 1].time || 0) : 0;
+            if (cur.time && cur.time > lastTickTime && cur.value > 0) {
+                data = [...data, {
+                    time: cur.time,
+                    timeStr: cur.timeStr || this.getISTTimeString(),
+                    value: parseFloat(cur.value),
+                    spot: parseFloat(cur.spot) || 0
+                }];
+            }
+        }
         this.state.pcrHistory[sym] = data;
 
         if (!data || data.length < 1) {
@@ -3055,6 +3067,18 @@ const App = {
         }
 
         let data = this.sanitize5MinPcrList(rawList);
+        if (this._liveSnapshot && this._liveSnapshot[sym] && this._liveSnapshot[sym].cur) {
+            const cur = this._liveSnapshot[sym].cur;
+            const lastTickTime = data.length > 0 ? (data[data.length - 1].time || 0) : 0;
+            if (cur.time && cur.time > lastTickTime && cur.value > 0) {
+                data = [...data, {
+                    time: cur.time,
+                    timeStr: cur.timeStr || this.getISTTimeString(),
+                    value: parseFloat(cur.value),
+                    spot: parseFloat(cur.spot) || 0
+                }];
+            }
+        }
         this.state.pcrHistory[sym] = data;
 
         if (!data || data.length < 1) {

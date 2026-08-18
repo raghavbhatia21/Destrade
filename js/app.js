@@ -161,8 +161,8 @@ const App = {
         setTimeout(async () => {
             try {
                 const dateStr = this.getTargetTradingDateStr();
-                const url = `https://destrade-default-rtdb.firebaseio.com/pcr_history.json`;
-                const res = await fetch(url);
+                const url = `https://destrade-default-rtdb.firebaseio.com/pcr_history.json?t=${Date.now()}`;
+                const res = await fetch(url, { cache: 'no-store' });
                 if (!res.ok) return;
                 const data = await res.json();
                 if (data && typeof data === 'object') {
@@ -189,7 +189,7 @@ const App = {
 
     async fetchPcrSnapshotImmediate() {
         try {
-            const res = await fetch('https://destrade-default-rtdb.firebaseio.com/pcr_snapshot.json');
+            const res = await fetch(`https://destrade-default-rtdb.firebaseio.com/pcr_snapshot.json?t=${Date.now()}`, { cache: 'no-store' });
             if (res.ok) {
                 const snapshot = await res.json();
                 if (snapshot && typeof snapshot === 'object') {
@@ -234,8 +234,8 @@ const App = {
 
             try {
                 const dateStr = this.getTargetTradingDateStr();
-                const url = `https://destrade-default-rtdb.firebaseio.com/pcr_history.json`;
-                const res = await fetch(url);
+                const url = `https://destrade-default-rtdb.firebaseio.com/pcr_history.json?t=${Date.now()}`;
+                const res = await fetch(url, { cache: 'no-store' });
                 if (res.ok) {
                     const data = await res.json();
                     if (data && typeof data === 'object') {

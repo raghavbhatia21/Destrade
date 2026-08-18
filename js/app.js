@@ -2768,9 +2768,21 @@ const App = {
         this.renderPcrAnalyticsView(cleanSym);
     },
 
-    refreshPcrAnalytics() {
-        const sym = this.state.pcrAnalyticsSymbol || this.state.activeSymbol || 'NIFTY';
+    async refreshPcrAnalytics() {
+        const sym = (this.state.pcrAnalyticsSymbol || this.state.activeSymbol || 'NIFTY').replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
+        this._hasLoadedPostMarketData = false;
+        if (window.nseApi) window.nseApi._rawStockCache = null;
+
+        const btns = document.querySelectorAll('.btn-refresh, #pcr-analytics-refresh-btn, i.fa-sync-alt');
+        btns.forEach(b => b.classList.add('fa-spin'));
+
+        await this.fetchPcrSnapshotImmediate();
+        await this.prefillIntradayPcrHistory(sym);
         this.renderPcrAnalyticsView(sym);
+
+        setTimeout(() => {
+            btns.forEach(b => b.classList.remove('fa-spin'));
+        }, 600);
     },
 
     // ===== PCR SYMBOL AUTO-SUGGEST SEARCH ENGINE =====

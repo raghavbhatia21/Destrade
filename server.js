@@ -79,11 +79,15 @@ const USER_AGENTS = [
 
 function fetchUrl(url) {
     const randomUA = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+    const delim = url.includes('?') ? '&' : '?';
+    const cbUrl = url + delim + '_t=' + Date.now();
     return new Promise((resolve) => {
-        const req = https.get(url, {
+        const req = https.get(cbUrl, {
             headers: {
                 'User-Agent': randomUA,
                 'Accept': 'application/json, text/plain, */*',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
                 'Accept-Language': 'en-US,en;q=0.9',
                 'Origin': 'https://groww.in',
                 'Referer': 'https://groww.in/options/nifty'
@@ -102,7 +106,14 @@ function fetchUrl(url) {
 
 function firebaseGet(path) {
     return new Promise((resolve) => {
-        https.get(`https://${FIREBASE_HOST}${path}`, (res) => {
+        const delim = path.includes('?') ? '&' : '?';
+        const cbPath = path + delim + 't=' + Date.now();
+        https.get(`https://${FIREBASE_HOST}${cbPath}`, {
+            headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache'
+            }
+        }, (res) => {
             let body = '';
             res.on('data', chunk => body += chunk);
             res.on('end', () => {

@@ -372,6 +372,56 @@ const serverAlertCooldowns = {};
 let previousTop5BiasSymbols = { bull: [], bear: [] };
 let lastServerGlobalNotificationTime = 0;
 
+async function sendFcmPushToAllDevices(title, body) {
+    try {
+        const tokensData = await firebaseGet('/fcm_tokens.json');
+        if (!tokensData || typeof tokensData !== 'object') return;
+
+        const tokens = Object.values(tokensData).map(x => x && x.token).filter(Boolean);
+        if (tokens.length === 0) return;
+
+        const apiKey = 'AIzaSyDnPF-XXuI0kW5b9QcTPy1pV3c3dz0ZoIU';
+
+        tokens.forEach(token => {
+            const payload = JSON.stringify({
+                to: token,
+                priority: 'high',
+                notification: {
+                    title: title,
+                    body: body,
+                    sound: 'default',
+                    channel_id: 'destrade_high_alerts'
+                },
+                data: {
+                    title: title,
+                    body: body,
+                    timestamp: Date.now()
+                }
+            });
+
+            const req = https.request({
+                hostname: 'fcm.googleapis.com',
+                path: '/fcm/send',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'key=' + apiKey,
+                    'Content-Length': Buffer.byteLength(payload)
+                }
+            }, (res) => {
+                let d = '';
+                res.on('data', chunk => d += chunk);
+                res.on('end', () => console.log(`📲 [FCM PUSH SENT] to ${token.substring(0, 15)}... (Status: ${res.statusCode})`));
+            });
+            req.on('error', () => {});
+            req.write(payload);
+            req.end();
+        });
+    } catch(e) {
+        console.warn('FCM Push broadcast error:', e);
+    }
+}
+
 async function evaluateServerSideAlerts(dateStr, timeStr) {
     const symbols = Object.keys(memoryHistoryCache);
     const biasBull = [];
@@ -449,6 +499,7 @@ async function evaluateServerSideAlerts(dateStr, timeStr) {
                         const alertObj = { id: `alert_${nowMs}_${sym}`, symbol: sym, title, body, powerScore, timeStr, timestamp: nowMs };
                         firebasePut(`/live_alerts/${sym}.json`, alertObj).catch(() => {});
                         firebasePut(`/latest_alert.json`, alertObj).catch(() => {});
+                        sendFcmPushToAllDevices(title, body).catch(() => {});
                         console.log(`🔔 [SERVER ALERT DETECTED] ${title} - ${body}`);
                     }
                 }
@@ -487,6 +538,7 @@ async function evaluateServerSideAlerts(dateStr, timeStr) {
                         const alertObj = { id: `alert_${nowMs}_${item.symbol}_bias`, symbol: item.symbol, title, body, rank, timeStr, timestamp: nowMs };
                         firebasePut(`/live_alerts/${item.symbol}_bias.json`, alertObj).catch(() => {});
                         firebasePut(`/latest_alert.json`, alertObj).catch(() => {});
+                        sendFcmPushToAllDevices(title, body).catch(() => {});
                         console.log(`🔔 [SERVER BIAS ALERT DETECTED] ${title} - ${body}`);
                     }
                 }
@@ -514,6 +566,7 @@ async function evaluateServerSideAlerts(dateStr, timeStr) {
                         const alertObj = { id: `alert_${nowMs}_${item.symbol}_bias`, symbol: item.symbol, title, body, rank, timeStr, timestamp: nowMs };
                         firebasePut(`/live_alerts/${item.symbol}_bias.json`, alertObj).catch(() => {});
                         firebasePut(`/latest_alert.json`, alertObj).catch(() => {});
+                        sendFcmPushToAllDevices(title, body).catch(() => {});
                         console.log(`🔔 [SERVER BIAS ALERT DETECTED] ${title} - ${body}`);
                     }
                 }

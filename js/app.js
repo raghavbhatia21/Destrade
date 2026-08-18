@@ -67,10 +67,8 @@ const App = {
         try { this.setupPcrSearchClickOutside(); } catch (e) { console.warn(e); }
         try { this.setupPcrCanvasResizeListener(); } catch (e) { console.warn(e); }
         try { this.updatePhoneAlertsButtonUI(); } catch (e) { console.warn(e); }
-        // Auto-restore Android notification channel if alerts were previously enabled
-        if (this.phoneAlertsEnabled) {
-            try { this.initAndroidNotificationChannel(); } catch (e) { console.warn(e); }
-        }
+        // Auto-initialize Android notification channels & permissions
+        try { this.autoInitNotificationPermissions(); } catch (e) { console.warn(e); }
     },
 
     setupPcrCanvasResizeListener() {
@@ -2143,8 +2141,24 @@ const App = {
         container.innerHTML = html;
     },
 
-    phoneAlertsEnabled: localStorage.getItem('destrade_phone_alerts') === 'true',
+    phoneAlertsEnabled: localStorage.getItem('destrade_phone_alerts') !== 'false',
     alertCooldowns: {},
+
+    async autoInitNotificationPermissions() {
+        const LN = this.getLocalNotificationsPlugin();
+        if (LN && typeof LN.requestPermissions === 'function') {
+            try {
+                await LN.requestPermissions();
+            } catch(e) {}
+        }
+        if ('Notification' in window && Notification.permission === 'default') {
+            try {
+                await Notification.requestPermission();
+            } catch(e) {}
+        }
+        await this.initAndroidNotificationChannel();
+        this.initCapacitorPushNotifications();
+    },
 
     getLocalNotificationsPlugin() {
         if (window.Capacitor) {
@@ -2194,6 +2208,7 @@ const App = {
 
             Push.addListener('pushNotificationReceived', notification => {
                 console.log('🔔 Push Received in App:', notification);
+                this.sendPhoneNotification(notification.title || 'Destrade Alert', notification.body || '');
             });
         } catch(e) {
             console.warn('PushNotifications registration notice:', e);
@@ -2223,33 +2238,10 @@ const App = {
 
     async togglePhoneAlerts() {
         if (!this.phoneAlertsEnabled) {
-            const LN = this.getLocalNotificationsPlugin();
-            let granted = false;
-
-            if (LN && typeof LN.requestPermissions === 'function') {
-                try {
-                    const res = await LN.requestPermissions();
-                    console.log('Capacitor LocalNotifications permission response:', res);
-                    granted = (res && (res.display === 'granted' || res.receive === 'granted'));
-                } catch(e) {
-                    console.warn('LocalNotifications permission request failed:', e);
-                }
-            }
-
-            if (!granted && 'Notification' in window) {
-                try {
-                    const res = await Notification.requestPermission();
-                    granted = (res === 'granted');
-                } catch(e) {}
-            }
-
-            await this.initAndroidNotificationChannel();
-
+            await this.autoInitNotificationPermissions();
             this.phoneAlertsEnabled = true;
             localStorage.setItem('destrade_phone_alerts', 'true');
             this.showToast('🔔 Phone Alerts Enabled for Power Scores > 70!');
-
-            // Send test welcome notification
             await this.sendPhoneNotification('⚡ Destrade Phone Alerts Active!', 'You will receive instant phone notifications whenever any stock crosses 70+ Power Score!');
         } else {
             this.phoneAlertsEnabled = false;
@@ -2266,12 +2258,12 @@ const App = {
             btn.style.background = 'rgba(16, 185, 129, 0.2)';
             btn.style.border = '1px solid #10b981';
             btn.style.color = '#10b981';
-            btn.innerHTML = '<i class="fas fa-bell"></i> 🔔 Alerts ON (>75 Score)';
+            btn.innerHTML = '<i class="fas fa-bell"></i> 🔔 Alerts ON (>70 Score)';
         } else {
             btn.style.background = 'rgba(245, 158, 11, 0.15)';
             btn.style.border = '1px solid rgba(245, 158, 11, 0.4)';
             btn.style.color = '#f59e0b';
-            btn.innerHTML = '<i class="fas fa-bell"></i> 🔔 Phone Alerts (>75 Score)';
+            btn.innerHTML = '<i class="fas fa-bell"></i> 🔔 Phone Alerts (>70 Score)';
         }
     },
 
@@ -2281,10 +2273,10 @@ const App = {
     async sendPhoneNotification(title, body) {
         if (!this.phoneAlertsEnabled) return;
 
-        // Global Anti-Spam Rate Limiter: Minimum 3 minutes (180,000 ms) between ANY notifications
+        // Anti-Spam Rate Limiter: 15 seconds (15,000 ms) minimum between notifications
         const now = Date.now();
-        if (now - this._lastGlobalNotificationTime < 3 * 60 * 1000) {
-            console.log('🔕 Notification rate limited (less than 3 mins since last notification)');
+        if (now - this._lastGlobalNotificationTime < 15 * 1000) {
+            console.log('🔕 Notification rate limited (less than 15s since last notification)');
             return;
         }
         this._lastGlobalNotificationTime = now;
@@ -2315,12 +2307,10 @@ const App = {
                         title: title,
                         body: body,
                         id: notifId,
-                        schedule: { at: new Date(Date.now() + 100) },
+                        schedule: { at: new Date(Date.now() + 200) },
                         channelId: 'destrade_high_alerts',
-                        sound: null,
-                        attachments: null,
-                        actionTypeId: '',
-                        extra: null
+                        smallIcon: 'ic_launcher',
+                        iconColor: '#10b981'
                     }]
                 };
 

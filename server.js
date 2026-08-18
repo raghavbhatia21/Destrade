@@ -572,6 +572,12 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    if (req.url === '/api/health' || req.url === '/ping') {
+        res.writeHead(200);
+        res.end(JSON.stringify({ status: 'ok', uptime: Math.floor(process.uptime()), symbols: SYMBOLS.length, synced: lastSyncStatus.symbolsSynced || 0 }));
+        return;
+    }
+
     if (req.url.startsWith('/api/proxy')) {
         try {
             const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
@@ -615,7 +621,7 @@ server.listen(PORT, () => {
     // Keep-Alive Self-Ping Engine (every 2 minutes to prevent Render free instance from sleeping)
     const selfUrls = [
         process.env.RENDER_EXTERNAL_URL,
-        'https://destrade.onrender.com'
+        'https://destrade-market-worker.onrender.com'
     ].filter(Boolean);
 
     setInterval(() => {

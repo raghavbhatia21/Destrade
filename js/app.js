@@ -1359,73 +1359,37 @@ const App = {
         const valid = rawList.filter(item => item && typeof item === 'object' && typeof item.value === 'number' && !isNaN(item.value) && item.value > 0);
         if (valid.length === 0) return [];
 
-        // Calculate Midnight IST for Today to filter out previous days' leftover ticks
-        const now = new Date();
-        const istDateStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-        const todayMidnightIst = Math.floor(new Date(istDateStr + 'T00:00:00+05:30').getTime() / 1000);
-
-        const todayValid = valid.filter(item => {
-            const timeSec = item.time || (item.timestamp ? Math.floor(item.timestamp / 1000) : 0);
-            return timeSec >= todayMidnightIst;
-        });
-
-        const targetList = todayValid.length >= 2 ? todayValid : valid;
-
-        // Forward-fill missing spot prices so spot never drops to 0 creating red vertical lines
-        let lastValidSpot = 0;
-        for (let i = 0; i < targetList.length; i++) {
-            const s = parseFloat(targetList[i].spot) || 0;
-            if (s > 0) lastValidSpot = s;
-            else if (lastValidSpot > 0) targetList[i].spot = lastValidSpot;
-        }
-
         // Sort strictly ascending by epoch timestamp
-        targetList.sort((a, b) => (a.time || a.timestamp || 0) - (b.time || b.timestamp || 0));
+        valid.sort((a, b) => (a.time || a.timestamp || 0) - (b.time || b.timestamp || 0));
 
-        // Identify if original entries with AM/PM or non-300sec exist
-        const hasOriginals = targetList.some(item => {
-            const str = item.timeStr || '';
-            const isExactStr = /[ap]m/i.test(str);
-            const isExactSec = (item.time || 0) % 300 !== 0;
-            return isExactStr || isExactSec;
-        });
-
-        let filtered = targetList;
-        if (hasOriginals) {
-            // Filter out synthetic 24h bucket entries (time % 300 === 0 and 24h HH:MM without am/pm)
-            filtered = targetList.filter(item => {
-                const str = (item.timeStr || '').trim();
-                const isSynthetic = (item.time % 300 === 0) && (/^\d{2}:\d{2}$/.test(str));
-                return !isSynthetic;
-            });
+        // Forward-fill missing spot prices so spot line is continuous
+        let lastValidSpot = 0;
+        for (let i = 0; i < valid.length; i++) {
+            const s = parseFloat(valid[i].spot) || 0;
+            if (s > 0) lastValidSpot = s;
+            else if (lastValidSpot > 0) valid[i].spot = lastValidSpot;
         }
 
         const cleanMap = new Map();
-        for (const item of filtered) {
+        for (const item of valid) {
             let timeSec = item.time || (item.timestamp ? Math.floor(item.timestamp / 1000) : 0);
             if (!timeSec) continue;
 
             let str = (item.timeStr || '').trim();
             if (!str || /^\d{2}:\d{2}$/.test(str)) {
-                const d = new Date((timeSec + 5.5 * 3600) * 1000);
-                let h = d.getUTCHours();
-                const m = String(d.getUTCMinutes()).padStart(2, '0');
-                const ampm = h >= 12 ? 'pm' : 'am';
-                h = h % 12 || 12;
-                str = `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+                const d = new Date(timeSec * 1000);
+                str = d.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
             }
 
             cleanMap.set(timeSec, {
                 time: timeSec,
                 timeStr: str,
-                value: parseFloat(item.value.toFixed(4)),
-                spot: item.spot ? parseFloat(parseFloat(item.spot).toFixed(2)) : 0
+                value: parseFloat(item.value),
+                spot: parseFloat(item.spot) || 0
             });
         }
 
         const sorted = Array.from(cleanMap.values()).sort((a, b) => a.time - b.time);
-
-        // Ensure all items have a valid spot price fallback
         const validSpots = sorted.map(d => d.spot).filter(s => s > 0);
         if (validSpots.length > 0) {
             const firstValid = validSpots[0];
@@ -1447,50 +1411,28 @@ const App = {
         }
 
         let targetDateStr = this.getTargetTradingDateStr();
-
-        // Initialize Firebase Time Engine & Live Multi-Device Sync
         this.initFirebaseTimeEngine(cleanSym);
 
         let loadedList = [];
 
-        // 1. Try loading target date from Firebase Realtime DB
-        if (window.firebase && window.firebase.apps && window.firebase.apps.length > 0 && window.firebase.database) {
+        // 1. Fast REST fetch directly from Firebase (<100ms load time)
+        try {
+            const res = await fetch(`https://destrade-default-rtdb.firebaseio.com/pcr_history/${cleanSym}/${targetDateStr}.json?t=${Date.now()}`, { cache: 'no-store' });
+            if (res.ok) {
+                const val = await res.json();
+                if (val) {
+                    loadedList = this.sanitize5MinPcrList(Array.isArray(val) ? val : Object.values(val));
+                }
+            }
+        } catch(e) {}
+
+        // 2. Fallback to Web SDK if REST returned empty
+        if (loadedList.length < 1 && window.firebase && window.firebase.database) {
             try {
                 const snapshot = await window.firebase.database().ref(`pcr_history/${cleanSym}/${targetDateStr}`).once('value');
                 if (snapshot.exists()) {
                     const val = snapshot.val();
                     loadedList = this.sanitize5MinPcrList(Array.isArray(val) ? val : Object.values(val));
-                }
-            } catch(e) {}
-        }
-
-        // 2. If target date has < 5 snapshots (e.g. pre-market or early trading session), fall back to previous trading day
-        if (loadedList.length < 5) {
-            const prevDateStr = this.getLastTradingDateStr();
-            if (prevDateStr !== targetDateStr && window.firebase && window.firebase.database) {
-                try {
-                    const snapshotPrev = await window.firebase.database().ref(`pcr_history/${cleanSym}/${prevDateStr}`).once('value');
-                    if (snapshotPrev.exists()) {
-                        const valPrev = snapshotPrev.val();
-                        const listPrev = this.sanitize5MinPcrList(Array.isArray(valPrev) ? valPrev : Object.values(valPrev));
-                        if (listPrev.length > loadedList.length) {
-                            loadedList = listPrev;
-                        }
-                    }
-                } catch(e) {}
-            }
-        }
-
-        // 3. Fallback to local storage if needed
-        if (loadedList.length < 1) {
-            try {
-                const cacheKey = 'destrade_pcr_hist_' + targetDateStr;
-                const saved = localStorage.getItem(cacheKey);
-                if (saved) {
-                    const parsed = JSON.parse(saved);
-                    if (parsed[cleanSym]) {
-                        loadedList = this.sanitize5MinPcrList(parsed[cleanSym]);
-                    }
                 }
             } catch(e) {}
         }

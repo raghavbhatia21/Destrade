@@ -321,6 +321,85 @@ const App = {
         };
     },
 
+    computeDualActionFromSnapshot() {
+        const snapshot = this._liveSnapshot;
+        if (!snapshot || typeof snapshot !== 'object') return { bull: [], bear: [], topBull: [], topBear: [] };
+
+        const bullList = [];
+        const bearList = [];
+
+        Object.keys(snapshot).forEach(sym => {
+            const s = snapshot[sym];
+            if (!s || !s.cur || !s.h1) return;
+            if (s.cur.value <= 0 || s.h1.value <= 0) return;
+
+            const pcrCur = s.cur.value;
+            const pcr1h = s.h1.value;
+            const pcrDiff = pcrCur - pcr1h;
+            const pcrPct = pcr1h > 0 ? ((pcrDiff / pcr1h) * 100) : 0;
+
+            const spotCur = s.cur.spot || 0;
+            const spot1h = s.h1.spot || 0;
+            const spotDiff = (spotCur && spot1h) ? (spotCur - spot1h) : 0;
+            const spotPct = spot1h > 0 ? ((spotDiff / spot1h) * 100) : 0;
+
+            const isBullishAligned = (spotDiff > 0 && pcrDiff > 0);
+            const isBearishAligned = (spotDiff < 0 && pcrDiff < 0);
+
+            if (!isBullishAligned && !isBearishAligned) return;
+
+            const absSpotPct = Math.abs(spotPct);
+            const absPcrPct = Math.abs(pcrPct);
+            const harmonicPct = Math.sqrt(absSpotPct * absPcrPct);
+            let powerScore = Math.round(50 + (harmonicPct * 20));
+            powerScore = Math.min(99, Math.max(50, powerScore));
+
+            if (isBullishAligned) {
+                bullList.push({
+                    symbol: sym,
+                    pcrCur,
+                    pcrDiff,
+                    pcrPct,
+                    spotCur,
+                    spotDiff,
+                    spotPct,
+                    powerScore,
+                    tag: '🚀 PURE DUAL SURGE',
+                    tagBg: 'rgba(16, 185, 129, 0.25)',
+                    tagColor: '#10b981',
+                    timeStr: s.cur.timeStr || ''
+                });
+            }
+
+            if (isBearishAligned) {
+                bearList.push({
+                    symbol: sym,
+                    pcrCur,
+                    pcrDiff,
+                    pcrPct,
+                    spotCur,
+                    spotDiff,
+                    spotPct,
+                    powerScore,
+                    tag: '📉 PURE DUAL CRASH',
+                    tagBg: 'rgba(239, 68, 68, 0.25)',
+                    tagColor: '#ef4444',
+                    timeStr: s.cur.timeStr || ''
+                });
+            }
+        });
+
+        bullList.sort((a, b) => b.powerScore - a.powerScore || b.pcrPct - a.pcrPct);
+        bearList.sort((a, b) => b.powerScore - a.powerScore || a.pcrPct - b.pcrPct);
+
+        return {
+            bull: bullList,
+            bear: bearList,
+            topBull: bullList.slice(0, 5),
+            topBear: bearList.slice(0, 5)
+        };
+    },
+
     setupViews() {
         const views = ['dashboard', 'symbol-overview', 'option-chain', 'oi-clock', 'discovery', 'sectors'];
         views.forEach(v => {
@@ -2570,6 +2649,13 @@ const App = {
 
             topBull = bullList.slice(0, 5);
             topBear = bearList.slice(0, 5);
+
+            // Fast fallback: if history is loading or empty, instantly render dual action from snapshot!
+            if (topBull.length === 0 && topBear.length === 0) {
+                const snapDual = this.computeDualActionFromSnapshot();
+                topBull = snapDual.topBull;
+                topBear = snapDual.topBear;
+            }
         }
 
         if (topBull.length === 0 && topBear.length === 0) {

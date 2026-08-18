@@ -83,8 +83,10 @@ function fetchUrl(url) {
         const req = https.get(url, {
             headers: {
                 'User-Agent': randomUA,
-                'Accept': 'application/json',
-                'Referer': 'https://groww.in/'
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Origin': 'https://groww.in',
+                'Referer': 'https://groww.in/options/nifty'
             }
         }, (res) => {
             let body = '';

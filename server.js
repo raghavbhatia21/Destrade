@@ -70,11 +70,19 @@ function getISTDateStr(d) {
     return target.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 }
 
+const USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0'
+];
+
 function fetchUrl(url) {
+    const randomUA = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
     return new Promise((resolve) => {
         const req = https.get(url, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'User-Agent': randomUA,
                 'Accept': 'application/json',
                 'Referer': 'https://groww.in/'
             }
@@ -598,8 +606,7 @@ server.listen(PORT, () => {
     // Keep-Alive Self-Ping Engine (every 2 minutes to prevent Render free instance from sleeping)
     const selfUrls = [
         process.env.RENDER_EXTERNAL_URL,
-        'https://destrade.onrender.com',
-        'https://destrade-market-worker.onrender.com'
+        'https://destrade.onrender.com'
     ].filter(Boolean);
 
     setInterval(() => {

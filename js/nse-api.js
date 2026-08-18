@@ -13,7 +13,7 @@ class NSEApi {
         if (isLocalDevServer && window.location.port) {
             this.proxyUrl = `${window.location.protocol}//${window.location.host}`;
         } else {
-            this.proxyUrl = 'https://destrade-market-worker.onrender.com';
+            this.proxyUrl = 'https://destrade.onrender.com';
         }
         this._cache = new Map();
         this._cacheTTL = 800; // 0.8s cache TTL for 1s real-time streaming
@@ -152,7 +152,7 @@ class NSEApi {
 
         // 2. Cloud CORS Proxy (works for both web browsers and mobile apps)
         try {
-            const cloudUrl = `https://destrade-market-worker.onrender.com/api/proxy?url=${encodeURIComponent(rawUrl)}`;
+            const cloudUrl = `https://destrade.onrender.com/api/proxy?url=${encodeURIComponent(rawUrl)}`;
             const res = await fetch(cloudUrl, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
             if (res.ok) {
                 const text = await res.text();

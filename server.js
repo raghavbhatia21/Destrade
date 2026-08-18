@@ -258,12 +258,12 @@ async function executeMarketSync() {
         await Promise.all(batch.map(async (sym) => {
             try {
                 const data = await fetchOptionChainPCR(sym);
+                const path = `/pcr_history/${sym}/${dateStr}.json`;
+
+                // If Groww direct fetch succeeds
                 if (data && data.pcr > 0) {
                     summary[sym] = { pcr: data.pcr, spot: data.spot };
 
-                    const path = `/pcr_history/${sym}/${dateStr}.json`;
-
-                    // Load baseline from Firebase only ONCE per day if not in memory
                     if (!memoryHistoryCache[sym]) {
                         const existing = await firebaseGet(path);
                         memoryHistoryCache[sym] = Array.isArray(existing) ? existing : (existing ? Object.values(existing) : []);
@@ -273,8 +273,6 @@ async function executeMarketSync() {
                     const lastEntry = list[list.length - 1];
                     const timeElapsed = lastEntry ? (nowSec - lastEntry.time) : 999;
                     
-                    // Ultra-Lean Free Tier Safe Rule:
-                    // Require min 120 seconds (2 mins) between ticks AND a meaningful PCR or Spot price shift
                     const pcrChanged = !lastEntry || Math.abs(lastEntry.value - data.pcr) >= 0.0001;
                     const spotChanged = !lastEntry || Math.abs(lastEntry.spot - data.spot) >= 0.05;
 
@@ -286,11 +284,20 @@ async function executeMarketSync() {
                             spot: data.spot
                         });
 
-                        // Keep max 250 ticks per symbol per day (~8 hours of 2-min ticks)
                         const trimmedList = list.slice(-250);
                         memoryHistoryCache[sym] = trimmedList;
-
                         await firebasePut(path, trimmedList);
+                    }
+                } else {
+                    // Fallback: If Groww direct fetch returned empty (Cloudflare US IP restriction), read Firebase
+                    const existing = await firebaseGet(path);
+                    if (existing) {
+                        const list = Array.isArray(existing) ? existing : Object.values(existing);
+                        if (list.length > 0) {
+                            memoryHistoryCache[sym] = list;
+                            const latest = list[list.length - 1];
+                            summary[sym] = { pcr: latest.value, spot: latest.spot };
+                        }
                     }
                 }
             } catch (err) {}

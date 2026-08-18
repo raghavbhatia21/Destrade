@@ -505,7 +505,7 @@ const App = {
         };
 
         runRelay();
-        setInterval(runRelay, 300000); // 5-minute background sync for Firebase PCR history
+        setInterval(runRelay, 60000); // 60-second live background sync for Firebase PCR history
     },
 
     async startDataPolling() {
@@ -1488,6 +1488,23 @@ const App = {
                         .slice(-500);
                     this.state.pcrHistory[sym] = merged;
                     fbRef.set(merged).catch(() => {});
+
+                    // Also update pcr_snapshot for real-time 30s Market Bias
+                    const latestTick = merged[merged.length - 1];
+                    if (latestTick) {
+                        const targetTime = latestTick.time - 3600;
+                        let tick1hAgo = merged[0];
+                        let minDelta = Math.abs(tick1hAgo.time - targetTime);
+                        for (let i = 1; i < merged.length - 1; i++) {
+                            const delta = Math.abs(merged[i].time - targetTime);
+                            if (delta < minDelta) { minDelta = delta; tick1hAgo = merged[i]; }
+                        }
+                        window.firebase.database().ref(`pcr_snapshot/${sym}`).set({
+                            cur: { time: latestTick.time, value: latestTick.value, spot: latestTick.spot, timeStr: latestTick.timeStr },
+                            h1: { time: tick1hAgo.time, value: tick1hAgo.value, spot: tick1hAgo.spot },
+                            len: merged.length
+                        }).catch(() => {});
+                    }
                 }).catch(() => {});
             }
         }

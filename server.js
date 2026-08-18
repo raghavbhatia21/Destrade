@@ -276,7 +276,8 @@ async function executeMarketSync() {
                     const pcrChanged = !lastEntry || Math.abs(lastEntry.value - data.pcr) >= 0.0001;
                     const spotChanged = !lastEntry || Math.abs(lastEntry.spot - data.spot) >= 0.05;
 
-                    if (timeElapsed >= 120 && (pcrChanged || spotChanged)) {
+                    // Record history tick every 45 seconds if PCR or spot changed
+                    if (timeElapsed >= 45 && (pcrChanged || spotChanged)) {
                         list.push({
                             time: nowSec,
                             timeStr: timeStr,
@@ -339,8 +340,14 @@ async function executeMarketSync() {
                 const delta = Math.abs(list[i].time - targetTime);
                 if (delta < minDelta) { minDelta = delta; tick1hAgo = list[i]; }
             }
+            const live = summary[sym];
+            const curTime = live ? nowSec : latest.time;
+            const curTimeStr = live ? timeStr : (latest.timeStr || '');
+            const curPcr = live ? live.pcr : latest.value;
+            const curSpot = live ? live.spot : latest.spot;
+
             snapshot[sym] = {
-                cur: { time: latest.time, value: latest.value, spot: latest.spot, timeStr: latest.timeStr },
+                cur: { time: curTime, value: curPcr, spot: curSpot, timeStr: curTimeStr },
                 h1: { time: tick1hAgo.time, value: tick1hAgo.value, spot: tick1hAgo.spot },
                 len: list.length
             };

@@ -1529,8 +1529,8 @@ kbd {
         transform: scale(0.98);
     }
 
-    /* Target the dynamically generated headers in Discovery and OI views */
-    div[style*="display:flex"][style*="justify-content:space-between"] {
+    /* Target specific view headers on mobile instead of generic wildcard */
+    .view-header.responsive-stack {
         flex-direction: column !important;
         align-items: stretch !important;
         gap: 1rem !important;
@@ -2197,5 +2197,65 @@ kbd {
         height: 440px;
         min-height: 380px;
         padding: 0.6rem;
+    }
+}
+
+/* ===== PHONE & SMALL SCREEN RESPONSIVE POLISH (< 520px) ===== */
+@media (max-width: 520px) {
+    .card-header {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 0.65rem !important;
+    }
+
+    .card-header > div {
+        flex-wrap: wrap !important;
+        width: 100% !important;
+    }
+
+    #bias-tf-group {
+        width: 100% !important;
+        justify-content: space-between !important;
+        margin-top: 0.25rem !important;
+    }
+
+    #bias-tf-group button {
+        flex: 1 !important;
+        text-align: center !important;
+        padding: 0.3rem 0.2rem !important;
+    }
+
+    .radar-row {
+        padding: 0.55rem 0.65rem !important;
+    }
+
+    .radar-row > div:first-child {
+        gap: 0.4rem !important;
+    }
+
+    .radar-row strong {
+        font-size: 0.8rem !important;
+    }
+
+    .pulse-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 0.4rem !important;
+    }
+
+    .pulse-stat {
+        padding: 0.5rem 0.6rem !important;
+    }
+
+    .stat-label {
+        font-size: 0.68rem !important;
+    }
+
+    .stat-value {
+        font-size: 0.88rem !important;
+    }
+
+    .ticker-item {
+        padding: 0.4rem 0.6rem !important;
+        font-size: 0.75rem !important;
     }
 }

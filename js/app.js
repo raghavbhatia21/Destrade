@@ -332,7 +332,7 @@ const App = {
                 pcr1h: refVal,
                 pcr1hDiff: pcrDiff,
                 pcr1hPct: pcrPct,
-                spotCur,
+                spotCur: curSpot,
                 spot1hDiff: spotDiff,
                 spot1hPct: spotPct,
                 timeStr: s.cur.timeStr || '',

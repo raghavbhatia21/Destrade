@@ -138,6 +138,34 @@ const App = {
         }
     },
 
+    showToast(message, duration = 3500) {
+        try {
+            let container = document.getElementById('destrade-toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'destrade-toast-container';
+                container.style.cssText = 'position: fixed; bottom: 85px; right: 16px; left: 16px; z-index: 99999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; max-width: 420px; margin: 0 auto;';
+                document.body.appendChild(container);
+            }
+
+            const toast = document.createElement('div');
+            toast.style.cssText = 'background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(56, 189, 248, 0.4); color: #f8fafc; padding: 0.65rem 1rem; border-radius: 8px; font-size: 0.82rem; font-weight: 700; box-shadow: 0 10px 25px rgba(0,0,0,0.5); backdrop-filter: blur(10px); pointer-events: auto; display: flex; align-items: center; justify-content: space-between; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);';
+            toast.innerHTML = `<span>${message}</span><i class="fas fa-times" onclick="this.parentElement.remove()" style="cursor:pointer; opacity:0.6; margin-left:0.5rem; padding:0.2rem;"></i>`;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                if (toast && toast.parentElement) {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateY(10px)';
+                    setTimeout(() => { if (toast.parentElement) toast.remove(); }, 300);
+                }
+            }, duration);
+        } catch(e) {
+            console.log('Toast:', message);
+        }
+    },
+
     handleServerAlert(alert) {
         if (!this.phoneAlertsEnabled || !alert || !alert.id) return;
         if (!this._seenServerAlerts) this._seenServerAlerts = new Set();

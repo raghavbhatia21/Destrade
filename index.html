@@ -105,8 +105,8 @@
 
                     <!-- Intraday PCR & Price Momentum Radar -->
                     <section class="card glass span-2" id="pcr-screener-card">
-                        <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
-                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.6rem; width: 100%; box-sizing: border-box;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; max-width: 100%;">
                                 <h3><i class="fas fa-bolt" style="color: #f59e0b;"></i> Intraday Momentum Radar</h3>
                                 <div style="display: flex; gap: 0.3rem; background: rgba(0,0,0,0.3); padding: 0.2rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
                                     <button id="radar-mode-dual" onclick="App.setRadarMode('dual')" style="padding: 0.25rem 0.6rem; border-radius: 4px; border: none; background: rgba(16, 185, 129, 0.2); color: #10b981; font-weight: 800; font-size: 0.72rem; cursor: pointer; transition: all 0.2s;">⚡ Live Dual Action</button>
@@ -119,15 +119,15 @@
                                     <button id="tf-btn-1h" onclick="App.setBiasTimeframe('1h')" style="padding: 0.2rem 0.55rem; border-radius: 4px; border: 1px solid #38bdf8; background: rgba(56, 189, 248, 0.25); color: #38bdf8; font-weight: 800; font-size: 0.72rem; cursor: pointer; transition: all 0.2s;">1h</button>
                                 </div>
                             </div>
-                            <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                <button id="btn-toggle-phone-alerts" onclick="App.togglePhoneAlerts()" style="padding: 0.35rem 0.75rem; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.15); color: #f59e0b; font-weight: 700; font-size: 0.78rem; cursor: pointer; transition: all 0.2s;">
-                                    <i class="fas fa-bell"></i> 🔔 Phone Alerts (>70 Score)
+                            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; max-width: 100%;">
+                                <button id="btn-toggle-phone-alerts" onclick="App.togglePhoneAlerts()" style="padding: 0.35rem 0.65rem; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.15); color: #f59e0b; font-weight: 700; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap;">
+                                    <i class="fas fa-bell"></i> 🔔 Alerts ON (>70 Score)
                                 </button>
-                                <button onclick="App.openScanHistoryModal()" style="padding: 0.35rem 0.75rem; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-weight: 700; font-size: 0.78rem; cursor: pointer; transition: all 0.2s;">
+                                <button onclick="App.openScanHistoryModal()" style="padding: 0.35rem 0.65rem; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-weight: 700; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap;">
                                     <i class="fas fa-history"></i> 📜 View Full Scan History Log
                                 </button>
-                                <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">
-                                    <i class="fas fa-satellite-dish" style="color: #38bdf8; margin-right: 0.3rem;"></i> 218 F&O Live
+                                <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; white-space: nowrap;">
+                                    <i class="fas fa-satellite-dish" style="color: #38bdf8; margin-right: 0.2rem;"></i> 218 F&O Live
                                 </span>
                             </div>
                         </div>

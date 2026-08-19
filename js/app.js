@@ -267,56 +267,96 @@ const App = {
     },
 
     // Fast 1-Hour Bias computation using server-precomputed snapshot (no sanitize overhead)
-    compute1HourMarketBiasFromSnapshot() {
+    computeMarketBiasFromSnapshot(targetTf) {
         const snapshot = this._liveSnapshot;
-        if (!snapshot || typeof snapshot !== 'object') return null;
+        if (!snapshot || typeof snapshot !== 'object') return { tfLabel: '1-Hour', bull: [], bear: [], topBull: [], topBear: [] };
+
+        const tf = targetTf || (this.state && this.state.biasTimeframe) || '1h';
+        const tfMap = {
+            '5m': { sec: 300, label: '5-Min' },
+            '15m': { sec: 900, label: '15-Min' },
+            '30m': { sec: 1800, label: '30-Min' },
+            '1h': { sec: 3600, label: '1-Hour' }
+        };
+        const config = tfMap[tf] || tfMap['1h'];
+        const targetSec = config.sec;
 
         const bullList = [];
         const bearList = [];
+        const pcrHist = this.state.pcrHistory || {};
 
         Object.keys(snapshot).forEach(sym => {
             const s = snapshot[sym];
-            if (!s || !s.cur || !s.h1) return;
-            if (s.cur.value <= 0 || s.h1.value <= 0) return;
+            if (!s || !s.cur || s.cur.value <= 0) return;
 
-            // Require at least 30 minutes between h1 and cur ticks
-            if ((s.cur.time - s.h1.time) < 1800) return;
+            const curVal = s.cur.value;
+            const curSpot = s.cur.spot || 0;
+            const curTime = s.cur.time || Math.floor(Date.now() / 1000);
 
-            const pcrCur = s.cur.value;
-            const pcr1h = s.h1.value;
-            const pcr1hDiff = pcrCur - pcr1h;
-            const pcr1hPct = pcr1h > 0 ? ((pcr1hDiff / pcr1h) * 100) : 0;
+            let refVal = 0;
+            let refSpot = 0;
 
-            const spotCur = s.cur.spot || 0;
-            const spot1h = s.h1.spot || 0;
-            const spot1hDiff = (spotCur && spot1h) ? (spotCur - spot1h) : 0;
-            const spot1hPct = spot1h > 0 ? ((spot1hDiff / spot1h) * 100) : 0;
+            const ticks = pcrHist[sym];
+            if (Array.isArray(ticks) && ticks.length >= 2) {
+                const targetTime = curTime - targetSec;
+                let bestTick = null;
+                let minDiff = Infinity;
+                ticks.forEach(t => {
+                    const diff = Math.abs((t.time || 0) - targetTime);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        bestTick = t;
+                    }
+                });
+                if (bestTick && bestTick.value > 0 && minDiff <= Math.max(targetSec * 1.5, 900)) {
+                    refVal = bestTick.value;
+                    refSpot = parseFloat(bestTick.spot) || 0;
+                }
+            }
+
+            if (!refVal && s.h1 && s.h1.value > 0) {
+                refVal = s.h1.value;
+                refSpot = s.h1.spot || 0;
+            }
+
+            if (!refVal || refVal <= 0) return;
+
+            const pcrDiff = curVal - refVal;
+            const pcrPct = (pcrDiff / refVal) * 100;
+            const spotDiff = (curSpot && refSpot) ? (curSpot - refSpot) : 0;
+            const spotPct = refSpot > 0 ? ((spotDiff / refSpot) * 100) : 0;
 
             const item = {
                 symbol: sym,
-                pcrCur,
-                pcr1h,
-                pcr1hDiff,
-                pcr1hPct,
+                pcrCur: curVal,
+                pcr1h: refVal,
+                pcr1hDiff: pcrDiff,
+                pcr1hPct: pcrPct,
                 spotCur,
-                spot1hDiff,
-                spot1hPct,
-                timeStr: s.cur.timeStr || ''
+                spot1hDiff: spotDiff,
+                spot1hPct: spotPct,
+                timeStr: s.cur.timeStr || '',
+                tfLabel: config.label
             };
 
-            if (pcr1hDiff > 0) bullList.push(item);
-            if (pcr1hDiff < 0) bearList.push(item);
+            if (pcrDiff > 0) bullList.push(item);
+            if (pcrDiff < 0) bearList.push(item);
         });
 
         bullList.sort((a, b) => b.pcr1hDiff - a.pcr1hDiff);
         bearList.sort((a, b) => a.pcr1hDiff - b.pcr1hDiff);
 
         return {
+            tfLabel: config.label,
             bull: bullList,
             bear: bearList,
             topBull: bullList.slice(0, 5),
             topBear: bearList.slice(0, 5)
         };
+    },
+
+    compute1HourMarketBiasFromSnapshot() {
+        return this.computeMarketBiasFromSnapshot((this.state && this.state.biasTimeframe) || '1h');
     },
 
     computeDualActionFromSnapshot() {
@@ -2470,6 +2510,39 @@ const App = {
         this.renderPcrIntradayScreener();
     },
 
+    setBiasTimeframe(tf) {
+        const valid = ['5m', '15m', '30m', '1h'];
+        if (!valid.includes(tf)) tf = '1h';
+        if (!this.state) this.state = {};
+        this.state.biasTimeframe = tf;
+        try {
+            localStorage.setItem('destrade_bias_tf', tf);
+        } catch(e) {}
+
+        this.radarMode = '1hr';
+        const btnDual = document.getElementById('radar-mode-dual');
+        const btn1hr = document.getElementById('radar-mode-1hr');
+        if (btnDual && btn1hr) {
+            btnDual.style.background = 'transparent';
+            btnDual.style.color = 'var(--text-muted)';
+            btn1hr.style.background = 'rgba(56, 189, 248, 0.2)';
+            btn1hr.style.color = '#38bdf8';
+        }
+
+        valid.forEach(t => {
+            const btn = document.getElementById(`tf-btn-${t}`);
+            if (btn) {
+                const isActive = (t === tf);
+                btn.style.background = isActive ? 'rgba(56, 189, 248, 0.25)' : 'transparent';
+                btn.style.color = isActive ? '#38bdf8' : 'var(--text-muted)';
+                btn.style.borderColor = isActive ? '#38bdf8' : 'rgba(255, 255, 255, 0.1)';
+                btn.style.fontWeight = isActive ? '800' : '600';
+            }
+        });
+
+        this.renderPcrIntradayScreener();
+    },
+
     // ===== INTRADAY PCR & PRICE MOMENTUM RADAR (Dashboard) =====
     renderPcrIntradayScreener() {
         const container = document.getElementById('pcr-intraday-screener-content');
@@ -2477,11 +2550,26 @@ const App = {
 
         const pcrHist = this.state.pcrHistory || {};
         const symbols = Object.keys(pcrHist);
+        const tf = (this.state && this.state.biasTimeframe) || '1h';
 
-        // Use fast snapshot-based 1h bias when available, fallback to full history computation
-        const bias1h = this.compute1HourMarketBiasFromSnapshot() || this.compute1HourMarketBiasList();
+        // Use fast snapshot-based multi-timeframe bias when available
+        const bias1h = this.computeMarketBiasFromSnapshot(tf) || this.compute1HourMarketBiasList();
+        const tfLabel = bias1h.tfLabel || '1-Hour';
+        const shortTf = tfLabel.replace('-Hour', 'H').replace('-Min', 'M').toUpperCase();
 
-        // Always check for 1-Hour Bias Notifications
+        // Highlight current timeframe button UI
+        ['5m', '15m', '30m', '1h'].forEach(t => {
+            const btn = document.getElementById(`tf-btn-${t}`);
+            if (btn) {
+                const isActive = (t === tf);
+                btn.style.background = isActive ? 'rgba(56, 189, 248, 0.25)' : 'transparent';
+                btn.style.color = isActive ? '#38bdf8' : 'var(--text-muted)';
+                btn.style.borderColor = isActive ? '#38bdf8' : 'rgba(255, 255, 255, 0.1)';
+                btn.style.fontWeight = isActive ? '800' : '600';
+            }
+        });
+
+        // Always check for Bias Notifications
         if (this.phoneAlertsEnabled) {
             this.checkAndTriggerTop5BiasAlerts(bias1h.topBull, bias1h.topBear);
         }
@@ -2640,18 +2728,18 @@ const App = {
                                     <div style="font-weight: 700; color: #f8fafc; font-size: 0.88rem; display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
                                         ${item.symbol}
                                         <span style="font-size: 0.58rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 800; background: ${tagBg}; color: ${tagColor}; border: 1px solid ${tagColor}40;">
-                                            ${isBull ? '🎯 1H PCR RALLY' : '🎯 1H PCR DROP'}
+                                            ${isBull ? `🎯 ${shortTf} PCR RALLY` : `🎯 ${shortTf} PCR DROP`}
                                         </span>
                                     </div>
                                     <div style="font-size: 0.7rem; color: var(--text-muted);">
-                                        Spot: <strong style="color: #f8fafc;">₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}</strong> <span style="color: ${item.spot1hDiff >= 0 ? '#10b981' : '#ef4444'}; font-weight:700;">(1h: ${spot1hDiffStr} | ${spot1hPctStr})</span>
+                                        Spot: <strong style="color: #f8fafc;">₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}</strong> <span style="color: ${item.spot1hDiff >= 0 ? '#10b981' : '#ef4444'}; font-weight:700;">(${shortTf.toLowerCase()}: ${spot1hDiffStr} | ${spot1hPctStr})</span>
                                     </div>
                                 </div>
                             </div>
 
                             <div style="text-align: right;">
                                 <div style="font-family:'JetBrains Mono',monospace; font-weight:800; font-size:0.85rem; color:${tagColor}; background:${tagBg}; padding:0.2rem 0.55rem; border-radius:6px; border:1px solid ${tagColor}50;">
-                                    1h: ${pcr1hDiffStr} <span style="font-size:0.68rem; opacity:0.85;">(${pcr1hPctStr})</span>
+                                    ${shortTf.toLowerCase()}: ${pcr1hDiffStr} <span style="font-size:0.68rem; opacity:0.85;">(${pcr1hPctStr})</span>
                                 </div>
                                 <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.1rem;">
                                     PCR: <strong style="color: #38bdf8;">${item.pcrCur.toFixed(4)}</strong>
@@ -2705,8 +2793,8 @@ const App = {
                 <!-- Left: Bullish Leaders -->
                 <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 10px; padding: 0.85rem 1rem;">
                     <div style="font-weight: 700; color: #10b981; font-size: 0.88rem; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;">
-                        <span><i class="fas fa-arrow-trend-up"></i> ${is1hr ? '🟢 Top 5 Bullish 1-Hour Bias Leaders' : '🟢 Live Bullish Dual Surges'}</span>
-                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(16, 185, 129, 0.15); border-radius: 4px; color: #10b981; font-weight:800;">${is1hr ? 'MAX 1H PCR EXPANSION' : 'DUAL ACTION MODE'}</span>
+                        <span><i class="fas fa-arrow-trend-up"></i> ${is1hr ? `🟢 Top 5 Bullish ${tfLabel} Bias Leaders` : '🟢 Live Bullish Dual Surges'}</span>
+                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(16, 185, 129, 0.15); border-radius: 4px; color: #10b981; font-weight:800;">${is1hr ? `MAX ${shortTf} PCR EXPANSION` : 'DUAL ACTION MODE'}</span>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                         ${renderRows(topBull, true)}
@@ -2716,8 +2804,8 @@ const App = {
                 <!-- Right: Bearish Leaders -->
                 <div style="background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 10px; padding: 0.85rem 1rem;">
                     <div style="font-weight: 700; color: #ef4444; font-size: 0.88rem; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;">
-                        <span><i class="fas fa-arrow-trend-down"></i> ${is1hr ? '🔴 Top 5 Bearish 1-Hour Bias Leaders' : '🔴 Live Bearish Dual Crashes'}</span>
-                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(239, 68, 68, 0.15); border-radius: 4px; color: #ef4444; font-weight:800;">${is1hr ? 'MAX 1H PCR COLLAPSE' : 'DUAL ACTION MODE'}</span>
+                        <span><i class="fas fa-arrow-trend-down"></i> ${is1hr ? `🔴 Top 5 Bearish ${tfLabel} Bias Leaders` : '🔴 Live Bearish Dual Crashes'}</span>
+                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(239, 68, 68, 0.15); border-radius: 4px; color: #ef4444; font-weight:800;">${is1hr ? `MAX ${shortTf} PCR COLLAPSE` : 'DUAL ACTION MODE'}</span>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                         ${renderRows(topBear, false)}

@@ -1,7 +1,12 @@
 /**
- * Destrade Pro — Dedicated 24/7 Cloud Background Market Server
- * Runs continuously on Render, Railway, Koyeb, or any Node.js Cloud Host.
- * Syncs all 218 F&O symbols to Firebase Realtime DB every 5 minutes during market hours.
+ * Destrade Pro — Distributed 24/7 Cloud Background Market Server
+ * Runs as a WORKER in a fleet of 5 Render free accounts.
+ * Each worker scans its assigned slice of F&O symbols and writes to shared Firebase.
+ * Workers auto-detect dead/throttled peers and absorb their symbols.
+ *
+ * ENV VARS:
+ *   WORKER_ID      = 0-4 (required, unique per Render service)
+ *   TOTAL_WORKERS   = 5 (default)
  */
 
 const http = require('http');
@@ -12,10 +17,16 @@ const path = require('path');
 const PORT = process.env.PORT || 3000;
 const FIREBASE_HOST = 'destrade-default-rtdb.firebaseio.com';
 
-// Load full 218 F&O Symbol Mapping
+// ===== DISTRIBUTED WORKER CONFIG =====
+const WORKER_ID = parseInt(process.env.WORKER_ID || '0', 10);
+const TOTAL_WORKERS = parseInt(process.env.TOTAL_WORKERS || '5', 10);
+const BANDWIDTH_LIMIT_BYTES = 4.2 * 1024 * 1024 * 1024; // 4.2 GB safety threshold (of 5 GB free)
+let estimatedBandwidthBytes = 0;
+let isThrottled = false;
+
+// Load full F&O Symbol Mapping
 const cloudCronContent = fs.readFileSync(path.join(__dirname, 'cloud-cron.js'), 'utf8');
 
-// Import SLUG_MAP from cloud-cron.js safely
 let SLUG_MAP = {};
 try {
     const mapMatch = cloudCronContent.match(/const SLUG_MAP = (\{[\s\S]*?\n\};)/);
@@ -27,8 +38,51 @@ try {
     console.error('Error parsing SLUG_MAP:', e);
 }
 
-const SYMBOLS = Object.keys(SLUG_MAP);
-console.log(`🚀 Destrade Cloud Market Engine initialized with ${SYMBOLS.length} F&O symbols!`);
+const ALL_SYMBOLS = Object.keys(SLUG_MAP);
+
+// Compute this worker's base symbol slice
+function computeBaseSlice(workerId, totalWorkers) {
+    const chunkSize = Math.ceil(ALL_SYMBOLS.length / totalWorkers);
+    const start = workerId * chunkSize;
+    const end = Math.min(start + chunkSize, ALL_SYMBOLS.length);
+    return { start, end };
+}
+
+let activeSymbols = [];
+let absorbedFrom = []; // IDs of workers whose symbols we absorbed
+
+function recalculateActiveSymbols(deadWorkerIds) {
+    const myBase = computeBaseSlice(WORKER_ID, TOTAL_WORKERS);
+    let mySymbols = ALL_SYMBOLS.slice(myBase.start, myBase.end);
+
+    // Absorb dead workers' symbols — split equally among alive workers
+    if (deadWorkerIds.length > 0) {
+        const aliveWorkerIds = [];
+        for (let i = 0; i < TOTAL_WORKERS; i++) {
+            if (!deadWorkerIds.includes(i)) aliveWorkerIds.push(i);
+        }
+        const myRank = aliveWorkerIds.indexOf(WORKER_ID);
+        if (myRank >= 0) {
+            deadWorkerIds.forEach(deadId => {
+                const deadSlice = computeBaseSlice(deadId, TOTAL_WORKERS);
+                const deadSymbols = ALL_SYMBOLS.slice(deadSlice.start, deadSlice.end);
+                // Split dead worker's symbols equally among alive workers
+                const perAlive = Math.ceil(deadSymbols.length / aliveWorkerIds.length);
+                const myShare = deadSymbols.slice(myRank * perAlive, (myRank + 1) * perAlive);
+                mySymbols = mySymbols.concat(myShare);
+            });
+        }
+    }
+
+    absorbedFrom = deadWorkerIds;
+    activeSymbols = mySymbols;
+    return mySymbols;
+}
+
+// Initialize with base slice
+recalculateActiveSymbols([]);
+console.log(`🚀 Destrade Worker #${WORKER_ID} initialized! Scanning ${activeSymbols.length}/${ALL_SYMBOLS.length} symbols (base slice: ${computeBaseSlice(WORKER_ID, TOTAL_WORKERS).start}-${computeBaseSlice(WORKER_ID, TOTAL_WORKERS).end - 1})`);
+console.log(`📡 Worker fleet: ${TOTAL_WORKERS} workers | Bandwidth limit: ${(BANDWIDTH_LIMIT_BYTES / (1024*1024*1024)).toFixed(1)} GB`);
 
 let lastSyncStatus = {
     lastRun: 'Never',
@@ -81,6 +135,8 @@ function fetchUrl(url) {
     const randomUA = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
     const delim = url.includes('?') ? '&' : '?';
     const cbUrl = url + delim + '_t=' + Date.now();
+    // Track outbound bandwidth (request URL + headers ~500 bytes + response body)
+    estimatedBandwidthBytes += 500 + cbUrl.length;
     return new Promise((resolve) => {
         const req = https.get(cbUrl, {
             headers: {
@@ -94,7 +150,7 @@ function fetchUrl(url) {
             }
         }, (res) => {
             let body = '';
-            res.on('data', chunk => body += chunk);
+            res.on('data', chunk => { body += chunk; estimatedBandwidthBytes += chunk.length; });
             res.on('end', () => {
                 try { resolve(JSON.parse(body)); } catch (e) { resolve(null); }
             });
@@ -126,6 +182,7 @@ function firebaseGet(path) {
 function firebasePut(path, data) {
     return new Promise((resolve) => {
         const payload = JSON.stringify(data);
+        estimatedBandwidthBytes += Buffer.byteLength(payload) + 200; // payload + HTTP overhead
         const req = https.request({
             hostname: FIREBASE_HOST,
             path: path,
@@ -136,7 +193,31 @@ function firebasePut(path, data) {
             }
         }, (res) => {
             let body = '';
-            res.on('data', chunk => body += chunk);
+            res.on('data', chunk => { body += chunk; estimatedBandwidthBytes += chunk.length; });
+            res.on('end', () => resolve(res.statusCode === 200));
+        });
+        req.on('error', () => resolve(false));
+        req.write(payload);
+        req.end();
+    });
+}
+
+// PATCH merges keys into existing Firebase object (critical for multi-worker snapshot writes)
+function firebasePatch(fbPath, data) {
+    return new Promise((resolve) => {
+        const payload = JSON.stringify(data);
+        estimatedBandwidthBytes += Buffer.byteLength(payload) + 200;
+        const req = https.request({
+            hostname: FIREBASE_HOST,
+            path: fbPath,
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payload)
+            }
+        }, (res) => {
+            let body = '';
+            res.on('data', chunk => { body += chunk; estimatedBandwidthBytes += chunk.length; });
             res.on('end', () => resolve(res.statusCode === 200));
         });
         req.on('error', () => resolve(false));
@@ -226,14 +307,35 @@ async function executeMarketSync() {
     const istInfo = getISTInfo();
     const { day, totalMin, dateStr, timeStr, iso } = istInfo;
 
-    console.log(`\n⏱️ [24/7 Cloud Worker] IST Time: ${dateStr} ${timeStr} (Day: ${day}, TotalMin: ${totalMin})`);
+    console.log(`\n⏱️ [Worker #${WORKER_ID}] IST Time: ${dateStr} ${timeStr} (Day: ${day}, TotalMin: ${totalMin})`);
+
+    // Check if this worker is bandwidth-throttled
+    if (estimatedBandwidthBytes >= BANDWIDTH_LIMIT_BYTES) {
+        if (!isThrottled) {
+            isThrottled = true;
+            console.log(`🚫 [Worker #${WORKER_ID}] BANDWIDTH LIMIT REACHED! (${(estimatedBandwidthBytes / (1024*1024*1024)).toFixed(2)} GB). Self-throttling...`);
+            // Notify other workers via Firebase
+            await firebasePatch('/worker_status.json', {
+                [WORKER_ID]: {
+                    id: WORKER_ID,
+                    active: false,
+                    throttled: true,
+                    estimatedBandwidthMB: Math.round(estimatedBandwidthBytes / (1024 * 1024)),
+                    lastHeartbeat: Date.now(),
+                    symbolCount: 0
+                }
+            });
+        }
+        return false;
+    }
 
     // Check Weekend
     if (day === 0 || day === 6) {
         console.log('🌴 Market Closed (Weekend). Skipping sync.');
         lastSyncStatus = { lastRun: iso, status: 'Market Closed (Weekend)', dateStr, symbolsSynced: 0 };
-        await firebasePut('/cron_status.json', lastSyncStatus);
-        return false; // signal: not market hours
+        // Only worker 0 updates cron_status to avoid conflicts
+        if (WORKER_ID === 0) await firebasePut('/cron_status.json', lastSyncStatus);
+        return false;
     }
 
     // Check Market Hours (09:10 AM to 03:40 PM IST)
@@ -243,51 +345,88 @@ async function executeMarketSync() {
     if (totalMin < marketStart || totalMin > marketEnd) {
         console.log('🌙 Outside Market Hours (09:15 - 15:30 IST). Skipping sync.');
         lastSyncStatus = { lastRun: iso, status: 'Outside Market Hours', dateStr, symbolsSynced: 0 };
-        await firebasePut('/cron_status.json', lastSyncStatus);
-        return false; // signal: not market hours
+        if (WORKER_ID === 0) await firebasePut('/cron_status.json', lastSyncStatus);
+        return false;
     }
 
     // Reset memory cache on new day
     if (dateStr !== memoryCacheDateStr) {
         memoryHistoryCache = {};
         memoryCacheDateStr = dateStr;
+        // Reset bandwidth counter at start of each month (approximate: new day + day 1)
+        const dayOfMonth = parseInt(dateStr.split('-')[2], 10);
+        if (dayOfMonth === 1) {
+            estimatedBandwidthBytes = 0;
+            isThrottled = false;
+            console.log(`📅 Monthly bandwidth counter reset!`);
+        }
         console.log(`📅 New trading day detected (${dateStr}). In-memory cache reset.`);
     }
 
-    console.log(`⚡ Market Live! Scanning ${SYMBOLS.length} F&O symbols continuously...`);
+    // ===== FAILOVER CHECK: Detect dead/throttled workers every 10 cycles =====
+    if (cycleCount % 10 === 0) {
+        try {
+            const allStatus = await firebaseGet('/worker_status.json');
+            const deadWorkers = [];
+            if (allStatus && typeof allStatus === 'object') {
+                for (let wId = 0; wId < TOTAL_WORKERS; wId++) {
+                    if (wId === WORKER_ID) continue; // skip self
+                    const ws = allStatus[wId];
+                    if (!ws) continue; // worker never registered — it uses its base slice
+                    const timeSinceHeartbeat = Date.now() - (ws.lastHeartbeat || 0);
+                    // Worker is dead if: explicitly throttled OR no heartbeat for 15 minutes
+                    if (ws.throttled === true || ws.active === false || timeSinceHeartbeat > 15 * 60 * 1000) {
+                        deadWorkers.push(wId);
+                    }
+                }
+            }
+
+            if (deadWorkers.length !== absorbedFrom.length || !deadWorkers.every(d => absorbedFrom.includes(d))) {
+                recalculateActiveSymbols(deadWorkers);
+                if (deadWorkers.length > 0) {
+                    console.log(`⚠️ [Worker #${WORKER_ID}] FAILOVER: Absorbing symbols from dead workers [${deadWorkers.join(', ')}]. Now scanning ${activeSymbols.length} symbols.`);
+                } else {
+                    console.log(`✅ [Worker #${WORKER_ID}] All workers alive. Scanning base ${activeSymbols.length} symbols.`);
+                }
+            }
+        } catch(e) {
+            console.warn('Failover check error:', e.message);
+        }
+    }
+
+    console.log(`⚡ [Worker #${WORKER_ID}] Market Live! Scanning ${activeSymbols.length} symbols (BW: ${(estimatedBandwidthBytes / (1024*1024)).toFixed(0)} MB)...`);
 
     const summary = {};
     const nowSec = Math.floor(Date.now() / 1000);
     const BATCH_SIZE = 10;
-    const BATCH_DELAY_MS = 1000;
+    const BATCH_DELAY_MS = 1200;
 
-    for (let i = 0; i < SYMBOLS.length; i += BATCH_SIZE) {
-        const batch = SYMBOLS.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < activeSymbols.length; i += BATCH_SIZE) {
+        const batch = activeSymbols.slice(i, i + BATCH_SIZE);
         const batchIdx = Math.floor(i / BATCH_SIZE) + 1;
-        const totalBatches = Math.ceil(SYMBOLS.length / BATCH_SIZE);
+        const totalBatches = Math.ceil(activeSymbols.length / BATCH_SIZE);
 
         await Promise.all(batch.map(async (sym) => {
             try {
                 const data = await fetchOptionChainPCR(sym);
-                const path = `/pcr_history/${sym}/${dateStr}.json`;
+                const histPath = `/pcr_history/${sym}/${dateStr}.json`;
 
-                // If Groww direct fetch succeeds
                 if (data && data.pcr > 0) {
                     summary[sym] = { pcr: data.pcr, spot: data.spot };
 
                     if (!memoryHistoryCache[sym]) {
-                        const existing = await firebaseGet(path);
+                        const existing = await firebaseGet(histPath);
                         memoryHistoryCache[sym] = Array.isArray(existing) ? existing : (existing ? Object.values(existing) : []);
                     }
 
                     const list = memoryHistoryCache[sym];
                     const lastEntry = list[list.length - 1];
                     const timeElapsed = lastEntry ? (nowSec - lastEntry.time) : 999;
-                    
+
                     const pcrChanged = !lastEntry || Math.abs(lastEntry.value - data.pcr) >= 0.0001;
                     const spotChanged = !lastEntry || Math.abs(lastEntry.spot - data.spot) >= 0.05;
 
-                    // Record history tick every 45 seconds if PCR or spot changed, or every 120 seconds to advance chart timeline
+                    // Record history tick every 45 seconds if data changed, or every 120 seconds to keep timeline moving
                     if ((timeElapsed >= 45 && (pcrChanged || spotChanged)) || timeElapsed >= 120) {
                         list.push({
                             time: nowSec,
@@ -298,11 +437,11 @@ async function executeMarketSync() {
 
                         const trimmedList = list.slice(-250);
                         memoryHistoryCache[sym] = trimmedList;
-                        await firebasePut(path, trimmedList);
+                        await firebasePut(histPath, trimmedList);
                     }
                 } else {
-                    // Fallback: If Groww direct fetch returned empty (Cloudflare US IP restriction), read Firebase
-                    const existing = await firebaseGet(path);
+                    // Fallback: read from Firebase if Groww blocked
+                    const existing = await firebaseGet(histPath);
                     if (existing) {
                         const list = Array.isArray(existing) ? existing : Object.values(existing);
                         if (list.length > 0) {
@@ -315,35 +454,32 @@ async function executeMarketSync() {
             } catch (err) {}
         }));
 
-        // Log batch progress every 5 batches
         if (batchIdx % 5 === 0 || batchIdx === totalBatches) {
-            console.log(`  📦 Batch ${batchIdx}/${totalBatches} done (${Object.keys(summary).length} symbols synced so far)`);
+            console.log(`  📦 [W#${WORKER_ID}] Batch ${batchIdx}/${totalBatches} (${Object.keys(summary).length} synced)`);
         }
 
-        // Pause between batches to avoid hammering the API
-        if (i + BATCH_SIZE < SYMBOLS.length) {
+        if (i + BATCH_SIZE < activeSymbols.length) {
             await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
         }
     }
 
+    // Update cron_status (only worker 0, no redundant summary object)
     lastSyncStatus = {
         lastRun: iso,
-        status: 'Active (Continuous Scanner - 24/7 Cloud Alerts Active)',
+        status: `Active (Worker #${WORKER_ID} — ${activeSymbols.length} symbols)`,
         dateStr: dateStr,
-        symbolsSynced: Object.keys(summary).length,
-        summary: summary
+        symbolsSynced: Object.keys(summary).length
     };
+    if (WORKER_ID === 0) {
+        await firebasePut('/cron_status.json', lastSyncStatus);
+    }
 
-    await firebasePut('/cron_status.json', lastSyncStatus);
-
-    // Write lightweight snapshot: only latest tick per symbol (~30KB vs ~2.5MB full history)
-    // Client polls this every 30s for near-real-time Market Bias updates
+    // Write this worker's snapshot slice using PATCH (merge, not overwrite)
     const snapshot = {};
     for (const sym of Object.keys(memoryHistoryCache)) {
         const list = memoryHistoryCache[sym];
         if (Array.isArray(list) && list.length > 0) {
             const latest = list[list.length - 1];
-            // Also include the tick closest to 1 hour ago for 1h bias calculation
             const targetTime = latest.time - 3600;
             let tick1hAgo = list[0];
             let minDelta = Math.abs(tick1hAgo.time - targetTime);
@@ -364,15 +500,32 @@ async function executeMarketSync() {
             };
         }
     }
-    await firebasePut('/pcr_snapshot.json', snapshot);
+    // Use PATCH so each worker merges its symbols into the shared snapshot
+    await firebasePatch('/pcr_snapshot.json', snapshot);
 
-    console.log(`🎉 Full Scan Cycle Completed! Synced ${Object.keys(summary).length}/${SYMBOLS.length} symbols! Snapshot: ${Object.keys(snapshot).length} symbols.`);
+    // Write worker heartbeat status
+    await firebasePatch('/worker_status.json', {
+        [WORKER_ID]: {
+            id: WORKER_ID,
+            active: true,
+            throttled: false,
+            estimatedBandwidthMB: Math.round(estimatedBandwidthBytes / (1024 * 1024)),
+            lastHeartbeat: Date.now(),
+            symbolCount: activeSymbols.length,
+            syncedCount: Object.keys(summary).length,
+            absorbed: absorbedFrom
+        }
+    });
 
-    // Run 24/7 Server-Side Background Alert Detection
-    try {
-        await evaluateServerSideAlerts(dateStr, timeStr);
-    } catch(e) {
-        console.warn('Server alert evaluation error:', e);
+    console.log(`🎉 [Worker #${WORKER_ID}] Cycle done! Synced ${Object.keys(summary).length}/${activeSymbols.length} symbols. BW: ${(estimatedBandwidthBytes / (1024*1024)).toFixed(0)} MB`);
+
+    // Only worker 0 runs alert detection (avoid duplicate push notifications)
+    if (WORKER_ID === 0) {
+        try {
+            await evaluateServerSideAlerts(dateStr, timeStr);
+        } catch(e) {
+            console.warn('Server alert evaluation error:', e);
+        }
     }
 
     return true; // signal: market is live
@@ -588,9 +741,7 @@ async function evaluateServerSideAlerts(dateStr, timeStr) {
     previousTop5BiasSymbols = { bull: currBullSyms, bear: currBearSyms };
 }
 
-// ===== CONTINUOUS SCANNING ENGINE =====
-// Instead of fixed intervals, runs back-to-back scans during market hours
-// with a small cooldown between cycles. This prevents Render from sleeping.
+// ===== CONTINUOUS SCANNING ENGINE (Distributed Workers) =====
 let isScanRunning = false;
 let cycleCount = 0;
 
@@ -600,30 +751,35 @@ async function continuousScanLoop() {
         return;
     }
 
+    // Stop scanning if throttled
+    if (isThrottled) {
+        console.log(`🚫 [Worker #${WORKER_ID}] Throttled — bandwidth exhausted. Checking again in 10 minutes...`);
+        setTimeout(continuousScanLoop, 10 * 60 * 1000);
+        return;
+    }
+
     isScanRunning = true;
     cycleCount++;
     const cycleStart = Date.now();
-    console.log(`\n🔄 ===== SCAN CYCLE #${cycleCount} STARTING =====`);
+    console.log(`\n🔄 ===== [Worker #${WORKER_ID}] SCAN CYCLE #${cycleCount} =====`);
 
     try {
         const isMarketLive = await executeMarketSync();
 
         const elapsed = ((Date.now() - cycleStart) / 1000).toFixed(1);
-        console.log(`⏱️ Cycle #${cycleCount} completed in ${elapsed}s`);
+        console.log(`⏱️ [W#${WORKER_ID}] Cycle #${cycleCount} completed in ${elapsed}s`);
 
         if (isMarketLive) {
-            // Market is live: wait only 5 seconds between full cycles
-            // Each cycle takes ~22-30s (22 batches × 1s pause), so effective rate is ~1 full scan every ~30s
-            console.log('⚡ Market live — starting next cycle in 5 seconds...');
-            setTimeout(continuousScanLoop, 5 * 1000);
+            // Market is live: scan every 60 seconds (1 minute interval)
+            console.log(`⚡ [W#${WORKER_ID}] Market live — next cycle in 60 seconds...`);
+            setTimeout(continuousScanLoop, 60 * 1000);
         } else {
-            // Outside market hours: check every 2 minutes
-            console.log('🌙 Market closed — re-checking in 2 minutes...');
-            setTimeout(continuousScanLoop, 2 * 60 * 1000);
+            // Outside market hours: check every 5 minutes
+            console.log(`🌙 [W#${WORKER_ID}] Market closed — re-checking in 5 minutes...`);
+            setTimeout(continuousScanLoop, 5 * 60 * 1000);
         }
     } catch (err) {
         console.error('❌ Scan cycle error:', err);
-        // On error, retry after 30 seconds
         setTimeout(continuousScanLoop, 30 * 1000);
     } finally {
         isScanRunning = false;
@@ -645,7 +801,16 @@ const server = http.createServer(async (req, res) => {
 
     if (req.url === '/api/health' || req.url === '/ping') {
         res.writeHead(200);
-        res.end(JSON.stringify({ status: 'ok', uptime: Math.floor(process.uptime()), symbols: SYMBOLS.length, synced: lastSyncStatus.symbolsSynced || 0 }));
+        res.end(JSON.stringify({
+            status: 'ok',
+            workerId: WORKER_ID,
+            uptime: Math.floor(process.uptime()),
+            symbols: activeSymbols.length,
+            totalSymbols: ALL_SYMBOLS.length,
+            synced: lastSyncStatus.symbolsSynced || 0,
+            bandwidthMB: Math.round(estimatedBandwidthBytes / (1024 * 1024)),
+            throttled: isThrottled
+        }));
         return;
     }
 
@@ -671,28 +836,32 @@ const server = http.createServer(async (req, res) => {
     if (req.url === '/trigger') {
         executeMarketSync().catch(console.error);
         res.writeHead(200);
-        res.end(JSON.stringify({ message: 'Manual Market Sync Triggered', status: lastSyncStatus }));
+        res.end(JSON.stringify({ message: `Worker #${WORKER_ID} Manual Sync Triggered`, status: lastSyncStatus }));
     } else {
         res.writeHead(200);
         res.end(JSON.stringify({
-            app: 'Destrade Pro Continuous 24/7 Cloud Scanner & CORS Proxy',
+            app: `Destrade Worker #${WORKER_ID} (Fleet: ${TOTAL_WORKERS} workers)`,
             uptime: Math.floor(process.uptime()) + ' seconds',
             scanCycles: cycleCount,
+            symbols: `${activeSymbols.length}/${ALL_SYMBOLS.length}`,
+            bandwidthMB: Math.round(estimatedBandwidthBytes / (1024 * 1024)),
+            throttled: isThrottled,
+            absorbed: absorbedFrom,
             status: lastSyncStatus
         }, null, 2));
     }
 });
 
 server.listen(PORT, () => {
-    console.log(`🌐 Destrade Continuous Cloud Scanner running on port ${PORT}`);
+    console.log(`🌐 Destrade Worker #${WORKER_ID} running on port ${PORT}`);
+    console.log(`📊 Symbols: ${activeSymbols.length}/${ALL_SYMBOLS.length} | Fleet: ${TOTAL_WORKERS} workers`);
     
     // Start the continuous scan loop immediately
     continuousScanLoop();
 
-    // Keep-Alive Self-Ping Engine (every 2 minutes to prevent Render free instance from sleeping)
+    // Keep-Alive Self-Ping Engine (every 10 minutes — Render keeps alive for 15 min)
     const selfUrls = [
-        process.env.RENDER_EXTERNAL_URL,
-        'https://destrade-market-worker.onrender.com'
+        process.env.RENDER_EXTERNAL_URL
     ].filter(Boolean);
 
     setInterval(() => {
@@ -700,12 +869,12 @@ server.listen(PORT, () => {
             try {
                 const client = url.startsWith('https') ? https : http;
                 client.get(`${url}/ping`, (res) => {
-                    console.log(`🏓 Self-ping to ${url} succeeded (status: ${res.statusCode})`);
+                    console.log(`🏓 [W#${WORKER_ID}] Self-ping OK (${res.statusCode}) | BW: ${(estimatedBandwidthBytes / (1024*1024)).toFixed(0)} MB`);
                 }).on('error', (err) => {
-                    console.warn(`🏓 Self-ping to ${url} notice:`, err.message);
+                    console.warn(`🏓 Self-ping notice:`, err.message);
                 });
             } catch(e) {}
         });
-    }, 2 * 60 * 1000);
+    }, 10 * 60 * 1000);
 });
 

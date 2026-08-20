@@ -510,9 +510,9 @@ async function executeMarketSync() {
             const curSpot = live ? live.spot : latest.spot;
 
             snapshot[sym] = {
-                cur: { time: curTime, value: curPcr, spot: curSpot, timeStr: curTimeStr },
-                h1: { time: tick1hAgo.time, value: tick1hAgo.value, spot: tick1hAgo.spot },
-                len: list.length
+                c: [curTime, curPcr, curSpot, curTimeStr],
+                h: [tick1hAgo.time, tick1hAgo.value, tick1hAgo.spot],
+                l: list.length
             };
         }
     }

@@ -71,6 +71,17 @@ const App = {
         try { this.autoInitNotificationPermissions(); } catch (e) { console.warn(e); }
     },
 
+    setupVisibilityAPI() {
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                console.log('▶️ App active — instant Market Bias refresh');
+                this.fetchPcrSnapshotImmediate();
+            } else {
+                console.log('⏸️ App backgrounded — snapshot polling sleeping to save bandwidth');
+            }
+        });
+    },
+
     setupPcrCanvasResizeListener() {
         window.addEventListener('resize', () => {
             if (this.state.activeView === 'pcr-analytics' && this.state.pcrAnalyticsSymbol) {
@@ -315,11 +326,15 @@ const App = {
 
         Object.keys(snapshot).forEach(sym => {
             const s = snapshot[sym];
-            if (!s || !s.cur || s.cur.value <= 0) return;
+            if (!s) return;
 
-            const curVal = s.cur.value;
-            const curSpot = s.cur.spot || 0;
-            const curTime = s.cur.time || Math.floor(Date.now() / 1000);
+            // Dual-format snapshot parser: support compact array format (c, h, l) & legacy object format (cur, h1, len)
+            const curVal  = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
+            const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
+            const curTime = s.c ? s.c[0] : (s.cur ? s.cur.time : Math.floor(Date.now() / 1000));
+            const curTimeStr = s.c ? s.c[3] : (s.cur ? s.cur.timeStr : '');
+
+            if (curVal <= 0) return;
 
             let refVal = 0;
             let refSpot = 0;
@@ -342,9 +357,12 @@ const App = {
                 }
             }
 
-            if (!refVal && s.h1 && s.h1.value > 0) {
-                refVal = s.h1.value;
-                refSpot = s.h1.spot || 0;
+            const h1Val  = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
+            const h1Spot = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
+
+            if (!refVal && h1Val > 0) {
+                refVal = h1Val;
+                refSpot = h1Spot;
             }
 
             if (!refVal || refVal <= 0) return;
@@ -363,7 +381,7 @@ const App = {
                 spotCur: curSpot,
                 spot1hDiff: spotDiff,
                 spot1hPct: spotPct,
-                timeStr: s.cur.timeStr || '',
+                timeStr: curTimeStr || '',
                 tfLabel: config.label
             };
 
@@ -396,16 +414,22 @@ const App = {
 
         Object.keys(snapshot).forEach(sym => {
             const s = snapshot[sym];
-            if (!s || !s.cur || !s.h1) return;
-            if (s.cur.value <= 0 || s.h1.value <= 0) return;
+            if (!s) return;
 
-            const pcrCur = s.cur.value;
-            const pcr1h = s.h1.value;
+            const curVal  = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
+            const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
+            const h1Val   = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
+            const h1Spot  = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
+
+            if (curVal <= 0 || h1Val <= 0) return;
+
+            const pcrCur = curVal;
+            const pcr1h = h1Val;
             const pcrDiff = pcrCur - pcr1h;
             const pcrPct = pcr1h > 0 ? ((pcrDiff / pcr1h) * 100) : 0;
 
-            const spotCur = s.cur.spot || 0;
-            const spot1h = s.h1.spot || 0;
+            const spotCur = curSpot;
+            const spot1h = h1Spot;
             const spotDiff = (spotCur && spot1h) ? (spotCur - spot1h) : 0;
             const spotPct = spot1h > 0 ? ((spotDiff / spot1h) * 100) : 0;
 

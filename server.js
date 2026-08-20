@@ -79,10 +79,13 @@ function recalculateActiveSymbols(deadWorkerIds) {
     return mySymbols;
 }
 
+// Auto-leadership: lowest alive worker ID becomes leader (runs alerts + cron_status)
+let isLeader = (WORKER_ID === 0);
+
 // Initialize with base slice
 recalculateActiveSymbols([]);
 console.log(`🚀 Destrade Worker #${WORKER_ID} initialized! Scanning ${activeSymbols.length}/${ALL_SYMBOLS.length} symbols (base slice: ${computeBaseSlice(WORKER_ID, TOTAL_WORKERS).start}-${computeBaseSlice(WORKER_ID, TOTAL_WORKERS).end - 1})`);
-console.log(`📡 Worker fleet: ${TOTAL_WORKERS} workers | Bandwidth limit: ${(BANDWIDTH_LIMIT_BYTES / (1024*1024*1024)).toFixed(1)} GB`);
+console.log(`📡 Worker fleet: ${TOTAL_WORKERS} workers | Leader: ${isLeader ? 'YES' : 'NO'} | Bandwidth limit: ${(BANDWIDTH_LIMIT_BYTES / (1024*1024*1024)).toFixed(1)} GB`);
 
 let lastSyncStatus = {
     lastRun: 'Never',
@@ -334,7 +337,7 @@ async function executeMarketSync() {
         console.log('🌴 Market Closed (Weekend). Skipping sync.');
         lastSyncStatus = { lastRun: iso, status: 'Market Closed (Weekend)', dateStr, symbolsSynced: 0 };
         // Only worker 0 updates cron_status to avoid conflicts
-        if (WORKER_ID === 0) await firebasePut('/cron_status.json', lastSyncStatus);
+        if (isLeader) await firebasePut('/cron_status.json', lastSyncStatus);
         return false;
     }
 
@@ -388,6 +391,19 @@ async function executeMarketSync() {
                 } else {
                     console.log(`✅ [Worker #${WORKER_ID}] All workers alive. Scanning base ${activeSymbols.length} symbols.`);
                 }
+            }
+
+            // Auto-promote leadership: lowest alive worker ID becomes leader
+            const aliveIds = [];
+            for (let i = 0; i < TOTAL_WORKERS; i++) {
+                if (!deadWorkers.includes(i)) aliveIds.push(i);
+            }
+            const newLeader = (aliveIds.length > 0 && aliveIds[0] === WORKER_ID);
+            if (newLeader !== isLeader) {
+                isLeader = newLeader;
+                console.log(isLeader
+                    ? `👑 [Worker #${WORKER_ID}] PROMOTED TO LEADER! Now running alerts & cron_status.`
+                    : `📋 [Worker #${WORKER_ID}] Leadership transferred to lower worker.`);
             }
         } catch(e) {
             console.warn('Failover check error:', e.message);
@@ -470,7 +486,7 @@ async function executeMarketSync() {
         dateStr: dateStr,
         symbolsSynced: Object.keys(summary).length
     };
-    if (WORKER_ID === 0) {
+    if (isLeader) {
         await firebasePut('/cron_status.json', lastSyncStatus);
     }
 
@@ -520,7 +536,7 @@ async function executeMarketSync() {
     console.log(`🎉 [Worker #${WORKER_ID}] Cycle done! Synced ${Object.keys(summary).length}/${activeSymbols.length} symbols. BW: ${(estimatedBandwidthBytes / (1024*1024)).toFixed(0)} MB`);
 
     // Only worker 0 runs alert detection (avoid duplicate push notifications)
-    if (WORKER_ID === 0) {
+    if (isLeader) {
         try {
             await evaluateServerSideAlerts(dateStr, timeStr);
         } catch(e) {

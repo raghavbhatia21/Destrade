@@ -265,7 +265,7 @@ const App = {
             }
 
             try {
-                const dateStr = this.getTargetTradingDateStr();
+                const dateStr = this.getISTDateStr(); // Always use today's date in IST
                 const url = `https://destrade-default-rtdb.firebaseio.com/pcr_history.json?t=${Date.now()}`;
                 const res = await fetch(url, { cache: 'no-store' });
                 if (res.ok) {
@@ -274,9 +274,9 @@ const App = {
                         Object.keys(data).forEach(sym => {
                             const dateObj = data[sym];
                             if (dateObj && typeof dateObj === 'object') {
-                                const ticks = dateObj[dateStr] || dateObj[Object.keys(dateObj).pop()];
+                                const ticks = dateObj[dateStr];
                                 if (Array.isArray(ticks) && ticks.length > 0) {
-                                    this.state.pcrHistory[sym] = ticks;
+                                    this.state.pcrHistory[sym] = this.sanitize5MinPcrList(ticks);
                                 }
                             }
                         });
@@ -392,8 +392,11 @@ const App = {
                 tfLabel: config.label
             };
 
-            if (pcrDiff > 0) bullList.push(item);
-            if (pcrDiff < 0) bearList.push(item);
+            if (pcrDiff > 0 || (pcrDiff === 0 && spotDiff >= 0)) {
+                bullList.push(item);
+            } else {
+                bearList.push(item);
+            }
         });
 
         bullList.sort((a, b) => b.pcr1hDiff - a.pcr1hDiff);
@@ -1410,7 +1413,7 @@ const App = {
 
             // Real-time Multi-Device PCR Stream Listener
             const cleanSym = (sym || this.state.activeSymbol || 'NIFTY').replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
-            const dateStr = this.getTargetTradingDateStr();
+            const dateStr = this.getISTDateStr(); // Always subscribe to TODAY's stream
             const streamPath = `pcr_history/${cleanSym}/${dateStr}`;
 
             if (this._fbActiveStreamPath === streamPath) return;
@@ -1430,11 +1433,11 @@ const App = {
                         if (typeof this.state.pcrHistory !== 'object' || Array.isArray(this.state.pcrHistory)) {
                             this.state.pcrHistory = {};
                         }
-                        // Merge intelligently without losing existing ticks
-                        const current = this.state.pcrHistory[cleanSym] || [];
+                        const todayStartSec = this.getTodayISTStartSec();
+                        const current = (this.state.pcrHistory[cleanSym] || []).filter(item => item && item.time >= todayStartSec);
                         const mergedMap = new Map();
                         [...list, ...current].forEach(item => {
-                            if (item && item.time) mergedMap.set(item.time, item);
+                            if (item && item.time && item.time >= todayStartSec) mergedMap.set(item.time, item);
                         });
                         const sortedList = Array.from(mergedMap.values()).sort((a, b) => a.time - b.time);
                         this.state.pcrHistory[cleanSym] = sortedList;

@@ -191,15 +191,31 @@ const App = {
 
     async fetchPcrSnapshotImmediate() {
         try {
-            const res = await fetch(`https://destrade-default-rtdb.firebaseio.com/pcr_snapshot.json?t=${Date.now()}`, { cache: 'no-store' });
-            if (res.ok) {
-                const snapshot = await res.json();
-                if (snapshot && typeof snapshot === 'object') {
-                    this._liveSnapshot = snapshot;
-                    this._snapshotLastUpdated = Date.now();
-                    console.log(`⚡ Instant Snapshot Loaded (${Object.keys(snapshot).length} symbols) in <100ms!`);
-                    this.renderPcrIntradayScreener();
+            let snapshot = null;
+            // 1. Try zero-cost Render HTTP endpoint first (0 Firebase bandwidth cost)
+            try {
+                const renderRes = await fetch('/api/snapshot', { cache: 'no-store' });
+                if (renderRes.ok) {
+                    const data = await renderRes.json();
+                    if (data && typeof data === 'object' && Object.keys(data).length > 5) {
+                        snapshot = data;
+                    }
                 }
+            } catch(e) {}
+
+            // 2. Fallback to Firebase only if Render endpoint is offline
+            if (!snapshot) {
+                const res = await fetch(`https://destrade-default-rtdb.firebaseio.com/pcr_snapshot.json?t=${Date.now()}`, { cache: 'no-store' });
+                if (res.ok) {
+                    snapshot = await res.json();
+                }
+            }
+
+            if (snapshot && typeof snapshot === 'object') {
+                this._liveSnapshot = snapshot;
+                this._snapshotLastUpdated = Date.now();
+                console.log(`⚡ Instant Snapshot Loaded (${Object.keys(snapshot).length} symbols) in <100ms!`);
+                this.renderPcrIntradayScreener();
             }
         } catch(e) {
             console.warn('Instant snapshot fetch notice:', e);

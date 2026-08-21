@@ -28,6 +28,7 @@ let isThrottled = false;
 const cloudCronContent = fs.readFileSync(path.join(__dirname, 'cloud-cron.js'), 'utf8');
 
 let SLUG_MAP = {};
+let globalSnapshotCache = {};
 try {
     const mapMatch = cloudCronContent.match(/const SLUG_MAP = (\{[\s\S]*?\n\};)/);
     if (mapMatch) {
@@ -536,6 +537,8 @@ async function executeMarketSync() {
             };
         }
     }
+    // Update local memory cache for zero-cost Render HTTP route (/api/snapshot)
+    Object.assign(globalSnapshotCache, snapshot);
     // Use PATCH so each worker merges its symbols into the shared snapshot
     await firebasePatch('/pcr_snapshot.json', snapshot);
 
@@ -847,6 +850,16 @@ const server = http.createServer(async (req, res) => {
             bandwidthMB: Math.round(estimatedBandwidthBytes / (1024 * 1024)),
             throttled: isThrottled
         }));
+        return;
+    }
+
+    if (req.url.startsWith('/api/snapshot')) {
+        res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-cache, no-store, must-revalidate'
+        });
+        res.end(JSON.stringify(globalSnapshotCache || {}));
         return;
     }
 

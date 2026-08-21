@@ -307,10 +307,10 @@ const App = {
 
         const tf = targetTf || (this.state && this.state.biasTimeframe) || '1h';
         const tfMap = {
-            '5m': { sec: 300, label: '5-Min' },
-            '15m': { sec: 900, label: '15-Min' },
-            '30m': { sec: 1800, label: '30-Min' },
-            '1h': { sec: 3600, label: '1-Hour' }
+            '5m': { snapKey: 'm5', sec: 300, label: '5-Min' },
+            '15m': { snapKey: 'm15', sec: 900, label: '15-Min' },
+            '30m': { snapKey: 'm30', sec: 1800, label: '30-Min' },
+            '1h': { snapKey: 'h', sec: 3600, label: '1-Hour' }
         };
         const config = tfMap[tf] || tfMap['1h'];
         const targetSec = config.sec;
@@ -334,30 +334,42 @@ const App = {
             let refVal = 0;
             let refSpot = 0;
 
-            const ticks = pcrHist[sym];
-            if (Array.isArray(ticks) && ticks.length >= 2) {
-                const targetTime = curTime - targetSec;
-                let bestTick = null;
-                let minDiff = Infinity;
-                ticks.forEach(t => {
-                    const diff = Math.abs((t.time || 0) - targetTime);
-                    if (diff < minDiff) {
-                        minDiff = diff;
-                        bestTick = t;
+            // 1. Direct lookup from precomputed multi-timeframe snapshot keys (m5, m15, m30, h)
+            const snapRef = s[config.snapKey];
+            if (Array.isArray(snapRef) && snapRef.length >= 3 && snapRef[1] > 0) {
+                refVal = snapRef[1];
+                refSpot = snapRef[2] || 0;
+            }
+
+            // 2. Fallback to client-side pcrHist if snapshot key unavailable
+            if (!refVal) {
+                const ticks = pcrHist[sym];
+                if (Array.isArray(ticks) && ticks.length >= 2) {
+                    const targetTime = curTime - targetSec;
+                    let bestTick = null;
+                    let minDiff = Infinity;
+                    ticks.forEach(t => {
+                        const diff = Math.abs((t.time || 0) - targetTime);
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            bestTick = t;
+                        }
+                    });
+                    if (bestTick && bestTick.value > 0 && minDiff <= Math.max(targetSec * 1.5, 900)) {
+                        refVal = bestTick.value;
+                        refSpot = parseFloat(bestTick.spot) || 0;
                     }
-                });
-                if (bestTick && bestTick.value > 0 && minDiff <= Math.max(targetSec * 1.5, 900)) {
-                    refVal = bestTick.value;
-                    refSpot = parseFloat(bestTick.spot) || 0;
                 }
             }
 
-            const h1Val  = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
-            const h1Spot = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
-
-            if (!refVal && h1Val > 0) {
-                refVal = h1Val;
-                refSpot = h1Spot;
+            // 3. Fallback to 1h tick (s.h / s.h1)
+            if (!refVal) {
+                const h1Val  = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
+                const h1Spot = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
+                if (h1Val > 0) {
+                    refVal = h1Val;
+                    refSpot = h1Spot;
+                }
             }
 
             if (!refVal || refVal <= 0) return;

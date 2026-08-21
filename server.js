@@ -490,28 +490,43 @@ async function executeMarketSync() {
         await firebasePut('/cron_status.json', lastSyncStatus);
     }
 
+    function findClosestTick(list, targetTime) {
+        if (!Array.isArray(list) || list.length === 0) return null;
+        let closest = list[0];
+        let minDelta = Math.abs(closest.time - targetTime);
+        for (let i = 1; i < list.length; i++) {
+            const delta = Math.abs(list[i].time - targetTime);
+            if (delta < minDelta) {
+                minDelta = delta;
+                closest = list[i];
+            }
+        }
+        return { tick: closest, delta: minDelta };
+    }
+
     // Write this worker's snapshot slice using PATCH (merge, not overwrite)
     const snapshot = {};
     for (const sym of Object.keys(memoryHistoryCache)) {
         const list = memoryHistoryCache[sym];
         if (Array.isArray(list) && list.length > 0) {
             const latest = list[list.length - 1];
-            const targetTime = latest.time - 3600;
-            let tick1hAgo = list[0];
-            let minDelta = Math.abs(tick1hAgo.time - targetTime);
-            for (let i = 1; i < list.length - 1; i++) {
-                const delta = Math.abs(list[i].time - targetTime);
-                if (delta < minDelta) { minDelta = delta; tick1hAgo = list[i]; }
-            }
             const live = summary[sym];
             const curTime = live ? nowSec : latest.time;
             const curTimeStr = live ? timeStr : (latest.timeStr || '');
             const curPcr = live ? live.pcr : latest.value;
             const curSpot = live ? live.spot : latest.spot;
 
+            const t5  = findClosestTick(list, curTime - 300);
+            const t15 = findClosestTick(list, curTime - 900);
+            const t30 = findClosestTick(list, curTime - 1800);
+            const t60 = findClosestTick(list, curTime - 3600);
+
             snapshot[sym] = {
                 c: [curTime, curPcr, curSpot, curTimeStr],
-                h: [tick1hAgo.time, tick1hAgo.value, tick1hAgo.spot],
+                h: t60 ? [t60.tick.time, t60.tick.value, t60.tick.spot] : null,
+                m5: (t5 && t5.delta <= 600) ? [t5.tick.time, t5.tick.value, t5.tick.spot] : null,
+                m15: (t15 && t15.delta <= 1200) ? [t15.tick.time, t15.tick.value, t15.tick.spot] : null,
+                m30: (t30 && t30.delta <= 2400) ? [t30.tick.time, t30.tick.value, t30.tick.spot] : null,
                 l: list.length
             };
         }

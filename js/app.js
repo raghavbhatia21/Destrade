@@ -24,12 +24,7 @@ const App = {
         analysisSearch: '',
         analysisBuildup: 'ALL',
         watchlistPrices: {},
-        pcrHistory: (function() {
-            try {
-                const d = JSON.parse(localStorage.getItem('destrade_pcr_history'));
-                return (d && typeof d === 'object' && !Array.isArray(d)) ? d : {};
-            } catch (e) { return {}; }
-        })(),
+        pcrHistory: {},
         scannerCache: { sell: [], buy: [], status: 'idle', completed: false },
         scannerExpiryMode: 'current',
         marginModel: localStorage.getItem('destrade_margin_model') || 'zerodha_live',
@@ -1446,26 +1441,31 @@ const App = {
         }
     },
 
+    getTodayISTStartSec() {
+        const dateStr = this.getTargetTradingDateStr();
+        if (!dateStr || !dateStr.includes('-')) return 0;
+        const [yr, mo, dy] = dateStr.split('-').map(Number);
+        const startMs = Date.UTC(yr, mo - 1, dy, 0, 0, 0) - (5.5 * 3600 * 1000);
+        return Math.floor(startMs / 1000);
+    },
+
     sanitize5MinPcrList(rawList) {
         if (!Array.isArray(rawList)) return [];
         const valid = rawList.filter(item => item && typeof item === 'object' && typeof item.value === 'number' && !isNaN(item.value) && item.value > 0);
         if (valid.length === 0) return [];
 
+        const todayStartSec = this.getTodayISTStartSec();
+
         // Sort strictly ascending by epoch timestamp
         valid.sort((a, b) => (a.time || a.timestamp || 0) - (b.time || b.timestamp || 0));
-
-        // Forward-fill missing spot prices so spot line is continuous
-        let lastValidSpot = 0;
-        for (let i = 0; i < valid.length; i++) {
-            const s = parseFloat(valid[i].spot) || 0;
-            if (s > 0) lastValidSpot = s;
-            else if (lastValidSpot > 0) valid[i].spot = lastValidSpot;
-        }
 
         const cleanMap = new Map();
         for (const item of valid) {
             let timeSec = item.time || (item.timestamp ? Math.floor(item.timestamp / 1000) : 0);
             if (!timeSec) continue;
+
+            // Strict Intraday Focus: exclude previous days' ticks
+            if (todayStartSec > 0 && timeSec < todayStartSec) continue;
 
             let str = (item.timeStr || '').trim();
             if (!str || /^\d{2}:\d{2}$/.test(str)) {

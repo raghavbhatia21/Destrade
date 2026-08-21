@@ -362,8 +362,8 @@ const App = {
                 }
             }
 
-            // 3. Fallback to 1h tick (s.h / s.h1)
-            if (!refVal) {
+            // 3. Fallback for 1h mode ONLY (do NOT pollute 5m/15m/30m with 1h tick)
+            if (!refVal && tf === '1h') {
                 const h1Val  = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
                 const h1Spot = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
                 if (h1Val > 0) {
@@ -1454,9 +1454,9 @@ const App = {
     },
 
     getTodayISTStartSec() {
-        const dateStr = this.getTargetTradingDateStr();
-        if (!dateStr || !dateStr.includes('-')) return 0;
-        const [yr, mo, dy] = dateStr.split('-').map(Number);
+        const todayDateStr = this.getISTDateStr(); // Always YYYY-MM-DD for TODAY in IST
+        if (!todayDateStr || !todayDateStr.includes('-')) return 0;
+        const [yr, mo, dy] = todayDateStr.split('-').map(Number);
         const startMs = Date.UTC(yr, mo - 1, dy, 0, 0, 0) - (5.5 * 3600 * 1000);
         return Math.floor(startMs / 1000);
     },
@@ -1663,15 +1663,19 @@ const App = {
 
         // Sanitize & deduplicate to strict 5-minute ticks
         let data = this.sanitize5MinPcrList(rawList);
-        if (this._liveSnapshot && this._liveSnapshot[sym] && this._liveSnapshot[sym].cur) {
-            const cur = this._liveSnapshot[sym].cur;
+        if (this._liveSnapshot && this._liveSnapshot[sym]) {
+            const s = this._liveSnapshot[sym];
+            const curVal  = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
+            const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
+            const curTime = s.c ? s.c[0] : (s.cur ? s.cur.time : 0);
+            const curTimeStr = s.c ? s.c[3] : (s.cur ? s.cur.timeStr : this.getISTTimeString());
             const lastTickTime = data.length > 0 ? (data[data.length - 1].time || 0) : 0;
-            if (cur.time && cur.time > lastTickTime && cur.value > 0) {
+            if (curTime && curTime > lastTickTime && curVal > 0) {
                 data = [...data, {
-                    time: cur.time,
-                    timeStr: cur.timeStr || this.getISTTimeString(),
-                    value: parseFloat(cur.value),
-                    spot: parseFloat(cur.spot) || 0
+                    time: curTime,
+                    timeStr: curTimeStr,
+                    value: parseFloat(curVal),
+                    spot: parseFloat(curSpot) || 0
                 }];
             }
         }
@@ -3231,15 +3235,19 @@ const App = {
         }
 
         let data = this.sanitize5MinPcrList(rawList);
-        if (this._liveSnapshot && this._liveSnapshot[sym] && this._liveSnapshot[sym].cur) {
-            const cur = this._liveSnapshot[sym].cur;
+        if (this._liveSnapshot && this._liveSnapshot[sym]) {
+            const s = this._liveSnapshot[sym];
+            const curVal  = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
+            const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
+            const curTime = s.c ? s.c[0] : (s.cur ? s.cur.time : 0);
+            const curTimeStr = s.c ? s.c[3] : (s.cur ? s.cur.timeStr : this.getISTTimeString());
             const lastTickTime = data.length > 0 ? (data[data.length - 1].time || 0) : 0;
-            if (cur.time && cur.time > lastTickTime && cur.value > 0) {
+            if (curTime && curTime > lastTickTime && curVal > 0) {
                 data = [...data, {
-                    time: cur.time,
-                    timeStr: cur.timeStr || this.getISTTimeString(),
-                    value: parseFloat(cur.value),
-                    spot: parseFloat(cur.spot) || 0
+                    time: curTime,
+                    timeStr: curTimeStr,
+                    value: parseFloat(curVal),
+                    spot: parseFloat(curSpot) || 0
                 }];
             }
         }

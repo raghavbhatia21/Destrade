@@ -366,48 +366,50 @@ async function executeMarketSync() {
         console.log(`📅 New trading day detected (${dateStr}). In-memory cache reset.`);
     }
 
-    // ===== FAILOVER CHECK: Detect dead/throttled workers every 10 cycles =====
-    if (cycleCount % 10 === 0) {
-        try {
-            const allStatus = await firebaseGet('/worker_status.json');
-            const deadWorkers = [];
-            if (allStatus && typeof allStatus === 'object') {
-                for (let wId = 0; wId < TOTAL_WORKERS; wId++) {
-                    if (wId === WORKER_ID) continue; // skip self
-                    const ws = allStatus[wId];
-                    if (!ws) continue; // worker never registered — it uses its base slice
-                    const timeSinceHeartbeat = Date.now() - (ws.lastHeartbeat || 0);
-                    // Worker is dead if: explicitly throttled OR no heartbeat for 15 minutes
-                    if (ws.throttled === true || ws.active === false || timeSinceHeartbeat > 15 * 60 * 1000) {
-                        deadWorkers.push(wId);
-                    }
+    // ===== FAILOVER CHECK: Detect missing/dead/throttled workers every cycle =====
+    try {
+        const allStatus = await firebaseGet('/worker_status.json');
+        const deadWorkers = [];
+        const statusMap = (allStatus && typeof allStatus === 'object') ? allStatus : {};
+
+        for (let wId = 0; wId < TOTAL_WORKERS; wId++) {
+            if (wId === WORKER_ID) continue; // skip self
+            const ws = statusMap[wId];
+            if (!ws) {
+                // Worker never registered yet — mark dead so active workers absorb its symbols
+                deadWorkers.push(wId);
+            } else {
+                const timeSinceHeartbeat = Date.now() - (ws.lastHeartbeat || 0);
+                // Worker is dead if: explicitly throttled, active === false, or no heartbeat for > 5 minutes
+                if (ws.throttled === true || ws.active === false || timeSinceHeartbeat > 5 * 60 * 1000) {
+                    deadWorkers.push(wId);
                 }
             }
-
-            if (deadWorkers.length !== absorbedFrom.length || !deadWorkers.every(d => absorbedFrom.includes(d))) {
-                recalculateActiveSymbols(deadWorkers);
-                if (deadWorkers.length > 0) {
-                    console.log(`⚠️ [Worker #${WORKER_ID}] FAILOVER: Absorbing symbols from dead workers [${deadWorkers.join(', ')}]. Now scanning ${activeSymbols.length} symbols.`);
-                } else {
-                    console.log(`✅ [Worker #${WORKER_ID}] All workers alive. Scanning base ${activeSymbols.length} symbols.`);
-                }
-            }
-
-            // Auto-promote leadership: lowest alive worker ID becomes leader
-            const aliveIds = [];
-            for (let i = 0; i < TOTAL_WORKERS; i++) {
-                if (!deadWorkers.includes(i)) aliveIds.push(i);
-            }
-            const newLeader = (aliveIds.length > 0 && aliveIds[0] === WORKER_ID);
-            if (newLeader !== isLeader) {
-                isLeader = newLeader;
-                console.log(isLeader
-                    ? `👑 [Worker #${WORKER_ID}] PROMOTED TO LEADER! Now running alerts & cron_status.`
-                    : `📋 [Worker #${WORKER_ID}] Leadership transferred to lower worker.`);
-            }
-        } catch(e) {
-            console.warn('Failover check error:', e.message);
         }
+
+        if (deadWorkers.length !== absorbedFrom.length || !deadWorkers.every(d => absorbedFrom.includes(d))) {
+            recalculateActiveSymbols(deadWorkers);
+            if (deadWorkers.length > 0) {
+                console.log(`⚠️ [Worker #${WORKER_ID}] FAILOVER: Absorbing symbols from inactive/uncreated workers [${deadWorkers.join(', ')}]. Now scanning ${activeSymbols.length}/${ALL_SYMBOLS.length} symbols.`);
+            } else {
+                console.log(`✅ [Worker #${WORKER_ID}] All ${TOTAL_WORKERS} workers active. Scanning base ${activeSymbols.length} symbols.`);
+            }
+        }
+
+        // Auto-promote leadership: lowest active worker ID becomes leader
+        const aliveIds = [];
+        for (let i = 0; i < TOTAL_WORKERS; i++) {
+            if (!deadWorkers.includes(i)) aliveIds.push(i);
+        }
+        const newLeader = (aliveIds.length > 0 && aliveIds[0] === WORKER_ID);
+        if (newLeader !== isLeader) {
+            isLeader = newLeader;
+            console.log(isLeader
+                ? `👑 [Worker #${WORKER_ID}] PROMOTED TO LEADER! Now running alerts & cron_status.`
+                : `📋 [Worker #${WORKER_ID}] Leadership transferred to lower worker.`);
+        }
+    } catch(e) {
+        console.warn('Failover check error:', e.message);
     }
 
     console.log(`⚡ [Worker #${WORKER_ID}] Market Live! Scanning ${activeSymbols.length} symbols (BW: ${(estimatedBandwidthBytes / (1024*1024)).toFixed(0)} MB)...`);

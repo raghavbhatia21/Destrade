@@ -323,7 +323,6 @@ const App = {
             const s = snapshot[sym];
             if (!s) return;
 
-            // Dual-format snapshot parser: support compact array format (c, h, l) & legacy object format (cur, h1, len)
             const curVal  = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
             const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
             const curTime = s.c ? s.c[0] : (s.cur ? s.cur.time : Math.floor(Date.now() / 1000));
@@ -334,48 +333,49 @@ const App = {
             let refVal = 0;
             let refSpot = 0;
 
-            // 1. Direct lookup from precomputed multi-timeframe snapshot keys (m5, m15, m30, h)
+            // 1. Snapshot multi-timeframe key lookup (m5, m15, m30, h)
             const snapRef = s[config.snapKey];
             if (Array.isArray(snapRef) && snapRef.length >= 3 && snapRef[1] > 0) {
                 refVal = snapRef[1];
                 refSpot = snapRef[2] || 0;
             }
 
-            // 2. Fallback to client-side pcrHist if snapshot key unavailable
+            // 2. Client-side history lookup fallback
             if (!refVal) {
                 const ticks = pcrHist[sym];
-                if (Array.isArray(ticks) && ticks.length >= 2) {
+                if (Array.isArray(ticks) && ticks.length >= 1) {
                     const targetTime = curTime - targetSec;
-                    let bestTick = null;
-                    let minDiff = Infinity;
-                    ticks.forEach(t => {
-                        const diff = Math.abs((t.time || 0) - targetTime);
+                    let bestTick = ticks[0];
+                    let minDiff = Math.abs((bestTick.time || 0) - targetTime);
+                    for (let i = 1; i < ticks.length; i++) {
+                        const diff = Math.abs((ticks[i].time || 0) - targetTime);
                         if (diff < minDiff) {
                             minDiff = diff;
-                            bestTick = t;
+                            bestTick = ticks[i];
                         }
-                    });
-                    if (bestTick && bestTick.value > 0 && minDiff <= Math.max(targetSec * 1.5, 900)) {
+                    }
+                    if (bestTick && bestTick.value > 0) {
                         refVal = bestTick.value;
                         refSpot = parseFloat(bestTick.spot) || 0;
                     }
                 }
             }
 
-            // 3. Fallback for 1h mode ONLY (do NOT pollute 5m/15m/30m with 1h tick)
-            if (!refVal && tf === '1h') {
-                const h1Val  = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
-                const h1Spot = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
-                if (h1Val > 0) {
-                    refVal = h1Val;
-                    refSpot = h1Spot;
+            // 3. Last fallback: 1h tick or current tick
+            if (!refVal) {
+                const hVal = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
+                const hSpot = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
+                if (hVal > 0) {
+                    refVal = hVal;
+                    refSpot = hSpot;
+                } else {
+                    refVal = curVal;
+                    refSpot = curSpot;
                 }
             }
 
-            if (!refVal || refVal <= 0) return;
-
             const pcrDiff = curVal - refVal;
-            const pcrPct = (pcrDiff / refVal) * 100;
+            const pcrPct = refVal > 0 ? ((pcrDiff / refVal) * 100) : 0;
             const spotDiff = (curSpot && refSpot) ? (curSpot - refSpot) : 0;
             const spotPct = refSpot > 0 ? ((spotDiff / refSpot) * 100) : 0;
 
@@ -399,8 +399,8 @@ const App = {
             }
         });
 
-        bullList.sort((a, b) => b.pcr1hDiff - a.pcr1hDiff);
-        bearList.sort((a, b) => a.pcr1hDiff - b.pcr1hDiff);
+        bullList.sort((a, b) => b.pcr1hDiff - a.pcr1hDiff || b.spot1hPct - a.spot1hPct);
+        bearList.sort((a, b) => a.pcr1hDiff - b.pcr1hDiff || a.spot1hPct - b.spot1hPct);
 
         return {
             tfLabel: config.label,

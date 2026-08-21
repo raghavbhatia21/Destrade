@@ -183,40 +183,10 @@ const App = {
     },
 
     async prefillAllPcrHistoryForScreener() {
-        // Step 1: Instantly fetch 30KB snapshot for 0.1s instant UI rendering!
+        // Fast 65KB snapshot fetch for 0.1s instant UI rendering
         await this.fetchPcrSnapshotImmediate();
-
-        // Step 2: Start fast 30s auto-refresh loop
+        // Start fast 30s auto-refresh loop
         this.startPcrHistoryAutoRefresh();
-
-        // Step 3: Async background prefill for heavy full history (2.5MB) without blocking UI
-        setTimeout(async () => {
-            try {
-                const dateStr = this.getTargetTradingDateStr();
-                const url = `https://destrade-default-rtdb.firebaseio.com/pcr_history.json?t=${Date.now()}`;
-                const res = await fetch(url, { cache: 'no-store' });
-                if (!res.ok) return;
-                const data = await res.json();
-                if (data && typeof data === 'object') {
-                    if (typeof this.state.pcrHistory !== 'object' || Array.isArray(this.state.pcrHistory)) {
-                        this.state.pcrHistory = {};
-                    }
-                    Object.keys(data).forEach(sym => {
-                        const dateObj = data[sym];
-                        if (dateObj && typeof dateObj === 'object') {
-                            const ticks = dateObj[dateStr] || dateObj[Object.keys(dateObj).pop()];
-                            if (Array.isArray(ticks)) {
-                                this.state.pcrHistory[sym] = ticks;
-                            }
-                        }
-                    });
-                    console.log(`🔥 Async background prefilled ${Object.keys(this.state.pcrHistory).length} symbols for PCR Screener!`);
-                    this.renderPcrIntradayScreener();
-                }
-            } catch (e) {
-                console.warn('Screener Async Background Prefill Warning:', e);
-            }
-        }, 500);
     },
 
     async fetchPcrSnapshotImmediate() {
@@ -242,7 +212,7 @@ const App = {
 
         // Fast 30s snapshot polling for near-real-time Market Bias
         const SNAPSHOT_INTERVAL = 30 * 1000;
-        // Slower full history refresh every 5 minutes (for PCR charts)
+        // Slower single-symbol history refresh every 5 minutes (for PCR charts)
         const FULL_REFRESH_INTERVAL = 5 * 60 * 1000;
 
         // --- FAST SNAPSHOT LOOP (30s) ---
@@ -256,48 +226,34 @@ const App = {
             setTimeout(snapshotLoop, SNAPSHOT_INTERVAL);
         };
 
-        // --- SLOW FULL HISTORY LOOP (5 min - ONLY when viewing PCR Analytics) ---
+        // --- SLOW SINGLE-SYMBOL HISTORY LOOP (5 min - ONLY when viewing PCR Analytics) ---
         const fullRefreshLoop = async () => {
-            // Only fetch heavy 2.5MB history if user is actively viewing PCR Analytics chart
             if (document.hidden || this.state.activeView !== 'pcr-analytics') {
                 setTimeout(fullRefreshLoop, FULL_REFRESH_INTERVAL);
                 return;
             }
 
             try {
-                const dateStr = this.getISTDateStr(); // Always use today's date in IST
-                const url = `https://destrade-default-rtdb.firebaseio.com/pcr_history.json?t=${Date.now()}`;
+                const sym = this.state.pcrAnalyticsSymbol || this.state.activeSymbol || 'NIFTY';
+                const cleanSym = sym.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
+                const dateStr = this.getISTDateStr();
+                const url = `https://destrade-default-rtdb.firebaseio.com/pcr_history/${cleanSym}/${dateStr}.json?t=${Date.now()}`;
                 const res = await fetch(url, { cache: 'no-store' });
                 if (res.ok) {
-                    const data = await res.json();
-                    if (data && typeof data === 'object') {
-                        Object.keys(data).forEach(sym => {
-                            const dateObj = data[sym];
-                            if (dateObj && typeof dateObj === 'object') {
-                                const ticks = dateObj[dateStr];
-                                if (Array.isArray(ticks) && ticks.length > 0) {
-                                    this.state.pcrHistory[sym] = this.sanitize5MinPcrList(ticks);
-                                }
-                            }
-                        });
-                        console.log(`🔄 Full History Refresh: ${Object.keys(data).length} symbols reloaded`);
-                        // Refresh PCR chart if user is viewing one
-                        if (this.state.activeView === 'pcr-analytics' && this.state.pcrAnalyticsSymbol) {
-                            this.renderPcrAnalyticsChartCanvas(this.state.pcrAnalyticsSymbol);
+                    const ticks = await res.json();
+                    if (Array.isArray(ticks) && ticks.length > 0) {
+                        this.state.pcrHistory[cleanSym] = this.sanitize5MinPcrList(ticks);
+                        if (this.state.activeView === 'pcr-analytics' && (cleanSym === (this.state.pcrAnalyticsSymbol || 'NIFTY'))) {
+                            this.renderPcrAnalyticsChartCanvas(cleanSym);
                         }
                     }
                 }
-            } catch (e) {
-                console.warn('Full History Refresh Warning:', e);
-            }
-
+            } catch(e) {}
             setTimeout(fullRefreshLoop, FULL_REFRESH_INTERVAL);
         };
 
-        // Start snapshot loop immediately (first tick in 5 seconds)
-        setTimeout(snapshotLoop, 5 * 1000);
-        // Start full history loop after 5 minutes
-        setTimeout(fullRefreshLoop, FULL_REFRESH_INTERVAL);
+        snapshotLoop();
+        fullRefreshLoop();
     },
 
     // Fast 1-Hour Bias computation using server-precomputed snapshot (no sanitize overhead)

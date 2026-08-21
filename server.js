@@ -523,7 +523,10 @@ async function executeMarketSync() {
             const t30 = findClosestTick(list, curTime - 1800);
             const t60 = findClosestTick(list, curTime - 3600);
 
+            const h1Tick = t60 ? t60.tick : list[0];
             snapshot[sym] = {
+                cur: { time: curTime, value: curPcr, spot: curSpot, timeStr: curTimeStr },
+                h1: { time: h1Tick.time, value: h1Tick.value, spot: h1Tick.spot },
                 c: [curTime, curPcr, curSpot, curTimeStr],
                 h: t60 ? [t60.tick.time, t60.tick.value, t60.tick.spot] : null,
                 m5: (t5 && t5.delta <= 600) ? [t5.tick.time, t5.tick.value, t5.tick.spot] : null,

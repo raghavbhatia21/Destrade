@@ -379,11 +379,6 @@ const App = {
             const spotDiff = (curSpot && refSpot) ? (curSpot - refSpot) : 0;
             const spotPct = refSpot > 0 ? ((spotDiff / refSpot) * 100) : 0;
 
-            // Mover filter: ignore symbols with zero movement
-            const hasPcrMove = Math.abs(pcrDiff) >= 0.0001;
-            const hasSpotMove = Math.abs(spotPct) >= 0.01;
-            if (!hasPcrMove && !hasSpotMove) return;
-
             const item = {
                 symbol: sym,
                 pcrCur: curVal,

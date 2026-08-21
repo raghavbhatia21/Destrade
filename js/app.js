@@ -379,6 +379,11 @@ const App = {
             const spotDiff = (curSpot && refSpot) ? (curSpot - refSpot) : 0;
             const spotPct = refSpot > 0 ? ((spotDiff / refSpot) * 100) : 0;
 
+            // Mover filter: ignore symbols with zero movement
+            const hasPcrMove = Math.abs(pcrDiff) >= 0.0001;
+            const hasSpotMove = Math.abs(spotPct) >= 0.01;
+            if (!hasPcrMove && !hasSpotMove) return;
+
             const item = {
                 symbol: sym,
                 pcrCur: curVal,
@@ -392,13 +397,14 @@ const App = {
                 tfLabel: config.label
             };
 
-            if (pcrDiff > 0 || (pcrDiff === 0 && spotDiff >= 0)) {
+            if (pcrDiff > 0 || (pcrDiff === 0 && spotDiff > 0)) {
                 bullList.push(item);
-            } else {
+            } else if (pcrDiff < 0 || (pcrDiff === 0 && spotDiff < 0)) {
                 bearList.push(item);
             }
         });
 
+        // Rank strictly by PCR shift magnitude (highest positive expansion first for Bullish, largest drop first for Bearish)
         bullList.sort((a, b) => b.pcr1hDiff - a.pcr1hDiff || b.spot1hPct - a.spot1hPct);
         bearList.sort((a, b) => a.pcr1hDiff - b.pcr1hDiff || a.spot1hPct - b.spot1hPct);
 

@@ -307,14 +307,30 @@ class NSEApi {
                 const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
                 const h1Spot = s.h ? s.h[2] : (s.h1 ? (s.h1.spot || curSpot) : curSpot);
                 if (!curSpot) return;
-                const diff = curSpot - h1Spot;
-                const pChange = h1Spot > 0 ? ((diff / h1Spot) * 100) : 0;
+
+                let diff = curSpot - h1Spot;
+                let curPcr = s.c ? s.c[1] : (s.cur ? s.cur.value : 1.0);
+                let h1Pcr = s.h ? s.h[1] : (s.h1 ? s.h1.value : curPcr);
+                let pcrDiff = curPcr - h1Pcr;
+
+                // Off-market / weekend fallback: if spot price has 0 diff, compute bias from PCR & 5m/15m/30m trends
+                if (Math.abs(diff) < 0.001) {
+                    const m5Spot = s.m5 ? s.m5[2] : 0;
+                    const m15Spot = s.m15 ? s.m15[2] : 0;
+                    const spotRef = m15Spot || m5Spot || curSpot;
+                    diff = curSpot - spotRef;
+                    if (Math.abs(diff) < 0.001) {
+                        diff = pcrDiff !== 0 ? pcrDiff : (curPcr >= 1.0 ? 0.05 : -0.05);
+                    }
+                }
+
+                const pChange = h1Spot > 0 ? ((diff / h1Spot) * 100) : (diff > 0 ? 0.2 : -0.2);
 
                 stockMap.set(sym, {
                     symbol: sym,
                     lastPrice: curSpot,
                     pChange: pChange,
-                    totalTradedVolume: 100000,
+                    totalTradedVolume: Math.round(100000 + Math.abs(pcrDiff * 500000)),
                     yearHigh: curSpot * 1.05,
                     yearLow: curSpot * 0.95
                 });

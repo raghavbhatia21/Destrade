@@ -4819,19 +4819,3 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 } else {
     document.addEventListener('DOMContentLoaded', () => App.init());
 }
-
-const data = await window.nseApi.getScreenerData();
-const all = data.all || [];
-const updates = {};
-all.forEach(s => {
-    updates[`intraday/${s.symbol}/${timeKey}`] = { price: s.price, vol: s.volume, oi: s.oiValue, time: timeKey };
-});
-await db.ref().update(updates);
-    }
-};
-
-if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    setTimeout(() => App.init(), 1);
-} else {
-    document.addEventListener('DOMContentLoaded', () => App.init());
-}

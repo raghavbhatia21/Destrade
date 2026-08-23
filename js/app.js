@@ -2649,112 +2649,15 @@ const App = {
             topBull = bias1h.topBull;
             topBear = bias1h.topBear;
         } else {
-            // Live Dual Action Mode
-            const bullList = [];
-            const bearList = [];
+            // Live Dual Action Mode directly from snapshot
+            const snapDual = this.computeDualActionFromSnapshot();
+            topBull = snapDual.topBull;
+            topBear = snapDual.topBear;
 
-            symbols.forEach(sym => {
-                const rawList = pcrHist[sym];
-                if (!Array.isArray(rawList) || rawList.length < 2) return;
-                const cleanList = this.sanitize5MinPcrList(rawList);
-                if (cleanList.length < 2) return;
-
-                const latest = cleanList[cleanList.length - 1];
-                const pcrCur = latest.value;
-                const spotCur = latest.spot || 0;
-
-                const tick15m = cleanList[Math.max(0, cleanList.length - 4)];
-                const pcrPrev = tick15m.value;
-                const pcrDiff = pcrCur - pcrPrev;
-                const pcrPct = pcrPrev > 0 ? ((pcrDiff / pcrPrev) * 100) : 0;
-
-                const spotPrev = tick15m.spot || 0;
-                const spotDiff = (spotCur && spotPrev) ? (spotCur - spotPrev) : 0;
-                const spotPct = spotPrev > 0 ? ((spotDiff / spotPrev) * 100) : 0;
-
-                let sumPcrDiff = 0, sumSpotDiff = 0, cnt = 0;
-                for (let k = 1; k < cleanList.length; k++) {
-                    sumPcrDiff += Math.abs(cleanList[k].value - cleanList[k - 1].value);
-                    sumSpotDiff += Math.abs((cleanList[k].spot || 0) - (cleanList[k - 1].spot || 0));
-                    cnt++;
-                }
-                const avgPcrDiff = cnt > 0 ? (sumPcrDiff / cnt) : 0.001;
-                const avgSpotDiff = cnt > 0 ? (sumSpotDiff / cnt) : 1.0;
-
-                const tickPrev = cleanList[cleanList.length - 2] || tick15m;
-                const singlePcrDiff = pcrCur - tickPrev.value;
-                const singleSpotDiff = (spotCur && tickPrev.spot) ? (spotCur - tickPrev.spot) : 0;
-
-                const pcrMultiplier = avgPcrDiff > 0 ? (Math.abs(singlePcrDiff) / avgPcrDiff) : 0;
-                const spotMultiplier = avgSpotDiff > 0 ? (Math.abs(singleSpotDiff) / avgSpotDiff) : 0;
-                const avgMultiplier = (pcrMultiplier + spotMultiplier) / 2;
-
-                const absSpotPct = Math.abs(spotPct);
-                const absPcrPct = Math.abs(pcrPct);
-                const harmonicPct = Math.sqrt(absSpotPct * absPcrPct);
-
-                let powerScore = Math.round(45 + (harmonicPct * 22) + (avgMultiplier * 4));
-                powerScore = Math.min(99, Math.max(50, powerScore));
-
-                const isBullishAligned = (singleSpotDiff > 0 && spotDiff > 0) && (singlePcrDiff > 0 && pcrDiff > 0);
-                const isBearishAligned = (singleSpotDiff < 0 && spotDiff < 0) && (singlePcrDiff < 0 && pcrDiff < 0);
-
-                if (!isBullishAligned && !isBearishAligned) return;
-
-                const isSignificantPcr = Math.abs(pcrPct) >= 0.5 || Math.abs(pcrDiff) >= 0.002;
-                const isSignificantSpot = Math.abs(spotPct) >= 0.10;
-                if (!isSignificantPcr || !isSignificantSpot) return;
-
-                if (isBullishAligned) {
-                    const item = {
-                        symbol: sym,
-                        pcrCur,
-                        pcrDiff,
-                        pcrPct,
-                        spotCur,
-                        spotDiff,
-                        spotPct,
-                        powerScore,
-                        tag: '🚀 PURE DUAL SURGE',
-                        tagBg: 'rgba(16, 185, 129, 0.25)',
-                        tagColor: '#10b981',
-                        timeStr: latest.timeStr || ''
-                    };
-                    bullList.push(item);
-                    this.checkAndTriggerHighPowerAlert(item);
-                }
-
-                if (isBearishAligned) {
-                    const item = {
-                        symbol: sym,
-                        pcrCur,
-                        pcrDiff,
-                        pcrPct,
-                        spotCur,
-                        spotDiff,
-                        spotPct,
-                        powerScore,
-                        tag: '📉 PURE DUAL CRASH',
-                        tagBg: 'rgba(239, 68, 68, 0.25)',
-                        tagColor: '#ef4444',
-                        timeStr: latest.timeStr || ''
-                    };
-                    bearList.push(item);
-                    this.checkAndTriggerHighPowerAlert(item);
-                }
-            });
-
-            bullList.sort((a, b) => b.powerScore - a.powerScore);
-            bearList.sort((a, b) => b.powerScore - a.powerScore);
-
-            topBull = bullList.slice(0, 5);
-            topBear = bearList.slice(0, 5);
-
-            // Fast fallback: if history is loading or empty, instantly render dual action from snapshot!
+            // Off-market / weekend fallback: if 0 live breakouts, fallback to Market Bias so values always display!
             if (topBull.length === 0 && topBear.length === 0) {
-                const snapDual = this.computeDualActionFromSnapshot();
-                topBull = snapDual.topBull;
-                topBear = snapDual.topBear;
+                topBull = bias1h.topBull;
+                topBear = bias1h.topBear;
             }
         }
 

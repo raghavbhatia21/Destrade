@@ -9,11 +9,11 @@ class NSEApi {
         const host = window.location.hostname;
         const isLocalDevServer = !isCapacitor && (host === 'localhost' || host === '127.0.0.1' || /^192\.168\./.test(host) || /^10\./.test(host) || host.endsWith('.local'));
         
-        // Use local dev server if running node server locally on desktop, otherwise use Render cloud worker proxy
+        // Use local dev server if running node server locally on desktop, otherwise stream directly via Groww & Firebase
         if (isLocalDevServer && window.location.port) {
             this.proxyUrl = `${window.location.protocol}//${window.location.host}`;
         } else {
-            this.proxyUrl = 'https://destrade-market-worker.onrender.com';
+            this.proxyUrl = '';
         }
         this._cache = new Map();
         this._cacheTTL = 800; // 0.8s cache TTL for 1s real-time streaming

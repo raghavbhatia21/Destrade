@@ -28,14 +28,13 @@ let isThrottled = false;
 const cloudCronContent = fs.readFileSync(path.join(__dirname, 'cloud-cron.js'), 'utf8');
 
 let SLUG_MAP = {};
-let globalSnapshotCache = {};
 try {
     const mapMatch = cloudCronContent.match(/const SLUG_MAP = (\{[\s\S]*?\n\};)/);
     if (mapMatch) {
         const evalMap = new Function('return ' + mapMatch[1]);
         SLUG_MAP = evalMap();
     }
-} catch(e) {
+} catch (e) {
     console.error('Error parsing SLUG_MAP:', e);
 }
 
@@ -86,7 +85,7 @@ let isLeader = (WORKER_ID === 0);
 // Initialize with base slice
 recalculateActiveSymbols([]);
 console.log(`🚀 Destrade Worker #${WORKER_ID} initialized! Scanning ${activeSymbols.length}/${ALL_SYMBOLS.length} symbols (base slice: ${computeBaseSlice(WORKER_ID, TOTAL_WORKERS).start}-${computeBaseSlice(WORKER_ID, TOTAL_WORKERS).end - 1})`);
-console.log(`📡 Worker fleet: ${TOTAL_WORKERS} workers | Leader: ${isLeader ? 'YES' : 'NO'} | Bandwidth limit: ${(BANDWIDTH_LIMIT_BYTES / (1024*1024*1024)).toFixed(1)} GB`);
+console.log(`📡 Worker fleet: ${TOTAL_WORKERS} workers | Leader: ${isLeader ? 'YES' : 'NO'} | Bandwidth limit: ${(BANDWIDTH_LIMIT_BYTES / (1024 * 1024 * 1024)).toFixed(1)} GB`);
 
 let lastSyncStatus = {
     lastRun: 'Never',
@@ -99,14 +98,14 @@ function getISTInfo() {
     const d = new Date();
     const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const timeStr = d.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
-    
+
     const parts = new Intl.DateTimeFormat('en-US', {
         timeZone: 'Asia/Kolkata',
         hour: 'numeric',
         minute: 'numeric',
         hour12: false
     }).formatToParts(d);
-    
+
     let hour = 0, min = 0;
     parts.forEach(p => {
         if (p.type === 'hour') hour = parseInt(p.value, 10);
@@ -115,7 +114,7 @@ function getISTInfo() {
 
     const dayName = d.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'short' });
     const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(dayName);
-    
+
     return { dateStr, timeStr, hour, min, day, totalMin: (hour * 60) + min, iso: d.toISOString() };
 }
 
@@ -206,6 +205,25 @@ function firebasePut(path, data) {
     });
 }
 
+function firebaseDelete(path) {
+    return new Promise((resolve) => {
+        estimatedBandwidthBytes += 300;
+        const req = https.request({
+            hostname: FIREBASE_HOST,
+            path: path,
+            method: 'DELETE',
+            headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+            }
+        }, (res) => {
+            res.on('data', () => {});
+            res.on('end', () => resolve(res.statusCode === 200 || res.statusCode === 204));
+        });
+        req.on('error', () => resolve(false));
+        req.end();
+    });
+}
+
 // PATCH merges keys into existing Firebase object (critical for multi-worker snapshot writes)
 function firebasePatch(fbPath, data) {
     return new Promise((resolve) => {
@@ -232,13 +250,13 @@ function firebasePatch(fbPath, data) {
 
 async function fetchSpotPrice(symbol, isIndex) {
     const cleanSym = symbol.toUpperCase().replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY');
-    const ep = isIndex 
+    const ep = isIndex
         ? `https://groww.in/v1/api/stocks_data/v1/tr_live_indices/exchange/NSE/segment/CASH/${cleanSym}/latest`
         : `https://groww.in/v1/api/stocks_data/v1/tr_live_prices/exchange/NSE/segment/CASH/${cleanSym}/latest`;
-    
+
     let d = await fetchUrl(ep);
     let spot = d ? (d.value || d.ltp || d.lastPrice || 0) : 0;
-    
+
     // Retry once if spot returned 0
     if (!spot) {
         await new Promise(r => setTimeout(r, 500));
@@ -251,7 +269,7 @@ async function fetchSpotPrice(symbol, isIndex) {
 async function fetchOptionChainPCR(symbol) {
     const info = SLUG_MAP[symbol] || { slug: symbol.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-ltd', type: 'STOCKS' };
     const isIdx = info.type === 'INDICES' || ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'].includes(symbol.toUpperCase());
-    
+
     // 1. Fetch TRUE Cash Market Spot Price
     let spot = await fetchSpotPrice(symbol, isIdx);
 
@@ -317,7 +335,7 @@ async function executeMarketSync() {
     if (estimatedBandwidthBytes >= BANDWIDTH_LIMIT_BYTES) {
         if (!isThrottled) {
             isThrottled = true;
-            console.log(`🚫 [Worker #${WORKER_ID}] BANDWIDTH LIMIT REACHED! (${(estimatedBandwidthBytes / (1024*1024*1024)).toFixed(2)} GB). Self-throttling...`);
+            console.log(`🚫 [Worker #${WORKER_ID}] BANDWIDTH LIMIT REACHED! (${(estimatedBandwidthBytes / (1024 * 1024 * 1024)).toFixed(2)} GB). Self-throttling...`);
             // Notify other workers via Firebase
             await firebasePatch('/worker_status.json', {
                 [WORKER_ID]: {
@@ -409,11 +427,11 @@ async function executeMarketSync() {
                 ? `👑 [Worker #${WORKER_ID}] PROMOTED TO LEADER! Now running alerts & cron_status.`
                 : `📋 [Worker #${WORKER_ID}] Leadership transferred to lower worker.`);
         }
-    } catch(e) {
+    } catch (e) {
         console.warn('Failover check error:', e.message);
     }
 
-    console.log(`⚡ [Worker #${WORKER_ID}] Market Live! Scanning ${activeSymbols.length} symbols (BW: ${(estimatedBandwidthBytes / (1024*1024)).toFixed(0)} MB)...`);
+    console.log(`⚡ [Worker #${WORKER_ID}] Market Live! Scanning ${activeSymbols.length} symbols (BW: ${(estimatedBandwidthBytes / (1024 * 1024)).toFixed(0)} MB)...`);
 
     const summary = {};
     const nowSec = Math.floor(Date.now() / 1000);
@@ -470,7 +488,7 @@ async function executeMarketSync() {
                         }
                     }
                 }
-            } catch (err) {}
+            } catch (err) { }
         }));
 
         if (batchIdx % 5 === 0 || batchIdx === totalBatches) {
@@ -519,15 +537,12 @@ async function executeMarketSync() {
             const curPcr = live ? live.pcr : latest.value;
             const curSpot = live ? live.spot : latest.spot;
 
-            const t5  = findClosestTick(list, curTime - 300);
+            const t5 = findClosestTick(list, curTime - 300);
             const t15 = findClosestTick(list, curTime - 900);
             const t30 = findClosestTick(list, curTime - 1800);
             const t60 = findClosestTick(list, curTime - 3600);
 
-            const h1Tick = t60 ? t60.tick : list[0];
             snapshot[sym] = {
-                cur: { time: curTime, value: curPcr, spot: curSpot, timeStr: curTimeStr },
-                h1: { time: h1Tick.time, value: h1Tick.value, spot: h1Tick.spot },
                 c: [curTime, curPcr, curSpot, curTimeStr],
                 h: t60 ? [t60.tick.time, t60.tick.value, t60.tick.spot] : null,
                 m5: (t5 && t5.delta <= 600) ? [t5.tick.time, t5.tick.value, t5.tick.spot] : null,
@@ -537,8 +552,6 @@ async function executeMarketSync() {
             };
         }
     }
-    // Update local memory cache for zero-cost Render HTTP route (/api/snapshot)
-    Object.assign(globalSnapshotCache, snapshot);
     // Use PATCH so each worker merges its symbols into the shared snapshot
     await firebasePatch('/pcr_snapshot.json', snapshot);
 
@@ -556,13 +569,14 @@ async function executeMarketSync() {
         }
     });
 
-    console.log(`🎉 [Worker #${WORKER_ID}] Cycle done! Synced ${Object.keys(summary).length}/${activeSymbols.length} symbols. BW: ${(estimatedBandwidthBytes / (1024*1024)).toFixed(0)} MB`);
+    console.log(`🎉 [Worker #${WORKER_ID}] Cycle done! Synced ${Object.keys(summary).length}/${activeSymbols.length} symbols. BW: ${(estimatedBandwidthBytes / (1024 * 1024)).toFixed(0)} MB`);
 
-    // Only worker 0 runs alert detection (avoid duplicate push notifications)
+    // Only leader worker runs alert detection and daily 08:00 AM database cleanup
     if (isLeader) {
         try {
             await evaluateServerSideAlerts(dateStr, timeStr);
-        } catch(e) {
+            await cleanupPreviousDayPcrHistory();
+        } catch (e) {
             console.warn('Server alert evaluation error:', e);
         }
     }
@@ -570,7 +584,46 @@ async function executeMarketSync() {
     return true; // signal: market is live
 }
 
-// ===== 24/7 SERVER-SIDE BACKGROUND ALERT ENGINE =====
+// ===== 24/7 SERVER-SIDE BACKGROUND ALERT ENGINE & CLEANUP =====
+let lastCleanupDate = '';
+
+async function cleanupPreviousDayPcrHistory() {
+    const { dateStr, hour } = getISTInfo();
+    // Only run after 08:00 AM IST once per day
+    if (hour < 8 || lastCleanupDate === dateStr) return;
+    lastCleanupDate = dateStr;
+
+    console.log(`🧹 [Worker #${WORKER_ID}] Starting 08:00 AM IST database cleanup of previous days' data...`);
+
+    try {
+        const historyData = await firebaseGet('/pcr_history.json');
+        if (!historyData || typeof historyData !== 'object') return;
+
+        let deletedCount = 0;
+        const symbols = Object.keys(historyData);
+
+        for (const sym of symbols) {
+            const dateObj = historyData[sym];
+            if (dateObj && typeof dateObj === 'object') {
+                const dates = Object.keys(dateObj);
+                for (const dKey of dates) {
+                    // Purge any date folder strictly older than today's IST date string
+                    if (dKey < dateStr) {
+                        await firebaseDelete(`/pcr_history/${sym}/${dKey}.json`);
+                        deletedCount++;
+                    }
+                }
+            }
+        }
+
+        // Reset memory history cache for today's fresh trading session
+        memoryHistoryCache = {};
+        console.log(`✅ [Worker #${WORKER_ID}] Daily Cleanup Complete! Purged ${deletedCount} old date records from Firebase.`);
+    } catch (e) {
+        console.warn('Daily database cleanup warning:', e);
+    }
+}
+
 const serverAlertCooldowns = {};
 let previousTop5BiasSymbols = { bull: [], bear: [] };
 let lastServerGlobalNotificationTime = 0;
@@ -616,11 +669,11 @@ async function sendFcmPushToAllDevices(title, body) {
                 res.on('data', chunk => d += chunk);
                 res.on('end', () => console.log(`📲 [FCM PUSH SENT] to ${token.substring(0, 15)}... (Status: ${res.statusCode})`));
             });
-            req.on('error', () => {});
+            req.on('error', () => { });
             req.write(payload);
             req.end();
         });
-    } catch(e) {
+    } catch (e) {
         console.warn('FCM Push broadcast error:', e);
     }
 }
@@ -700,9 +753,9 @@ async function evaluateServerSideAlerts(dateStr, timeStr) {
                         const body = `Spot: ₹${spotCur ? spotCur.toLocaleString() : '---'} (${spotPct > 0 ? '+' : ''}${spotPct.toFixed(2)}%) | PCR Shift: ${pcrDiff > 0 ? '+' : ''}${pcrDiff.toFixed(4)}. ${tag}!`;
 
                         const alertObj = { id: `alert_${nowMs}_${sym}`, symbol: sym, title, body, powerScore, timeStr, timestamp: nowMs };
-                        firebasePut(`/live_alerts/${sym}.json`, alertObj).catch(() => {});
-                        firebasePut(`/latest_alert.json`, alertObj).catch(() => {});
-                        sendFcmPushToAllDevices(title, body).catch(() => {});
+                        firebasePut(`/live_alerts/${sym}.json`, alertObj).catch(() => { });
+                        firebasePut(`/latest_alert.json`, alertObj).catch(() => { });
+                        sendFcmPushToAllDevices(title, body).catch(() => { });
                         console.log(`🔔 [SERVER ALERT DETECTED] ${title} - ${body}`);
                     }
                 }
@@ -739,9 +792,9 @@ async function evaluateServerSideAlerts(dateStr, timeStr) {
                         const body = `${item.symbol} entered Top 5 Bullish Bias Leaders! 1h PCR Shift: ${item.pcr1hDiff > 0 ? '+' : ''}${item.pcr1hDiff.toFixed(4)} (${item.pcr1hPct > 0 ? '+' : ''}${item.pcr1hPct.toFixed(1)}%) | Spot: ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}.`;
 
                         const alertObj = { id: `alert_${nowMs}_${item.symbol}_bias`, symbol: item.symbol, title, body, rank, timeStr, timestamp: nowMs };
-                        firebasePut(`/live_alerts/${item.symbol}_bias.json`, alertObj).catch(() => {});
-                        firebasePut(`/latest_alert.json`, alertObj).catch(() => {});
-                        sendFcmPushToAllDevices(title, body).catch(() => {});
+                        firebasePut(`/live_alerts/${item.symbol}_bias.json`, alertObj).catch(() => { });
+                        firebasePut(`/latest_alert.json`, alertObj).catch(() => { });
+                        sendFcmPushToAllDevices(title, body).catch(() => { });
                         console.log(`🔔 [SERVER BIAS ALERT DETECTED] ${title} - ${body}`);
                     }
                 }
@@ -767,9 +820,9 @@ async function evaluateServerSideAlerts(dateStr, timeStr) {
                         const body = `${item.symbol} entered Top 5 Bearish Bias Leaders! 1h PCR Shift: ${item.pcr1hDiff.toFixed(4)} (${item.pcr1hPct.toFixed(1)}%) | Spot: ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}.`;
 
                         const alertObj = { id: `alert_${nowMs}_${item.symbol}_bias`, symbol: item.symbol, title, body, rank, timeStr, timestamp: nowMs };
-                        firebasePut(`/live_alerts/${item.symbol}_bias.json`, alertObj).catch(() => {});
-                        firebasePut(`/latest_alert.json`, alertObj).catch(() => {});
-                        sendFcmPushToAllDevices(title, body).catch(() => {});
+                        firebasePut(`/live_alerts/${item.symbol}_bias.json`, alertObj).catch(() => { });
+                        firebasePut(`/latest_alert.json`, alertObj).catch(() => { });
+                        sendFcmPushToAllDevices(title, body).catch(() => { });
                         console.log(`🔔 [SERVER BIAS ALERT DETECTED] ${title} - ${body}`);
                     }
                 }
@@ -853,16 +906,6 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    if (req.url.startsWith('/api/snapshot')) {
-        res.writeHead(200, {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Cache-Control': 'no-cache, no-store, must-revalidate'
-        });
-        res.end(JSON.stringify(globalSnapshotCache || {}));
-        return;
-    }
-
     if (req.url.startsWith('/api/proxy')) {
         try {
             const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
@@ -904,7 +947,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
     console.log(`🌐 Destrade Worker #${WORKER_ID} running on port ${PORT}`);
     console.log(`📊 Symbols: ${activeSymbols.length}/${ALL_SYMBOLS.length} | Fleet: ${TOTAL_WORKERS} workers`);
-    
+
     // Start the continuous scan loop immediately
     continuousScanLoop();
 
@@ -918,11 +961,11 @@ server.listen(PORT, () => {
             try {
                 const client = url.startsWith('https') ? https : http;
                 client.get(`${url}/ping`, (res) => {
-                    console.log(`🏓 [W#${WORKER_ID}] Self-ping OK (${res.statusCode}) | BW: ${(estimatedBandwidthBytes / (1024*1024)).toFixed(0)} MB`);
+                    console.log(`🏓 [W#${WORKER_ID}] Self-ping OK (${res.statusCode}) | BW: ${(estimatedBandwidthBytes / (1024 * 1024)).toFixed(0)} MB`);
                 }).on('error', (err) => {
                     console.warn(`🏓 Self-ping notice:`, err.message);
                 });
-            } catch(e) {}
+            } catch (e) { }
         });
     }, 10 * 60 * 1000);
 });

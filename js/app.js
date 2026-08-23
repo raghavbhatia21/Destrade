@@ -120,13 +120,13 @@ const App = {
                         watchlist = snap.val();
                         this.renderWatchlist();
                     }
-                }, () => {});
+                }, () => { });
                 db.ref('sectors').on('value', snap => {
                     if (snap.exists()) {
                         this.state.sectorMapping = snap.val();
                         if (this.state.activeView === 'sectors' || this.state.activeView === 'dashboard') this.render();
                     }
-                }, () => {});
+                }, () => { });
                 // 24/7 Cloud Background Alert Listener
                 db.ref('latest_alert').on('value', snap => {
                     if (snap.exists()) {
@@ -135,7 +135,7 @@ const App = {
                             this.handleServerAlert(alert);
                         }
                     }
-                }, () => {});
+                }, () => { });
             }
             // Auto-prefill full PCR history for Screener on startup
             this.prefillAllPcrHistoryForScreener();
@@ -167,7 +167,7 @@ const App = {
                     setTimeout(() => { if (toast.parentElement) toast.remove(); }, 300);
                 }
             }, duration);
-        } catch(e) {
+        } catch (e) {
             console.log('Toast:', message);
         }
     },
@@ -183,41 +183,55 @@ const App = {
     },
 
     async prefillAllPcrHistoryForScreener() {
-        // Fast 65KB snapshot fetch for 0.1s instant UI rendering
+        // Step 1: Instantly fetch 30KB snapshot for 0.1s instant UI rendering!
         await this.fetchPcrSnapshotImmediate();
-        // Start fast 30s auto-refresh loop
+
+        // Step 2: Start fast 30s auto-refresh loop
         this.startPcrHistoryAutoRefresh();
+
+        // Step 3: Async background prefill for heavy full history (2.5MB) without blocking UI
+        setTimeout(async () => {
+            try {
+                const dateStr = this.getTargetTradingDateStr();
+                const url = `https://destrade-default-rtdb.firebaseio.com/pcr_history.json?t=${Date.now()}`;
+                const res = await fetch(url, { cache: 'no-store' });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data && typeof data === 'object') {
+                    if (typeof this.state.pcrHistory !== 'object' || Array.isArray(this.state.pcrHistory)) {
+                        this.state.pcrHistory = {};
+                    }
+                    Object.keys(data).forEach(sym => {
+                        const dateObj = data[sym];
+                        if (dateObj && typeof dateObj === 'object') {
+                            const ticks = dateObj[dateStr] || dateObj[Object.keys(dateObj).pop()];
+                            if (Array.isArray(ticks)) {
+                                this.state.pcrHistory[sym] = ticks;
+                            }
+                        }
+                    });
+                    console.log(`🔥 Async background prefilled ${Object.keys(this.state.pcrHistory).length} symbols for PCR Screener!`);
+                    this.renderPcrIntradayScreener();
+                }
+            } catch (e) {
+                console.warn('Screener Async Background Prefill Warning:', e);
+            }
+        }, 500);
     },
 
     async fetchPcrSnapshotImmediate() {
         try {
-            let snapshot = null;
-            // 1. Try zero-cost Render HTTP endpoint first (0 Firebase bandwidth cost)
-            try {
-                const renderRes = await fetch('/api/snapshot', { cache: 'no-store' });
-                if (renderRes.ok) {
-                    const data = await renderRes.json();
-                    if (data && typeof data === 'object' && Object.keys(data).length > 5) {
-                        snapshot = data;
-                    }
-                }
-            } catch(e) {}
-
-            // 2. Fallback to Firebase only if Render endpoint is offline
-            if (!snapshot) {
-                const res = await fetch(`https://destrade-default-rtdb.firebaseio.com/pcr_snapshot.json?t=${Date.now()}`, { cache: 'no-store' });
-                if (res.ok) {
-                    snapshot = await res.json();
+            const res = await fetch(`https://destrade-default-rtdb.firebaseio.com/pcr_snapshot.json?t=${Date.now()}`, { cache: 'no-store' });
+            if (res.ok) {
+                const snapshot = await res.json();
+                if (snapshot && typeof snapshot === 'object') {
+                    this._liveSnapshot = snapshot;
+                    this._snapshotLastUpdated = Date.now();
+                    console.log(`⚡ Instant Snapshot Loaded (${Object.keys(snapshot).length} symbols) in <100ms!`);
+                    this.renderPcrIntradayScreener();
                 }
             }
-
-            if (snapshot && typeof snapshot === 'object') {
-                this._liveSnapshot = snapshot;
-                this._snapshotLastUpdated = Date.now();
-                console.log(`⚡ Instant Snapshot Loaded (${Object.keys(snapshot).length} symbols) in <100ms!`);
-                this.renderPcrIntradayScreener();
-            }
-        } catch(e) {
+        } catch (e) {
             console.warn('Instant snapshot fetch notice:', e);
         }
     },
@@ -228,7 +242,7 @@ const App = {
 
         // Fast 30s snapshot polling for near-real-time Market Bias
         const SNAPSHOT_INTERVAL = 30 * 1000;
-        // Slower single-symbol history refresh every 5 minutes (for PCR charts)
+        // Slower full history refresh every 5 minutes (for PCR charts)
         const FULL_REFRESH_INTERVAL = 5 * 60 * 1000;
 
         // --- FAST SNAPSHOT LOOP (30s) ---
@@ -242,34 +256,48 @@ const App = {
             setTimeout(snapshotLoop, SNAPSHOT_INTERVAL);
         };
 
-        // --- SLOW SINGLE-SYMBOL HISTORY LOOP (5 min - ONLY when viewing PCR Analytics) ---
+        // --- SLOW FULL HISTORY LOOP (5 min - ONLY when viewing PCR Analytics) ---
         const fullRefreshLoop = async () => {
+            // Only fetch heavy 2.5MB history if user is actively viewing PCR Analytics chart
             if (document.hidden || this.state.activeView !== 'pcr-analytics') {
                 setTimeout(fullRefreshLoop, FULL_REFRESH_INTERVAL);
                 return;
             }
 
             try {
-                const sym = this.state.pcrAnalyticsSymbol || this.state.activeSymbol || 'NIFTY';
-                const cleanSym = sym.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
-                const dateStr = this.getISTDateStr();
-                const url = `https://destrade-default-rtdb.firebaseio.com/pcr_history/${cleanSym}/${dateStr}.json?t=${Date.now()}`;
+                const dateStr = this.getTargetTradingDateStr();
+                const url = `https://destrade-default-rtdb.firebaseio.com/pcr_history.json?t=${Date.now()}`;
                 const res = await fetch(url, { cache: 'no-store' });
                 if (res.ok) {
-                    const ticks = await res.json();
-                    if (Array.isArray(ticks) && ticks.length > 0) {
-                        this.state.pcrHistory[cleanSym] = this.sanitize5MinPcrList(ticks);
-                        if (this.state.activeView === 'pcr-analytics' && (cleanSym === (this.state.pcrAnalyticsSymbol || 'NIFTY'))) {
-                            this.renderPcrAnalyticsChartCanvas(cleanSym);
+                    const data = await res.json();
+                    if (data && typeof data === 'object') {
+                        Object.keys(data).forEach(sym => {
+                            const dateObj = data[sym];
+                            if (dateObj && typeof dateObj === 'object') {
+                                const ticks = dateObj[dateStr] || dateObj[Object.keys(dateObj).pop()];
+                                if (Array.isArray(ticks) && ticks.length > 0) {
+                                    this.state.pcrHistory[sym] = ticks;
+                                }
+                            }
+                        });
+                        console.log(`🔄 Full History Refresh: ${Object.keys(data).length} symbols reloaded`);
+                        // Refresh PCR chart if user is viewing one
+                        if (this.state.activeView === 'pcr-analytics' && this.state.pcrAnalyticsSymbol) {
+                            this.renderPcrAnalyticsChartCanvas(this.state.pcrAnalyticsSymbol);
                         }
                     }
                 }
-            } catch(e) {}
+            } catch (e) {
+                console.warn('Full History Refresh Warning:', e);
+            }
+
             setTimeout(fullRefreshLoop, FULL_REFRESH_INTERVAL);
         };
 
-        snapshotLoop();
-        fullRefreshLoop();
+        // Start snapshot loop immediately (first tick in 5 seconds)
+        setTimeout(snapshotLoop, 5 * 1000);
+        // Start full history loop after 5 minutes
+        setTimeout(fullRefreshLoop, FULL_REFRESH_INTERVAL);
     },
 
     // Fast 1-Hour Bias computation using server-precomputed snapshot (no sanitize overhead)
@@ -295,7 +323,8 @@ const App = {
             const s = snapshot[sym];
             if (!s) return;
 
-            const curVal  = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
+            // Dual-format snapshot parser: support compact array format (c, h, l) & legacy object format (cur, h1, len)
+            const curVal = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
             const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
             const curTime = s.c ? s.c[0] : (s.cur ? s.cur.time : Math.floor(Date.now() / 1000));
             const curTimeStr = s.c ? s.c[3] : (s.cur ? s.cur.timeStr : '');
@@ -305,49 +334,48 @@ const App = {
             let refVal = 0;
             let refSpot = 0;
 
-            // 1. Snapshot multi-timeframe key lookup (m5, m15, m30, h)
+            // 1. Direct lookup from precomputed multi-timeframe snapshot keys (m5, m15, m30, h)
             const snapRef = s[config.snapKey];
             if (Array.isArray(snapRef) && snapRef.length >= 3 && snapRef[1] > 0) {
                 refVal = snapRef[1];
                 refSpot = snapRef[2] || 0;
             }
 
-            // 2. Client-side history lookup fallback
+            // 2. Fallback to client-side pcrHist if snapshot key unavailable
             if (!refVal) {
                 const ticks = pcrHist[sym];
-                if (Array.isArray(ticks) && ticks.length >= 1) {
+                if (Array.isArray(ticks) && ticks.length >= 2) {
                     const targetTime = curTime - targetSec;
-                    let bestTick = ticks[0];
-                    let minDiff = Math.abs((bestTick.time || 0) - targetTime);
-                    for (let i = 1; i < ticks.length; i++) {
-                        const diff = Math.abs((ticks[i].time || 0) - targetTime);
+                    let bestTick = null;
+                    let minDiff = Infinity;
+                    ticks.forEach(t => {
+                        const diff = Math.abs((t.time || 0) - targetTime);
                         if (diff < minDiff) {
                             minDiff = diff;
-                            bestTick = ticks[i];
+                            bestTick = t;
                         }
-                    }
-                    if (bestTick && bestTick.value > 0) {
+                    });
+                    if (bestTick && bestTick.value > 0 && minDiff <= Math.max(targetSec * 1.5, 900)) {
                         refVal = bestTick.value;
                         refSpot = parseFloat(bestTick.spot) || 0;
                     }
                 }
             }
 
-            // 3. Last fallback: 1h tick or current tick
-            if (!refVal) {
-                const hVal = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
-                const hSpot = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
-                if (hVal > 0) {
-                    refVal = hVal;
-                    refSpot = hSpot;
-                } else {
-                    refVal = curVal;
-                    refSpot = curSpot;
+            // 3. Fallback for 1h mode ONLY (do NOT pollute 5m/15m/30m with 1h tick)
+            if (!refVal && tf === '1h') {
+                const h1Val = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
+                const h1Spot = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
+                if (h1Val > 0) {
+                    refVal = h1Val;
+                    refSpot = h1Spot;
                 }
             }
 
+            if (!refVal || refVal <= 0) return;
+
             const pcrDiff = curVal - refVal;
-            const pcrPct = refVal > 0 ? ((pcrDiff / refVal) * 100) : 0;
+            const pcrPct = (pcrDiff / refVal) * 100;
             const spotDiff = (curSpot && refSpot) ? (curSpot - refSpot) : 0;
             const spotPct = refSpot > 0 ? ((spotDiff / refSpot) * 100) : 0;
 
@@ -364,16 +392,12 @@ const App = {
                 tfLabel: config.label
             };
 
-            if (pcrDiff > 0 || (pcrDiff === 0 && spotDiff > 0)) {
-                bullList.push(item);
-            } else if (pcrDiff < 0 || (pcrDiff === 0 && spotDiff < 0)) {
-                bearList.push(item);
-            }
+            if (pcrDiff > 0) bullList.push(item);
+            if (pcrDiff < 0) bearList.push(item);
         });
 
-        // Rank strictly by PCR shift magnitude (highest positive expansion first for Bullish, largest drop first for Bearish)
-        bullList.sort((a, b) => b.pcr1hDiff - a.pcr1hDiff || b.spot1hPct - a.spot1hPct);
-        bearList.sort((a, b) => a.pcr1hDiff - b.pcr1hDiff || a.spot1hPct - b.spot1hPct);
+        bullList.sort((a, b) => b.pcr1hDiff - a.pcr1hDiff);
+        bearList.sort((a, b) => a.pcr1hDiff - b.pcr1hDiff);
 
         return {
             tfLabel: config.label,
@@ -399,11 +423,10 @@ const App = {
             const s = snapshot[sym];
             if (!s) return;
 
-            const curVal  = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
+            const curVal = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
             const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
-            const curTimeStr = s.c ? (s.c[3] || '') : (s.cur ? s.cur.timeStr || '' : '');
-            const h1Val   = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
-            const h1Spot  = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
+            const h1Val = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
+            const h1Spot = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
 
             if (curVal <= 0 || h1Val <= 0) return;
 
@@ -417,8 +440,8 @@ const App = {
             const spotDiff = (spotCur && spot1h) ? (spotCur - spot1h) : 0;
             const spotPct = spot1h > 0 ? ((spotDiff / spot1h) * 100) : 0;
 
-            const isBullishAligned = (spotDiff > 0 && pcrDiff >= 0) || (spotDiff >= 0 && pcrDiff > 0);
-            const isBearishAligned = (spotDiff < 0 && pcrDiff <= 0) || (spotDiff <= 0 && pcrDiff < 0);
+            const isBullishAligned = (spotDiff > 0 && pcrDiff > 0);
+            const isBearishAligned = (spotDiff < 0 && pcrDiff < 0);
 
             if (!isBullishAligned && !isBearishAligned) return;
 
@@ -441,7 +464,7 @@ const App = {
                     tag: '🚀 PURE DUAL SURGE',
                     tagBg: 'rgba(16, 185, 129, 0.25)',
                     tagColor: '#10b981',
-                    timeStr: curTimeStr || ''
+                    timeStr: s.cur.timeStr || ''
                 });
             }
 
@@ -458,13 +481,13 @@ const App = {
                     tag: '📉 PURE DUAL CRASH',
                     tagBg: 'rgba(239, 68, 68, 0.25)',
                     tagColor: '#ef4444',
-                    timeStr: curTimeStr || ''
+                    timeStr: s.cur.timeStr || ''
                 });
             }
         });
 
-        bullList.sort((a, b) => b.powerScore - a.powerScore);
-        bearList.sort((a, b) => b.powerScore - a.powerScore);
+        bullList.sort((a, b) => b.powerScore - a.powerScore || b.pcrPct - a.pcrPct);
+        bearList.sort((a, b) => b.powerScore - a.powerScore || a.pcrPct - b.pcrPct);
 
         return {
             bull: bullList,
@@ -652,7 +675,7 @@ const App = {
                         if (topData && topData.pcr) {
                             this.recordPcr(sym, parseFloat(topData.pcr), parseFloat(topData.spot) || 0);
                         }
-                    } catch(e) {}
+                    } catch (e) { }
                 }
             }
         };
@@ -1314,14 +1337,14 @@ const App = {
         const d = dateObj || new Date();
         const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
         const timeStr = d.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
-        
+
         const parts = new Intl.DateTimeFormat('en-US', {
             timeZone: 'Asia/Kolkata',
             hour: 'numeric',
             minute: 'numeric',
             hour12: false
         }).formatToParts(d);
-        
+
         let hour = 0, min = 0;
         parts.forEach(p => {
             if (p.type === 'hour') hour = parseInt(p.value, 10);
@@ -1330,7 +1353,7 @@ const App = {
 
         const dayName = d.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'short' });
         const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(dayName);
-        
+
         return { dateStr, timeStr, hour, min, day, totalMin: (hour * 60) + min };
     },
 
@@ -1387,12 +1410,12 @@ const App = {
 
             // Real-time Multi-Device PCR Stream Listener
             const cleanSym = (sym || this.state.activeSymbol || 'NIFTY').replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
-            const dateStr = this.getISTDateStr(); // Always subscribe to TODAY's stream
+            const dateStr = this.getTargetTradingDateStr();
             const streamPath = `pcr_history/${cleanSym}/${dateStr}`;
 
             if (this._fbActiveStreamPath === streamPath) return;
             if (this._fbActiveStreamRef) {
-                try { this._fbActiveStreamRef.off(); } catch (e) {}
+                try { this._fbActiveStreamRef.off(); } catch (e) { }
             }
 
             const db = window.firebase.database();
@@ -1407,11 +1430,11 @@ const App = {
                         if (typeof this.state.pcrHistory !== 'object' || Array.isArray(this.state.pcrHistory)) {
                             this.state.pcrHistory = {};
                         }
-                        const todayStartSec = this.getTodayISTStartSec();
-                        const current = (this.state.pcrHistory[cleanSym] || []).filter(item => item && item.time >= todayStartSec);
+                        // Merge intelligently without losing existing ticks
+                        const current = this.state.pcrHistory[cleanSym] || [];
                         const mergedMap = new Map();
                         [...list, ...current].forEach(item => {
-                            if (item && item.time && item.time >= todayStartSec) mergedMap.set(item.time, item);
+                            if (item && item.time) mergedMap.set(item.time, item);
                         });
                         const sortedList = Array.from(mergedMap.values()).sort((a, b) => a.time - b.time);
                         this.state.pcrHistory[cleanSym] = sortedList;
@@ -1424,7 +1447,7 @@ const App = {
                         }
                     }
                 }
-            }, () => {});
+            }, () => { });
         } catch (e) {
             console.warn('Firebase Time Engine Warning:', e.message);
         }
@@ -1505,7 +1528,7 @@ const App = {
                     loadedList = this.sanitize5MinPcrList(Array.isArray(val) ? val : Object.values(val));
                 }
             }
-        } catch(e) {}
+        } catch (e) { }
 
         // 2. Fallback to Web SDK if REST returned empty
         if (loadedList.length < 1 && window.firebase && window.firebase.database) {
@@ -1515,7 +1538,7 @@ const App = {
                     const val = snapshot.val();
                     loadedList = this.sanitize5MinPcrList(Array.isArray(val) ? val : Object.values(val));
                 }
-            } catch(e) {}
+            } catch (e) { }
         }
 
         if (loadedList.length >= 1) {
@@ -1566,7 +1589,7 @@ const App = {
             const todayKey = 'destrade_pcr_hist_' + dateStr;
             try {
                 localStorage.setItem(todayKey, JSON.stringify(this.state.pcrHistory));
-            } catch(e) {}
+            } catch (e) { }
 
             // MERGE with existing Firebase data
             if (window.firebase && window.firebase.database && (!this._lastFbPush || Date.now() - this._lastFbPush > 5000)) {
@@ -1587,7 +1610,7 @@ const App = {
                         .sort((a, b) => a.time - b.time)
                         .slice(-500);
                     this.state.pcrHistory[sym] = merged;
-                    fbRef.set(merged).catch(() => {});
+                    fbRef.set(merged).catch(() => { });
 
                     // Also update pcr_snapshot for real-time 30s Market Bias
                     const latestTick = merged[merged.length - 1];
@@ -1603,9 +1626,9 @@ const App = {
                             cur: { time: latestTick.time, value: latestTick.value, spot: latestTick.spot, timeStr: latestTick.timeStr },
                             h1: { time: tick1hAgo.time, value: tick1hAgo.value, spot: tick1hAgo.spot },
                             len: merged.length
-                        }).catch(() => {});
+                        }).catch(() => { });
                     }
-                }).catch(() => {});
+                }).catch(() => { });
             }
         }
 
@@ -1642,7 +1665,7 @@ const App = {
         let data = this.sanitize5MinPcrList(rawList);
         if (this._liveSnapshot && this._liveSnapshot[sym]) {
             const s = this._liveSnapshot[sym];
-            const curVal  = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
+            const curVal = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
             const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
             const curTime = s.c ? s.c[0] : (s.cur ? s.cur.time : 0);
             const curTimeStr = s.c ? s.c[3] : (s.cur ? s.cur.timeStr : this.getISTTimeString());
@@ -1909,11 +1932,11 @@ const App = {
                     </thead>
                     <tbody>
                         ${reversedData.map(d => {
-                            const valNum = (d && typeof d.value === 'number' && !isNaN(d.value)) ? d.value : 0;
-                            const isBull = valNum >= 1.0;
-                            const valStr = valNum ? valNum.toFixed(4) : '0.0000';
-                            const spotNum = parseFloat(d.spot) || 0;
-                            return `
+                const valNum = (d && typeof d.value === 'number' && !isNaN(d.value)) ? d.value : 0;
+                const isBull = valNum >= 1.0;
+                const valStr = valNum ? valNum.toFixed(4) : '0.0000';
+                const spotNum = parseFloat(d.spot) || 0;
+                return `
                                 <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
                                     <td style="padding:0.5rem 0.75rem; font-family:monospace; color:var(--text-bright)">${d.timeStr || '--'}</td>
                                     <td style="padding:0.5rem 0.75rem; text-align:right; font-weight:700; color:${isBull ? '#10b981' : '#ef4444'}">${valStr}</td>
@@ -1925,7 +1948,7 @@ const App = {
                                     <td style="padding:0.5rem 0.75rem; text-align:right; font-family:monospace; color:var(--primary)">${spotNum ? '₹' + spotNum.toLocaleString() : '---'}</td>
                                 </tr>
                             `;
-                        }).join('')}
+            }).join('')}
                     </tbody>
                 </table>
             `;
@@ -1998,8 +2021,8 @@ const App = {
             // Compute All-Day Average 5-Min Tick Shifts for this symbol
             let sumPcrDiff = 0, sumSpotDiff = 0, cnt = 0;
             for (let k = 1; k < cleanList.length; k++) {
-                sumPcrDiff += Math.abs(cleanList[k].value - cleanList[k-1].value);
-                sumSpotDiff += Math.abs((cleanList[k].spot || 0) - (cleanList[k-1].spot || 0));
+                sumPcrDiff += Math.abs(cleanList[k].value - cleanList[k - 1].value);
+                sumSpotDiff += Math.abs((cleanList[k].spot || 0) - (cleanList[k - 1].spot || 0));
                 cnt++;
             }
             const avgPcrDiff = cnt > 0 ? (sumPcrDiff / cnt) : 0.001;
@@ -2188,12 +2211,12 @@ const App = {
         if (LN && typeof LN.requestPermissions === 'function') {
             try {
                 await LN.requestPermissions();
-            } catch(e) {}
+            } catch (e) { }
         }
         if ('Notification' in window && Notification.permission === 'default') {
             try {
                 await Notification.requestPermission();
-            } catch(e) {}
+            } catch (e) { }
         }
         await this.initAndroidNotificationChannel();
         this.initCapacitorPushNotifications();
@@ -2208,7 +2231,7 @@ const App = {
                 try {
                     const plugin = window.Capacitor.registerPlugin('LocalNotifications');
                     if (plugin) return plugin;
-                } catch(e) {}
+                } catch (e) { }
             }
         }
         return null;
@@ -2225,7 +2248,7 @@ const App = {
                     if (result && (result.receive === 'granted' || result.display === 'granted')) {
                         Push.register();
                     }
-                }).catch(() => {});
+                }).catch(() => { });
             } else if (typeof Push.register === 'function') {
                 Push.register();
             }
@@ -2233,10 +2256,10 @@ const App = {
             Push.addListener('registration', token => {
                 console.log('📱 FCM Native Push Token:', token.value);
                 if (token && token.value) {
-                    const devId = localStorage.getItem('destrade_device_id') || ('dev_' + Math.floor(Math.random()*1000000));
+                    const devId = localStorage.getItem('destrade_device_id') || ('dev_' + Math.floor(Math.random() * 1000000));
                     localStorage.setItem('destrade_device_id', devId);
                     if (window.firebase && window.firebase.database) {
-                        window.firebase.database().ref(`fcm_tokens/${devId}`).set({ token: token.value, updatedAt: Date.now() }).catch(() => {});
+                        window.firebase.database().ref(`fcm_tokens/${devId}`).set({ token: token.value, updatedAt: Date.now() }).catch(() => { });
                     }
                 }
             });
@@ -2249,7 +2272,7 @@ const App = {
                 console.log('🔔 Push Received in App:', notification);
                 this.sendPhoneNotification(notification.title || 'Destrade Alert', notification.body || '');
             });
-        } catch(e) {
+        } catch (e) {
             console.warn('PushNotifications registration notice:', e);
         }
     },
@@ -2270,7 +2293,7 @@ const App = {
                 lightColor: '#10b981'
             });
             console.log('✅ Android Notification Channel destrade_high_alerts initialized!');
-        } catch(e) {
+        } catch (e) {
             console.warn('Channel creation error:', e);
         }
     },
@@ -2332,7 +2355,7 @@ const App = {
             gain.connect(ctx.destination);
             osc.start();
             osc.stop(ctx.currentTime + 0.35);
-        } catch(e) {}
+        } catch (e) { }
 
         // 2. Native Capacitor Android Notification
         const LN = this.getLocalNotificationsPlugin();
@@ -2356,7 +2379,7 @@ const App = {
                 const res = await LN.schedule(notifObj);
                 console.log('✅ Android Capacitor LocalNotification Scheduled:', res);
                 return;
-            } catch(e) {
+            } catch (e) {
                 console.warn('Capacitor local notification schedule failed:', e);
             }
         }
@@ -2368,7 +2391,7 @@ const App = {
                     body: body,
                     icon: 'https://destrade-default-rtdb.firebaseio.com/favicon.ico'
                 });
-            } catch(e) {}
+            } catch (e) { }
         }
     },
 
@@ -2562,7 +2585,7 @@ const App = {
         this.state.biasTimeframe = tf;
         try {
             localStorage.setItem('destrade_bias_tf', tf);
-        } catch(e) {}
+        } catch (e) { }
 
         this.radarMode = '1hr';
         const btnDual = document.getElementById('radar-mode-dual');
@@ -2626,10 +2649,113 @@ const App = {
             topBull = bias1h.topBull;
             topBear = bias1h.topBear;
         } else {
-            // Live Dual Action Mode directly from snapshot
-            const dualRes = this.computeDualActionFromSnapshot();
-            topBull = dualRes.topBull;
-            topBear = dualRes.topBear;
+            // Live Dual Action Mode
+            const bullList = [];
+            const bearList = [];
+
+            symbols.forEach(sym => {
+                const rawList = pcrHist[sym];
+                if (!Array.isArray(rawList) || rawList.length < 2) return;
+                const cleanList = this.sanitize5MinPcrList(rawList);
+                if (cleanList.length < 2) return;
+
+                const latest = cleanList[cleanList.length - 1];
+                const pcrCur = latest.value;
+                const spotCur = latest.spot || 0;
+
+                const tick15m = cleanList[Math.max(0, cleanList.length - 4)];
+                const pcrPrev = tick15m.value;
+                const pcrDiff = pcrCur - pcrPrev;
+                const pcrPct = pcrPrev > 0 ? ((pcrDiff / pcrPrev) * 100) : 0;
+
+                const spotPrev = tick15m.spot || 0;
+                const spotDiff = (spotCur && spotPrev) ? (spotCur - spotPrev) : 0;
+                const spotPct = spotPrev > 0 ? ((spotDiff / spotPrev) * 100) : 0;
+
+                let sumPcrDiff = 0, sumSpotDiff = 0, cnt = 0;
+                for (let k = 1; k < cleanList.length; k++) {
+                    sumPcrDiff += Math.abs(cleanList[k].value - cleanList[k - 1].value);
+                    sumSpotDiff += Math.abs((cleanList[k].spot || 0) - (cleanList[k - 1].spot || 0));
+                    cnt++;
+                }
+                const avgPcrDiff = cnt > 0 ? (sumPcrDiff / cnt) : 0.001;
+                const avgSpotDiff = cnt > 0 ? (sumSpotDiff / cnt) : 1.0;
+
+                const tickPrev = cleanList[cleanList.length - 2] || tick15m;
+                const singlePcrDiff = pcrCur - tickPrev.value;
+                const singleSpotDiff = (spotCur && tickPrev.spot) ? (spotCur - tickPrev.spot) : 0;
+
+                const pcrMultiplier = avgPcrDiff > 0 ? (Math.abs(singlePcrDiff) / avgPcrDiff) : 0;
+                const spotMultiplier = avgSpotDiff > 0 ? (Math.abs(singleSpotDiff) / avgSpotDiff) : 0;
+                const avgMultiplier = (pcrMultiplier + spotMultiplier) / 2;
+
+                const absSpotPct = Math.abs(spotPct);
+                const absPcrPct = Math.abs(pcrPct);
+                const harmonicPct = Math.sqrt(absSpotPct * absPcrPct);
+
+                let powerScore = Math.round(45 + (harmonicPct * 22) + (avgMultiplier * 4));
+                powerScore = Math.min(99, Math.max(50, powerScore));
+
+                const isBullishAligned = (singleSpotDiff > 0 && spotDiff > 0) && (singlePcrDiff > 0 && pcrDiff > 0);
+                const isBearishAligned = (singleSpotDiff < 0 && spotDiff < 0) && (singlePcrDiff < 0 && pcrDiff < 0);
+
+                if (!isBullishAligned && !isBearishAligned) return;
+
+                const isSignificantPcr = Math.abs(pcrPct) >= 0.5 || Math.abs(pcrDiff) >= 0.002;
+                const isSignificantSpot = Math.abs(spotPct) >= 0.10;
+                if (!isSignificantPcr || !isSignificantSpot) return;
+
+                if (isBullishAligned) {
+                    const item = {
+                        symbol: sym,
+                        pcrCur,
+                        pcrDiff,
+                        pcrPct,
+                        spotCur,
+                        spotDiff,
+                        spotPct,
+                        powerScore,
+                        tag: '🚀 PURE DUAL SURGE',
+                        tagBg: 'rgba(16, 185, 129, 0.25)',
+                        tagColor: '#10b981',
+                        timeStr: latest.timeStr || ''
+                    };
+                    bullList.push(item);
+                    this.checkAndTriggerHighPowerAlert(item);
+                }
+
+                if (isBearishAligned) {
+                    const item = {
+                        symbol: sym,
+                        pcrCur,
+                        pcrDiff,
+                        pcrPct,
+                        spotCur,
+                        spotDiff,
+                        spotPct,
+                        powerScore,
+                        tag: '📉 PURE DUAL CRASH',
+                        tagBg: 'rgba(239, 68, 68, 0.25)',
+                        tagColor: '#ef4444',
+                        timeStr: latest.timeStr || ''
+                    };
+                    bearList.push(item);
+                    this.checkAndTriggerHighPowerAlert(item);
+                }
+            });
+
+            bullList.sort((a, b) => b.powerScore - a.powerScore);
+            bearList.sort((a, b) => b.powerScore - a.powerScore);
+
+            topBull = bullList.slice(0, 5);
+            topBear = bearList.slice(0, 5);
+
+            // Fast fallback: if history is loading or empty, instantly render dual action from snapshot!
+            if (topBull.length === 0 && topBear.length === 0) {
+                const snapDual = this.computeDualActionFromSnapshot();
+                topBull = snapDual.topBull;
+                topBear = snapDual.topBear;
+            }
         }
 
         if (topBull.length === 0 && topBear.length === 0) {
@@ -3111,7 +3237,7 @@ const App = {
         let data = this.sanitize5MinPcrList(rawList);
         if (this._liveSnapshot && this._liveSnapshot[sym]) {
             const s = this._liveSnapshot[sym];
-            const curVal  = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
+            const curVal = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
             const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
             const curTime = s.c ? s.c[0] : (s.cur ? s.cur.time : 0);
             const curTimeStr = s.c ? s.c[3] : (s.cur ? s.cur.timeStr : this.getISTTimeString());
@@ -3389,7 +3515,7 @@ const App = {
 
         // Calculate snapshot-to-snapshot changes (reverse order so newest is at the top)
         const reversed = [...data].reverse();
-        
+
         let html = `
             <div class="card pcr-snapshots-card" style="margin-top: 1.2rem; border-radius: 12px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.08); padding: 1rem 1.25rem;">
                 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 0.5rem;">
@@ -3679,9 +3805,9 @@ const App = {
 
         tbody.innerHTML = filtered.slice(0, 40).map(s => {
             const tagStyle = s.tag === 'Long Buildup' ? 'tag-bullish' :
-                             s.tag === 'Short Buildup' ? 'tag-bearish' :
-                             s.tag === 'Short Covering' ? 'tag-bullish' :
-                             s.tag === 'Long Unwinding' ? 'tag-bearish' : 'tag-neutral';
+                s.tag === 'Short Buildup' ? 'tag-bearish' :
+                    s.tag === 'Short Covering' ? 'tag-bullish' :
+                        s.tag === 'Long Unwinding' ? 'tag-bearish' : 'tag-neutral';
             return `
                 <tr style="border-bottom:1px solid rgba(255,255,255,0.03); cursor:pointer;" onclick="App.showSymbolOverview('${s.symbol}')">
                     <td style="padding:0.75rem; font-weight:700; color:var(--text-bright)">${s.symbol}</td>
@@ -4685,6 +4811,22 @@ const App = {
             updates[`intraday/${s.symbol}/${timeKey}`] = { price: s.price, vol: s.volume, oi: s.oiValue, time: timeKey };
         });
         await db.ref().update(updates);
+    }
+};
+
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(() => App.init(), 1);
+} else {
+    document.addEventListener('DOMContentLoaded', () => App.init());
+}
+
+const data = await window.nseApi.getScreenerData();
+const all = data.all || [];
+const updates = {};
+all.forEach(s => {
+    updates[`intraday/${s.symbol}/${timeKey}`] = { price: s.price, vol: s.volume, oi: s.oiValue, time: timeKey };
+});
+await db.ref().update(updates);
     }
 };
 

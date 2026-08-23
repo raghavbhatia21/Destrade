@@ -303,9 +303,10 @@ class NSEApi {
             const snap = window.App._liveSnapshot;
             Object.keys(snap).forEach(sym => {
                 const s = snap[sym];
-                if (!s || !s.cur || !s.cur.spot) return;
-                const curSpot = s.cur.spot;
-                const h1Spot = s.h1 ? (s.h1.spot || curSpot) : curSpot;
+                if (!s) return;
+                const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
+                const h1Spot = s.h ? s.h[2] : (s.h1 ? (s.h1.spot || curSpot) : curSpot);
+                if (!curSpot) return;
                 const diff = curSpot - h1Spot;
                 const pChange = h1Spot > 0 ? ((diff / h1Spot) * 100) : 0;
 

@@ -548,12 +548,21 @@ async function executeMarketSync() {
             const t30 = findClosestTick(list, curTime - 1800);
             const t60 = findClosestTick(list, curTime - 3600);
 
+            const pcrR = Number((curPcr || 0).toFixed(3));
+            const spotR = Number((curSpot || 0).toFixed(1));
+            const h1Tick = t60 ? t60.tick : list[0];
+            const h1PcrR = Number((h1Tick ? h1Tick.value : curPcr || 0).toFixed(3));
+            const h1SpotR = Number((h1Tick ? h1Tick.spot : curSpot || 0).toFixed(1));
+            const h1Time = h1Tick ? h1Tick.time : curTime;
+
             snapshot[sym] = {
-                c: [curTime, curPcr, curSpot, curTimeStr],
-                h: t60 ? [t60.tick.time, t60.tick.value, t60.tick.spot] : null,
-                m5: (t5 && t5.delta <= 600) ? [t5.tick.time, t5.tick.value, t5.tick.spot] : null,
-                m15: (t15 && t15.delta <= 1200) ? [t15.tick.time, t15.tick.value, t15.tick.spot] : null,
-                m30: (t30 && t30.delta <= 2400) ? [t30.tick.time, t30.tick.value, t30.tick.spot] : null,
+                cur: { time: curTime, value: pcrR, spot: spotR, timeStr: curTimeStr },
+                h1: { time: h1Time, value: h1PcrR, spot: h1SpotR },
+                c: [curTime, pcrR, spotR, curTimeStr],
+                h: [h1Time, h1PcrR, h1SpotR],
+                m5: (t5 && t5.delta <= 600) ? [t5.tick.time, Number(t5.tick.value.toFixed(3)), Number((t5.tick.spot || 0).toFixed(1))] : null,
+                m15: (t15 && t15.delta <= 1200) ? [t15.tick.time, Number(t15.tick.value.toFixed(3)), Number((t15.tick.spot || 0).toFixed(1))] : null,
+                m30: (t30 && t30.delta <= 2400) ? [t30.tick.time, Number(t30.tick.value.toFixed(3)), Number((t30.tick.spot || 0).toFixed(1))] : null,
                 l: list.length
             };
         }

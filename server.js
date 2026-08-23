@@ -477,14 +477,20 @@ async function executeMarketSync() {
                         await firebasePut(histPath, trimmedList);
                     }
                 } else {
-                    // Fallback: read from Firebase if Groww blocked
-                    const existing = await firebaseGet(histPath);
-                    if (existing) {
-                        const list = Array.isArray(existing) ? existing : Object.values(existing);
-                        if (list.length > 0) {
-                            memoryHistoryCache[sym] = list;
-                            const latest = list[list.length - 1];
-                            summary[sym] = { pcr: latest.value, spot: latest.spot };
+                    // Fallback: read from RAM cache first (0ms delay), then Firebase if RAM empty
+                    const list = memoryHistoryCache[sym];
+                    if (Array.isArray(list) && list.length > 0) {
+                        const latest = list[list.length - 1];
+                        summary[sym] = { pcr: latest.value, spot: latest.spot };
+                    } else {
+                        const existing = await firebaseGet(histPath);
+                        if (existing) {
+                            const fetchedList = Array.isArray(existing) ? existing : Object.values(existing);
+                            if (fetchedList.length > 0) {
+                                memoryHistoryCache[sym] = fetchedList;
+                                const latest = fetchedList[fetchedList.length - 1];
+                                summary[sym] = { pcr: latest.value, spot: latest.spot };
+                            }
                         }
                     }
                 }

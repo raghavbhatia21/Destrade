@@ -229,6 +229,7 @@ const App = {
                     this._snapshotLastUpdated = Date.now();
                     console.log(`⚡ Instant Snapshot Loaded (${Object.keys(snapshot).length} symbols) in <100ms!`);
                     this.renderPcrIntradayScreener();
+                    this.renderMarketPulse();
                 }
             }
         } catch (e) {

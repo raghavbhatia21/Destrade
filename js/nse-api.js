@@ -299,7 +299,7 @@ class NSEApi {
         }
 
         // 4. Resilient Fallback: Populate stockMap directly from App._liveSnapshot (210 symbols)
-        if (stockMap.size < 5 && window.App && window.App._liveSnapshot) {
+        if (window.App && window.App._liveSnapshot) {
             const snap = window.App._liveSnapshot;
             Object.keys(snap).forEach(sym => {
                 const s = snap[sym];

@@ -438,8 +438,13 @@ class NSEApi {
             };
         });
 
-        const longB = enriched.filter(s => (s.pChange || 0) > 0 && (s.oiChange || 0) > 0).length;
-        const shortB = enriched.filter(s => (s.pChange || 0) < 0 && (s.oiChange || 0) > 0).length;
+        let longB = enriched.filter(s => (s.pChange || 0) > 0 && (s.oiChange || 0) > 0).length;
+        let shortB = enriched.filter(s => (s.pChange || 0) < 0 && (s.oiChange || 0) > 0).length;
+
+        if (longB === 0 && shortB === 0 && stocks.length > 0) {
+            longB = stocks.filter(s => (s.pChange || 0) > 0.25).length;
+            shortB = stocks.filter(s => (s.pChange || 0) < -0.25).length;
+        }
 
         return {
             trend: adv > dec * 1.2 ? 'BULLISH' : dec > adv * 1.2 ? 'BEARISH' : 'NEUTRAL',

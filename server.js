@@ -877,9 +877,9 @@ async function continuousScanLoop() {
         console.log(`⏱️ [W#${WORKER_ID}] Cycle #${cycleCount} completed in ${elapsed}s`);
 
         if (isMarketLive) {
-            // Market is live: scan every 60 seconds (1 minute interval)
-            console.log(`⚡ [W#${WORKER_ID}] Market live — next cycle in 60 seconds...`);
-            setTimeout(continuousScanLoop, 60 * 1000);
+            // Market is live: scan every 35 seconds continuous cycle
+            console.log(`⚡ [W#${WORKER_ID}] Market live — next cycle in 35 seconds...`);
+            setTimeout(continuousScanLoop, 35 * 1000);
         } else {
             // Outside market hours: check every 5 minutes
             console.log(`🌙 [W#${WORKER_ID}] Market closed — re-checking in 5 minutes...`);

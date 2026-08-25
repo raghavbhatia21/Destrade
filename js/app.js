@@ -136,6 +136,19 @@ const App = {
                         }
                     }
                 }, () => { });
+                // Realtime Instant Push for PCR Snapshot (fires instantly on every 35s scan completion)
+                db.ref('pcr_snapshot').on('value', snap => {
+                    if (snap.exists()) {
+                        const snapshot = snap.val();
+                        if (snapshot && typeof snapshot === 'object') {
+                            this._liveSnapshot = snapshot;
+                            this._snapshotLastUpdated = Date.now();
+                            console.log(`🔥 Realtime Firebase Snapshot Push received (${Object.keys(snapshot).length} symbols)`);
+                            this.renderPcrIntradayScreener();
+                            this.renderMarketPulse();
+                        }
+                    }
+                }, () => { });
             }
             // Auto-prefill full PCR history for Screener on startup
             this.prefillAllPcrHistoryForScreener();

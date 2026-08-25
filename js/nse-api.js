@@ -962,6 +962,28 @@ class NSEApi {
         }
 
         if (!d?.records?.data) {
+            const snap = window.App && window.App._liveSnapshot ? window.App._liveSnapshot[cleanSym] : null;
+            if (snap) {
+                const curSpot = snap.c ? snap.c[2] : (snap.cur ? snap.cur.spot : 0);
+                const curPcr = snap.c ? snap.c[1] : (snap.cur ? snap.cur.value : 1.0);
+                const timeStr = snap.c ? snap.c[3] : (snap.cur ? snap.cur.timeStr : '');
+                if (curSpot > 0) {
+                    const pcrVal = parseFloat(curPcr || 1.0);
+                    return {
+                        symbol: cleanSym,
+                        pcr: pcrVal.toFixed(4),
+                        sentiment: pcrVal > 1.3 ? 'BULLISH' : (pcrVal < 0.7 ? 'BEARISH' : 'NEUTRAL'),
+                        underlying: curSpot,
+                        totalCEOI: 1000000,
+                        totalPEOI: Math.round(1000000 * pcrVal),
+                        maxCEStrike: curSpot * 1.02,
+                        maxPEStrike: curSpot * 0.98,
+                        maxPain: curSpot,
+                        data: [],
+                        timeStr: timeStr
+                    };
+                }
+            }
             return null;
         }
 

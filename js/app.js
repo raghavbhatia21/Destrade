@@ -4099,7 +4099,10 @@ const App = {
             await window.nseApi.getScreenerData();
         }
 
-        let symbols = window.nseApi.fnoSymbols || [];
+        let symbols = (window.nseApi.fnoSymbols && window.nseApi.fnoSymbols.length > 0)
+            ? window.nseApi.fnoSymbols
+            : (this._liveSnapshot ? Object.keys(this._liveSnapshot) : []);
+
         if (symbols.length === 0) {
             sStatus.textContent = "Error: F&O Symbol list unavailable.";
             btn.disabled = false;

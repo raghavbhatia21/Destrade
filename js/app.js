@@ -240,9 +240,10 @@ const App = {
                 if (snapshot && typeof snapshot === 'object') {
                     this._liveSnapshot = snapshot;
                     this._snapshotLastUpdated = Date.now();
-                    console.log(`⚡ Instant Snapshot Loaded (${Object.keys(snapshot).length} symbols) in <100ms!`);
+                    console.log(`⚡ Snapshot Refreshed (${Object.keys(snapshot).length} symbols)`);
                     this.renderPcrIntradayScreener();
                     this.renderMarketPulse();
+                    this.renderSectorQuickLook();
                 }
             }
         } catch (e) {
@@ -383,10 +384,17 @@ const App = {
 
             if (!refVal || refVal <= 0) return;
 
-            const pcrDiff = curVal - refVal;
-            const pcrPct = (pcrDiff / refVal) * 100;
+            let pcrDiff = curVal - refVal;
+            let pcrPct = (pcrDiff / refVal) * 100;
             const spotDiff = (curSpot && refSpot) ? (curSpot - refSpot) : 0;
             const spotPct = refSpot > 0 ? ((spotDiff / refSpot) * 100) : 0;
+
+            // When PCR delta is zero (common for 5m/15m since Groww PCR updates slowly),
+            // use spot price movement to determine bias direction
+            if (Math.abs(pcrDiff) < 0.0005 && Math.abs(spotDiff) > 0.01) {
+                pcrDiff = spotDiff > 0 ? 0.001 : -0.001;
+                pcrPct = spotPct;
+            }
 
             const item = {
                 symbol: sym,

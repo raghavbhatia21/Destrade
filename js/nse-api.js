@@ -347,8 +347,11 @@ class NSEApi {
             stocks: Array.from(stockMap.values()),
             oiData: oiData?.data || []
         };
-        this._rawStockCache = result;
-        this._rawStockCacheTime = Date.now();
+        // Only cache if we got meaningful data — never cache empty results
+        if (result.stocks.length > 5) {
+            this._rawStockCache = result;
+            this._rawStockCacheTime = Date.now();
+        }
         return result;
     }
 

@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 3000;
-const FIREBASE_HOST = 'destrade-default-rtdb.firebaseio.com';
+const FIREBASE_HOST = (process.env.FIREBASE_HOST || 'destrade-default-rtdb.firebaseio.com').replace(/^https?:\/\//, '').replace(/\/$/, '');
 
 // ===== DISTRIBUTED WORKER CONFIG =====
 const WORKER_ID = parseInt(process.env.WORKER_ID || '0', 10);

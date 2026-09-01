@@ -212,6 +212,61 @@ class NSEApi {
 
 
 
+    // Universal Snapshot Normalizer: seamless support for both Ultra-Compact Array & Legacy Object formats
+    normalizeSnapshotItem(s) {
+        if (!s) return null;
+        if (Array.isArray(s)) {
+            const curTime = s[0] || 0;
+            const curVal = s[1] || 0;
+            const curSpot = s[2] || 0;
+            const curTimeStr = s[3] || '';
+            const m5Val = s[4] || 0;
+            const m15Val = s[5] || 0;
+            const m30Val = s[6] || 0;
+            const h1Val = s[7] || 0;
+            const m5Spot = s[12] || 0;
+            const m15Spot = s[13] || 0;
+            const m30Spot = s[14] || 0;
+            const h1Spot = s[15] || 0;
+
+            return {
+                curTime,
+                curVal,
+                curSpot,
+                curTimeStr,
+                m5: m5Val > 0 ? [s[8] || (curTime - 300), m5Val, m5Spot || curSpot] : null,
+                m15: m15Val > 0 ? [s[9] || (curTime - 900), m15Val, m15Spot || curSpot] : null,
+                m30: m30Val > 0 ? [s[10] || (curTime - 1800), m30Val, m30Spot || curSpot] : null,
+                h: h1Val > 0 ? [s[11] || (curTime - 3600), h1Val, h1Spot || curSpot] : null,
+                c: [curTime, curVal, curSpot, curTimeStr],
+                cur: { time: curTime, value: curVal, spot: curSpot, timeStr: curTimeStr },
+                h1: { time: s[11] || 0, value: h1Val, spot: h1Spot }
+            };
+        }
+
+        const curVal = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
+        const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
+        const curTime = s.c ? s.c[0] : (s.cur ? s.cur.time : 0);
+        const curTimeStr = s.c ? s.c[3] : (s.cur ? s.cur.timeStr : '');
+        const h1Val = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
+        const h1Spot = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
+        const h1Time = s.h ? s.h[0] : (s.h1 ? s.h1.time : 0);
+
+        return {
+            curTime,
+            curVal,
+            curSpot,
+            curTimeStr,
+            m5: s.m5 || null,
+            m15: s.m15 || null,
+            m30: s.m30 || null,
+            h: s.h || (h1Val > 0 ? [h1Time, h1Val, h1Spot] : null),
+            c: s.c || [curTime, curVal, curSpot, curTimeStr],
+            cur: s.cur || { time: curTime, value: curVal, spot: curSpot, timeStr: curTimeStr },
+            h1: s.h1 || { time: h1Time, value: h1Val, spot: h1Spot }
+        };
+    }
+
     // ===== ROBUST STOCK DATA FETCH & MERGE =====
     async _getRawStockDataAndOI() {
         if (this._rawStockCache && (Date.now() - (this._rawStockCacheTime || 0) < 10000)) {
@@ -292,21 +347,20 @@ class NSEApi {
             const snap = window.App._liveSnapshot;
             Object.keys(snap).forEach(sym => {
                 if (!this.fnoSymbols.includes(sym)) return;
-                const s = snap[sym];
-                if (!s) return;
-                const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
-                const h1Spot = s.h ? s.h[2] : (s.h1 ? (s.h1.spot || curSpot) : curSpot);
-                if (!curSpot) return;
+                const norm = this.normalizeSnapshotItem(snap[sym]);
+                if (!norm || norm.curSpot <= 0) return;
 
+                const curSpot = norm.curSpot;
+                const h1Spot = norm.h ? norm.h[2] : curSpot;
                 let diff = curSpot - h1Spot;
-                let curPcr = s.c ? s.c[1] : (s.cur ? s.cur.value : 1.0);
-                let h1Pcr = s.h ? s.h[1] : (s.h1 ? s.h1.value : curPcr);
+                let curPcr = norm.curVal || 1.0;
+                let h1Pcr = norm.h ? norm.h[1] : curPcr;
                 let pcrDiff = curPcr - h1Pcr;
 
                 // Off-market / weekend fallback: if spot price has 0 diff, compute bias from PCR & 5m/15m/30m trends
                 if (Math.abs(diff) < 0.001) {
-                    const m5Spot = s.m5 ? s.m5[2] : 0;
-                    const m15Spot = s.m15 ? s.m15[2] : 0;
+                    const m5Spot = norm.m5 ? norm.m5[2] : 0;
+                    const m15Spot = norm.m15 ? norm.m15[2] : 0;
                     const spotRef = m15Spot || m5Spot || curSpot;
                     diff = curSpot - spotRef;
                     if (Math.abs(diff) < 0.001) {
@@ -535,9 +589,10 @@ class NSEApi {
         if (window.App && window.App._liveSnapshot) {
             const snap = window.App._liveSnapshot;
             const list = mainIndices.map(item => {
-                const s = snap[item.symbol];
-                const curSpot = s?.cur?.spot || 0;
-                const h1Spot = s?.h1?.spot || curSpot;
+                const norm = this.normalizeSnapshotItem(snap[item.symbol]);
+                if (!norm || norm.curSpot <= 0) return null;
+                const curSpot = norm.curSpot;
+                const h1Spot = norm.h ? norm.h[2] : curSpot;
                 const diff = curSpot - h1Spot;
                 const pChange = h1Spot > 0 ? ((diff / h1Spot) * 100) : 0;
                 return {
@@ -548,7 +603,7 @@ class NSEApi {
                     high: Math.max(curSpot, h1Spot),
                     low: Math.min(curSpot, h1Spot)
                 };
-            }).filter(x => x.last > 0);
+            }).filter(Boolean);
 
             if (list.length > 0) return list;
         }
@@ -826,27 +881,26 @@ class NSEApi {
         }
 
         if (!d?.records?.data) {
-            const snap = window.App && window.App._liveSnapshot ? window.App._liveSnapshot[cleanSym] : null;
-            if (snap) {
-                const curSpot = snap.c ? snap.c[2] : (snap.cur ? snap.cur.spot : 0);
-                const curPcr = snap.c ? snap.c[1] : (snap.cur ? snap.cur.value : 1.0);
-                const timeStr = snap.c ? snap.c[3] : (snap.cur ? snap.cur.timeStr : '');
-                if (curSpot > 0) {
-                    const pcrVal = parseFloat(curPcr || 1.0);
-                    return {
-                        symbol: cleanSym,
-                        pcr: pcrVal.toFixed(4),
-                        sentiment: pcrVal > 1.3 ? 'BULLISH' : (pcrVal < 0.7 ? 'BEARISH' : 'NEUTRAL'),
-                        underlying: curSpot,
-                        totalCEOI: 1000000,
-                        totalPEOI: Math.round(1000000 * pcrVal),
-                        maxCEStrike: curSpot * 1.02,
-                        maxPEStrike: curSpot * 0.98,
-                        maxPain: curSpot,
-                        data: [],
-                        timeStr: timeStr
-                    };
-                }
+            const rawSnap = window.App && window.App._liveSnapshot ? window.App._liveSnapshot[cleanSym] : null;
+            const snap = this.normalizeSnapshotItem(rawSnap);
+            if (snap && snap.curSpot > 0) {
+                const curSpot = snap.curSpot;
+                const curPcr = snap.curVal || 1.0;
+                const timeStr = snap.curTimeStr || '';
+                const pcrVal = parseFloat(curPcr || 1.0);
+                return {
+                    symbol: cleanSym,
+                    pcr: pcrVal.toFixed(4),
+                    sentiment: pcrVal > 1.3 ? 'BULLISH' : (pcrVal < 0.7 ? 'BEARISH' : 'NEUTRAL'),
+                    underlying: curSpot,
+                    totalCEOI: 1000000,
+                    totalPEOI: Math.round(1000000 * pcrVal),
+                    maxCEStrike: curSpot * 1.02,
+                    maxPEStrike: curSpot * 0.98,
+                    maxPain: curSpot,
+                    data: [],
+                    timeStr: timeStr
+                };
             }
             return null;
         }

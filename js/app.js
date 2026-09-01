@@ -196,40 +196,75 @@ const App = {
     },
 
     async prefillAllPcrHistoryForScreener() {
-        // Step 1: Instantly fetch 30KB snapshot for 0.1s instant UI rendering!
-        await this.fetchPcrSnapshotImmediate();
+        // Step 1: Instantly fetch 30KB snapshot f        await this.fetchPcrSnapshotImmediate();
 
         // Step 2: Start fast 30s auto-refresh loop
         this.startPcrHistoryAutoRefresh();
 
-        // Step 3: Async background prefill for heavy full history (2.5MB) without blocking UI
-        setTimeout(async () => {
-            try {
-                const dateStr = this.getTargetTradingDateStr();
-                const url = `https://destrade-default-rtdb.firebaseio.com/pcr_history.json?t=${Date.now()}`;
-                const res = await fetch(url, { cache: 'no-store' });
-                if (!res.ok) return;
-                const data = await res.json();
-                if (data && typeof data === 'object') {
-                    if (typeof this.state.pcrHistory !== 'object' || Array.isArray(this.state.pcrHistory)) {
-                        this.state.pcrHistory = {};
-                    }
-                    Object.keys(data).forEach(sym => {
-                        const dateObj = data[sym];
-                        if (dateObj && typeof dateObj === 'object') {
-                            const ticks = dateObj[dateStr] || dateObj[Object.keys(dateObj).pop()];
-                            if (Array.isArray(ticks)) {
-                                this.state.pcrHistory[sym] = ticks;
-                            }
-                        }
-                    });
-                    console.log(`🔥 Async background prefilled ${Object.keys(this.state.pcrHistory).length} symbols for PCR Screener!`);
-                    this.renderPcrIntradayScreener();
-                }
-            } catch (e) {
-                console.warn('Screener Async Background Prefill Warning:', e);
-            }
-        }, 500);
+        // Step 3: Lightweight background screener init without heavy 3.2MB full DB download
+        setTimeout(() => {
+            this.renderPcrIntradayScreener();
+        }, 300);
+    },
+
+    // Universal Snapshot Normalizer: seamless support for both Ultra-Compact Array & Legacy Object formats
+    normalizeSnapshotItem(s) {
+        if (!s) return null;
+        if (Array.isArray(s)) {
+            const curTime = s[0] || 0;
+            const curVal = s[1] || 0;
+            const curSpot = s[2] || 0;
+            const curTimeStr = s[3] || '';
+            const m5Val = s[4] || 0;
+            const m15Val = s[5] || 0;
+            const m30Val = s[6] || 0;
+            const h1Val = s[7] || 0;
+            const m5Time = s[8] || 0;
+            const m15Time = s[9] || 0;
+            const m30Time = s[10] || 0;
+            const h1Time = s[11] || 0;
+            const m5Spot = s[12] || 0;
+            const m15Spot = s[13] || 0;
+            const m30Spot = s[14] || 0;
+            const h1Spot = s[15] || 0;
+
+            return {
+                curTime,
+                curVal,
+                curSpot,
+                curTimeStr,
+                m5: m5Val > 0 ? [m5Time || (curTime - 300), m5Val, m5Spot || curSpot] : null,
+                m15: m15Val > 0 ? [m15Time || (curTime - 900), m15Val, m15Spot || curSpot] : null,
+                m30: m30Val > 0 ? [m30Time || (curTime - 1800), m30Val, m30Spot || curSpot] : null,
+                h: h1Val > 0 ? [h1Time || (curTime - 3600), h1Val, h1Spot || curSpot] : null,
+                c: [curTime, curVal, curSpot, curTimeStr],
+                cur: { time: curTime, value: curVal, spot: curSpot, timeStr: curTimeStr },
+                h1: { time: h1Time, value: h1Val, spot: h1Spot }
+            };
+        }
+
+        // Legacy object format fallback
+        const curVal = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
+        const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
+        const curTime = s.c ? s.c[0] : (s.cur ? s.cur.time : 0);
+        const curTimeStr = s.c ? s.c[3] : (s.cur ? s.cur.timeStr : '');
+        const h1Val = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
+        const h1Spot = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
+        const h1Time = s.h ? s.h[0] : (s.h1 ? s.h1.time : 0);
+
+        return {
+            curTime,
+            curVal,
+            curSpot,
+            curTimeStr,
+            m5: s.m5 || null,
+            m15: s.m15 || null,
+            m30: s.m30 || null,
+            h: s.h || (h1Val > 0 ? [h1Time, h1Val, h1Spot] : null),
+            c: s.c || [curTime, curVal, curSpot, curTimeStr],
+            cur: s.cur || { time: curTime, value: curVal, spot: curSpot, timeStr: curTimeStr },
+            h1: s.h1 || { time: h1Time, value: h1Val, spot: h1Spot }
+        };
     },
 
     async fetchPcrSnapshotImmediate() {
@@ -257,8 +292,8 @@ const App = {
 
         // Continuous 35s snapshot polling for near-real-time Market Bias & Market Pulse
         const SNAPSHOT_INTERVAL = 35 * 1000;
-        // Slower full history refresh every 5 minutes (for PCR charts)
-        const FULL_REFRESH_INTERVAL = 5 * 60 * 1000;
+        // Slower single-symbol chart history refresh every 2 minutes (when viewing PCR Analytics)
+        const SINGLE_CHART_REFRESH_INTERVAL = 2 * 60 * 1000;
 
         // --- CONTINUOUS SNAPSHOT LOOP (35s) ---
         const snapshotLoop = async () => {
@@ -266,48 +301,20 @@ const App = {
             setTimeout(snapshotLoop, SNAPSHOT_INTERVAL);
         };
 
-        // --- SLOW FULL HISTORY LOOP (5 min - ONLY when viewing PCR Analytics) ---
-        const fullRefreshLoop = async () => {
-            // Only fetch heavy 2.5MB history if user is actively viewing PCR Analytics chart
-            if (document.hidden || this.state.activeView !== 'pcr-analytics') {
-                setTimeout(fullRefreshLoop, FULL_REFRESH_INTERVAL);
-                return;
+        // --- ON-DEMAND SINGLE CHART REFRESH LOOP (2 min - ONLY active chart, 17KB) ---
+        const chartRefreshLoop = async () => {
+            if (!document.hidden && this.state.activeView === 'pcr-analytics' && this.state.pcrAnalyticsSymbol) {
+                try {
+                    await this.prefillIntradayPcrHistory(this.state.pcrAnalyticsSymbol);
+                } catch (e) {}
             }
-
-            try {
-                const dateStr = this.getTargetTradingDateStr();
-                const url = `https://destrade-default-rtdb.firebaseio.com/pcr_history.json?t=${Date.now()}`;
-                const res = await fetch(url, { cache: 'no-store' });
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data && typeof data === 'object') {
-                        Object.keys(data).forEach(sym => {
-                            const dateObj = data[sym];
-                            if (dateObj && typeof dateObj === 'object') {
-                                const ticks = dateObj[dateStr] || dateObj[Object.keys(dateObj).pop()];
-                                if (Array.isArray(ticks) && ticks.length > 0) {
-                                    this.state.pcrHistory[sym] = ticks;
-                                }
-                            }
-                        });
-                        console.log(`🔄 Full History Refresh: ${Object.keys(data).length} symbols reloaded`);
-                        // Refresh PCR chart if user is viewing one
-                        if (this.state.activeView === 'pcr-analytics' && this.state.pcrAnalyticsSymbol) {
-                            this.renderPcrAnalyticsChartCanvas(this.state.pcrAnalyticsSymbol);
-                        }
-                    }
-                }
-            } catch (e) {
-                console.warn('Full History Refresh Warning:', e);
-            }
-
-            setTimeout(fullRefreshLoop, FULL_REFRESH_INTERVAL);
+            setTimeout(chartRefreshLoop, SINGLE_CHART_REFRESH_INTERVAL);
         };
 
         // Start snapshot loop immediately (first tick in 5 seconds)
         setTimeout(snapshotLoop, 5 * 1000);
-        // Start full history loop after 5 minutes
-        setTimeout(fullRefreshLoop, FULL_REFRESH_INTERVAL);
+        // Start chart history loop after 2 minutes
+        setTimeout(chartRefreshLoop, SINGLE_CHART_REFRESH_INTERVAL);
     },
 
     // Fast Multi-Timeframe Bias computation using server-precomputed snapshot (100% Pure PCR Delta)
@@ -328,9 +335,9 @@ const App = {
         // Find latest timestamp across active snapshot symbols to avoid false staleness outside market hours
         let latestSnapshotTime = 0;
         Object.keys(snapshot).forEach(sym => {
-            const s = snapshot[sym];
-            if (!s) return;
-            const t = s.c ? s.c[0] : (s.cur ? s.cur.time : 0);
+            const raw = snapshot[sym];
+            if (!raw) return;
+            const t = Array.isArray(raw) ? raw[0] : (raw.c ? raw.c[0] : (raw.cur ? raw.cur.time : 0));
             if (t > latestSnapshotTime) latestSnapshotTime = t;
         });
         if (latestSnapshotTime === 0) latestSnapshotTime = Math.floor(Date.now() / 1000);
@@ -344,16 +351,13 @@ const App = {
 
         Object.keys(snapshot).forEach(sym => {
             if (!validSymbols.includes(sym)) return; // Exclude any delisted or non-F&O symbols
-            const s = snapshot[sym];
-            if (!s) return;
+            const norm = this.normalizeSnapshotItem(snapshot[sym]);
+            if (!norm || norm.curVal <= 0) return;
 
-            // Dual-format snapshot parser: support compact array format (c, h, l) & legacy object format (cur, h1, len)
-            const curVal = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
-            const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
-            const curTime = s.c ? s.c[0] : (s.cur ? s.cur.time : latestSnapshotTime);
-            const curTimeStr = s.c ? s.c[3] : (s.cur ? s.cur.timeStr : '');
-
-            if (curVal <= 0) return;
+            const curVal = norm.curVal;
+            const curSpot = norm.curSpot;
+            const curTime = norm.curTime || latestSnapshotTime;
+            const curTimeStr = norm.curTimeStr;
 
             // Skip data that lagged significantly behind the latest snapshot batch
             const dataAge = latestSnapshotTime - curTime;
@@ -363,9 +367,9 @@ const App = {
             let refSpot = 0;
             let refTime = 0;
 
-            // 1. Direct lookup from precomputed multi-timeframe snapshot keys (m5, m15, m30, h)
-            const snapRef = s[config.snapKey];
-            if (Array.isArray(snapRef) && snapRef.length >= 3 && snapRef[1] > 0) {
+            // 1. Direct lookup from normalized multi-timeframe reference (m5, m15, m30, h)
+            const snapRef = norm[config.snapKey];
+            if (Array.isArray(snapRef) && snapRef.length >= 2 && snapRef[1] > 0) {
                 refVal = snapRef[1];
                 refSpot = snapRef[2] || 0;
                 refTime = snapRef[0] || 0;
@@ -402,10 +406,10 @@ const App = {
             }
 
             // 3. Fallback for 1h mode ONLY (do NOT pollute 5m/15m/30m with 1h tick)
-            if (!refVal && tf === '1h') {
-                const h1Val = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
-                const h1Spot = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
-                const h1Time = s.h ? s.h[0] : (s.h1 ? s.h1.time : 0);
+            if (!refVal && tf === '1h' && norm.h) {
+                const h1Val = norm.h[1];
+                const h1Spot = norm.h[2];
+                const h1Time = norm.h[0];
                 if (h1Val > 0 && h1Time > 0) {
                     const h1Age = curTime - h1Time;
                     if (h1Age >= 1800 && h1Age <= 7200) {
@@ -482,13 +486,13 @@ const App = {
 
         Object.keys(snapshot).forEach(sym => {
             if (!validSymbols.includes(sym)) return;
-            const s = snapshot[sym];
-            if (!s) return;
+            const norm = this.normalizeSnapshotItem(snapshot[sym]);
+            if (!norm || norm.curVal <= 0) return;
 
-            const curVal = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
-            const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
-            const h1Val = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
-            const h1Spot = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
+            const curVal = norm.curVal;
+            const curSpot = norm.curSpot;
+            const h1Val = norm.h ? norm.h[1] : 0;
+            const h1Spot = norm.h ? norm.h[2] : 0;
 
             if (curVal <= 0 || h1Val <= 0) return;
 
@@ -1726,19 +1730,21 @@ const App = {
         // Sanitize & deduplicate to strict 5-minute ticks
         let data = this.sanitize5MinPcrList(rawList);
         if (this._liveSnapshot && this._liveSnapshot[sym]) {
-            const s = this._liveSnapshot[sym];
-            const curVal = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
-            const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
-            const curTime = s.c ? s.c[0] : (s.cur ? s.cur.time : 0);
-            const curTimeStr = s.c ? s.c[3] : (s.cur ? s.cur.timeStr : this.getISTTimeString());
-            const lastTickTime = data.length > 0 ? (data[data.length - 1].time || 0) : 0;
-            if (curTime && curTime > lastTickTime && curVal > 0) {
-                data = [...data, {
-                    time: curTime,
-                    timeStr: curTimeStr,
-                    value: parseFloat(curVal),
-                    spot: parseFloat(curSpot) || 0
-                }];
+            const norm = this.normalizeSnapshotItem(this._liveSnapshot[sym]);
+            if (norm && norm.curVal > 0) {
+                const curVal = norm.curVal;
+                const curSpot = norm.curSpot;
+                const curTime = norm.curTime || Math.floor(Date.now() / 1000);
+                const curTimeStr = norm.curTimeStr || this.getISTTimeString();
+                const lastTickTime = data.length > 0 ? (data[data.length - 1].time || 0) : 0;
+                if (curTime && curTime > lastTickTime) {
+                    data = [...data, {
+                        time: curTime,
+                        timeStr: curTimeStr,
+                        value: parseFloat(curVal),
+                        spot: parseFloat(curSpot) || 0
+                    }];
+                }
             }
         }
         this.state.pcrHistory[sym] = data;
@@ -3170,19 +3176,21 @@ const App = {
 
         let data = this.sanitize5MinPcrList(rawList);
         if (this._liveSnapshot && this._liveSnapshot[sym]) {
-            const s = this._liveSnapshot[sym];
-            const curVal = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
-            const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
-            const curTime = s.c ? s.c[0] : (s.cur ? s.cur.time : 0);
-            const curTimeStr = s.c ? s.c[3] : (s.cur ? s.cur.timeStr : this.getISTTimeString());
-            const lastTickTime = data.length > 0 ? (data[data.length - 1].time || 0) : 0;
-            if (curTime && curTime > lastTickTime && curVal > 0) {
-                data = [...data, {
-                    time: curTime,
-                    timeStr: curTimeStr,
-                    value: parseFloat(curVal),
-                    spot: parseFloat(curSpot) || 0
-                }];
+            const norm = this.normalizeSnapshotItem(this._liveSnapshot[sym]);
+            if (norm && norm.curVal > 0) {
+                const curVal = norm.curVal;
+                const curSpot = norm.curSpot;
+                const curTime = norm.curTime || Math.floor(Date.now() / 1000);
+                const curTimeStr = norm.curTimeStr || this.getISTTimeString();
+                const lastTickTime = data.length > 0 ? (data[data.length - 1].time || 0) : 0;
+                if (curTime && curTime > lastTickTime) {
+                    data = [...data, {
+                        time: curTime,
+                        timeStr: curTimeStr,
+                        value: parseFloat(curVal),
+                        spot: parseFloat(curSpot) || 0
+                    }];
+                }
             }
         }
         this.state.pcrHistory[sym] = data;

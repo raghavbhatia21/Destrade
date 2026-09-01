@@ -610,13 +610,7 @@ class NSEApi {
     }
 
     getGrowwMap() {
-        if (this._growwMap) return this._growwMap;
-        return this.getGrowwSlug('NIFTY') ? this._growwMap : {};
-    }
-
-    getGrowwSlug(symbol) {
-        const s = (symbol || 'NIFTY').toUpperCase().replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY');
-        const map = {
+        return {
             '360ONE': { slug: 'iifl-wealth-management-ltd-1568865430949', type: 'STOCKS' },
             'ABB': { slug: 'abb-india-ltd', type: 'STOCKS' },
             'ABCAPITAL': { slug: 'aditya-birla-capital-ltd', type: 'STOCKS' },
@@ -634,6 +628,7 @@ class NSEApi {
             'ASHOKLEY': { slug: 'ashok-leyland-ltd', type: 'STOCKS' },
             'ASIANPAINT': { slug: 'asian-paints-ltd', type: 'STOCKS' },
             'ASTRAL': { slug: 'astral-poly-technik-ltd', type: 'STOCKS' },
+            'ATHERENERG': { slug: 'ather-energy', type: 'STOCKS' },
             'AUBANK': { slug: 'au-small-finance-bank-ltd', type: 'STOCKS' },
             'AUROPHARMA': { slug: 'aurobindo-pharma-ltd', type: 'STOCKS' },
             'AXISBANK': { slug: 'axis-bank-ltd', type: 'STOCKS' },
@@ -670,7 +665,6 @@ class NSEApi {
             'CROMPTON': { slug: 'crompton-greaves-consumer-electricals-ltd', type: 'STOCKS' },
             'CUMMINSIND': { slug: 'cummins-india-ltd', type: 'STOCKS' },
             'DABUR': { slug: 'dabur-india-ltd', type: 'STOCKS' },
-            'DALBHARAT': { slug: 'odisha-cement-ltd', type: 'STOCKS' },
             'DELHIVERY': { slug: 'delhivery-ltd', type: 'STOCKS' },
             'DIVISLAB': { slug: 'divis-laboratories-ltd', type: 'STOCKS' },
             'DIXON': { slug: 'dixon-technologies-india-ltd', type: 'STOCKS' },
@@ -679,7 +673,6 @@ class NSEApi {
             'DRREDDY': { slug: 'dr-reddys-laboratories-ltd', type: 'STOCKS' },
             'EICHERMOT': { slug: 'eicher-motors-ltd', type: 'STOCKS' },
             'ETERNAL': { slug: 'zomato-ltd', type: 'STOCKS' },
-            'EXIDEIND': { slug: 'exide-industries-ltd', type: 'STOCKS' },
             'FEDERALBNK': { slug: 'the-federal-bank-ltd', type: 'STOCKS' },
             'FINNIFTY': { slug: 'nifty-financial-services', type: 'INDICES' },
             'FORCEMOT': { slug: 'force-motors-ltd', type: 'STOCKS' },
@@ -691,6 +684,7 @@ class NSEApi {
             'GODREJCP': { slug: 'godrej-consumer-products-ltd', type: 'STOCKS' },
             'GODREJPROP': { slug: 'godrej-properties-ltd', type: 'STOCKS' },
             'GRASIM': { slug: 'grasim-industries-ltd', type: 'STOCKS' },
+            'GVT&D': { slug: 'gvt-and-d', type: 'STOCKS' },
             'HAL': { slug: 'hindustan-aeronautics-ltd', type: 'STOCKS' },
             'HAVELLS': { slug: 'havells-india-ltd', type: 'STOCKS' },
             'HCLTECH': { slug: 'hcl-technologies-ltd', type: 'STOCKS' },
@@ -702,7 +696,6 @@ class NSEApi {
             'HINDPETRO': { slug: 'hindustan-petroleum-corporation-ltd', type: 'STOCKS' },
             'HINDUNILVR': { slug: 'hindustan-unilever-ltd', type: 'STOCKS' },
             'HINDZINC': { slug: 'hindustan-zinc-ltd', type: 'STOCKS' },
-            'HUDCO': { slug: 'housing-urban-development-corporation-ltd', type: 'STOCKS' },
             'HYUNDAI': { slug: 'hyundai-motor-india-ltd', type: 'STOCKS' },
             'ICICIBANK': { slug: 'icici-bank-ltd', type: 'STOCKS' },
             'ICICIGI': { slug: 'icici-lombard-general-insurance-co-ltd', type: 'STOCKS' },
@@ -741,6 +734,7 @@ class NSEApi {
             'LTM': { slug: 'larsen-toubro-infotech-ltd', type: 'STOCKS' },
             'LUPIN': { slug: 'lupin-ltd', type: 'STOCKS' },
             'M&M': { slug: 'mahindra-mahindra-ltd', type: 'STOCKS' },
+            'MAHABANK': { slug: 'bank-of-maharashtra', type: 'STOCKS' },
             'MANAPPURAM': { slug: 'manappuram-finance-ltd', type: 'STOCKS' },
             'MANKIND': { slug: 'mankind-pharma-ltd', type: 'STOCKS' },
             'MARICO': { slug: 'marico-ltd', type: 'STOCKS' },
@@ -763,7 +757,6 @@ class NSEApi {
             'NIFTY': { slug: 'nifty', type: 'INDICES' },
             'NMDC': { slug: 'nmdc-ltd', type: 'STOCKS' },
             'NTPC': { slug: 'ntpc-ltd', type: 'STOCKS' },
-            'NUVAMA': { slug: 'nuvama-wealth-management-ltd', type: 'STOCKS' },
             'NYKAA': { slug: 'fsn-ecommerce-ventures-ltd', type: 'STOCKS' },
             'OBEROIRLTY': { slug: 'oberoi-realty-ltd', type: 'STOCKS' },
             'OFSS': { slug: 'oracle-financial-services-software-ltd', type: 'STOCKS' },
@@ -785,15 +778,15 @@ class NSEApi {
             'POLYCAB': { slug: 'polycab-india-ltd', type: 'STOCKS' },
             'POWERGRID': { slug: 'power-grid-corporation-of-india-ltd', type: 'STOCKS' },
             'POWERINDIA': { slug: 'abb-power-products-systems-india-ltd', type: 'STOCKS' },
-            'PPLPHARMA': { slug: 'piramal-pharma-ltd', type: 'STOCKS' },
             'PREMIERENE': { slug: 'premier-energies-ltd', type: 'STOCKS' },
             'PRESTIGE': { slug: 'prestige-estate-projects-ltd', type: 'STOCKS' },
+            'RADICO': { slug: 'radico-khaitan', type: 'STOCKS' },
             'RBLBANK': { slug: 'rbl-bank-ltd', type: 'STOCKS' },
             'RECLTD': { slug: 'rec-ltd', type: 'STOCKS' },
             'RELIANCE': { slug: 'reliance-industries-ltd', type: 'STOCKS' },
             'RVNL': { slug: 'rail-vikas-nigam-ltd', type: 'STOCKS' },
+            'SAGILITY': { slug: 'sagility-india', type: 'STOCKS' },
             'SAIL': { slug: 'steel-authority-of-india-ltd', type: 'STOCKS' },
-            'SAMMAANCAP': { slug: 'indiabulls-housing-finance-ltd', type: 'STOCKS' },
             'SBICARD': { slug: 'sbi-cards-payment-services-ltd', type: 'STOCKS' },
             'SBILIFE': { slug: 'sbi-life-insurance-company-ltd', type: 'STOCKS' },
             'SBIN': { slug: 'state-bank-of-india', type: 'STOCKS' },
@@ -811,14 +804,12 @@ class NSEApi {
             'TATAELXSI': { slug: 'tata-elxsi-ltd', type: 'STOCKS' },
             'TATAPOWER': { slug: 'tata-power-company-ltd', type: 'STOCKS' },
             'TATASTEEL': { slug: 'tata-steel-ltd', type: 'STOCKS' },
-            'TATATECH': { slug: 'tata-technologies-ltd', type: 'STOCKS' },
             'TCS': { slug: 'tata-consultancy-services-ltd', type: 'STOCKS' },
             'TECHM': { slug: 'tech-mahindra-ltd', type: 'STOCKS' },
             'TIINDIA': { slug: 'tube-investments-of-india-ltd', type: 'STOCKS' },
             'TITAN': { slug: 'titan-company-ltd', type: 'STOCKS' },
             'TMPV': { slug: 'tata-motors-ltd', type: 'STOCKS' },
             'TORNTPHARM': { slug: 'torrent-pharmaceuticals-ltd', type: 'STOCKS' },
-            'TORNTPOWER': { slug: 'torrent-power-ltd', type: 'STOCKS' },
             'TRENT': { slug: 'trent-ltd', type: 'STOCKS' },
             'TVSMOTOR': { slug: 'tvs-motor-company-ltd', type: 'STOCKS' },
             'ULTRACEMCO': { slug: 'ultratech-cement-ltd', type: 'STOCKS' },
@@ -836,126 +827,12 @@ class NSEApi {
             'ZYDUSLIFE': { slug: 'cadila-healthcare-ltd', type: 'STOCKS' },
             'NIFTYNXT50': { slug: 'nifty-next-50', type: 'INDICES' }
         };
-        this._growwMap = map;
-        if (map[s]) return map[s];
-        return { slug: s.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-ltd', type: 'STOCKS' };
     }
 
-    // ===== DIRECT PCR & OI SUMMARY (Groww top endpoint) =====
-    async getTopPCR(symbol = 'NIFTY') {
-        const up = symbol.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
-        const indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
-        const isIdx = indices.includes(up);
-        const info = this.getGrowwSlug(up);
-        const endpoint = `/v1/api/stocks_fo_data/v1/contracts/${info.slug}/top`;
-        
-        try {
-            const [d, livePrice] = await Promise.all([
-                this._fetchGroww(endpoint).catch(() => null),
-                this.getLivePriceGroww(up).catch(() => 0)
-            ]);
-
-            if (d && (d.callOI > 0 || typeof d.pcr === 'number')) {
-                let spot = livePrice || 0;
-                if (!spot && !isIdx && d.futures && d.futures[0] && d.futures[0].livePrice) {
-                    spot = d.futures[0].livePrice.ltp || d.futures[0].livePrice.close || 0;
-                }
-                const calcPcr = (d.callOI > 0 && d.putOI > 0) ? (d.putOI / d.callOI) : (d.pcr || 0);
-
-                return {
-                    pcr: parseFloat(calcPcr.toFixed(4)),
-                    callOI: d.callOI || 0,
-                    putOI: d.putOI || 0,
-                    spot: spot,
-                    timestamp: new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
-                };
-            }
-        } catch (e) {
-            console.warn(`[API] getTopPCR error for ${symbol}:`, e.message);
-        }
-
-        // Fallback to getOIClock if top endpoint is unreachable
-        const oi = await this.getOIClock(symbol);
-        if (oi) {
-            return {
-                pcr: parseFloat(oi.pcr || 0),
-                callOI: oi.totalCEOI || 0,
-                putOI: oi.totalPEOI || 0,
-                spot: oi.underlying || 0,
-                timestamp: new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
-            };
-        }
-        return null;
-    }
-
-    // ===== OPTION CHAIN (100% Live Groww Direct Stream) =====
-    async getOptionChain(symbol = 'NIFTY') {
-        const info = this.getGrowwSlug(symbol);
-        const endpoint = `/v1/api/option_chain_service/v1/option_chain/${info.slug}?type=${info.type}`;
-        
-        try {
-            const d = await this._fetchGroww(endpoint);
-            if (d && d.optionChain) {
-                const oc = d.optionChain;
-                let uv = oc.underlyingValue || oc.lastPrice || 0;
-                if (uv === 0) {
-                    const q = await this.getQuote(symbol);
-                    if (q) uv = q.lastPrice || 0;
-                }
-
-                const rawRows = oc.optionChains || [];
-                const data = rawRows.map(r => {
-                    const strike = (r.strikePrice > 100000) ? (r.strikePrice / 100) : r.strikePrice;
-                    return {
-                        strikePrice: strike,
-                        CE: r.callOption ? {
-                            strikePrice: strike,
-                            underlyingValue: uv,
-                            openInterest: r.callOption.openInterest || 0,
-                            changeinOpenInterest: r.callOption.changeInOpenInterest || 0,
-                            pchangeinOpenInterest: r.callOption.pchangeInOpenInterest || 0,
-                            totalTradedVolume: r.callOption.totalTradedVolume || 0,
-                            impliedVolatility: r.callOption.impliedVolatility || 0,
-                            lastPrice: r.callOption.ltp || 0,
-                            change: r.callOption.dayChange || 0,
-                            pChange: r.callOption.dayChangePerc || 0
-                        } : null,
-                        PE: r.putOption ? {
-                            strikePrice: strike,
-                            underlyingValue: uv,
-                            openInterest: r.putOption.openInterest || 0,
-                            changeinOpenInterest: r.putOption.changeInOpenInterest || 0,
-                            pchangeinOpenInterest: r.putOption.pchangeInOpenInterest || 0,
-                            totalTradedVolume: r.putOption.totalTradedVolume || 0,
-                            impliedVolatility: r.putOption.impliedVolatility || 0,
-                            lastPrice: r.putOption.ltp || 0,
-                            change: r.putOption.dayChange || 0,
-                            pChange: r.putOption.dayChangePerc || 0
-                        } : null
-                    };
-                });
-
-                return {
-                    records: {
-                        data: data,
-                        expiryDates: oc.expiries || [],
-                        underlyingValue: uv,
-                        timestamp: new Date().toLocaleTimeString()
-                    }
-                };
-            }
-        } catch (e) {
-            console.warn(`[API] Groww Option Chain error for ${symbol}:`, e.message);
-        }
-
-        return null;
-    }
-
-    // ===== OI CLOCK & PCR =====
+    // ===== OI CLOCK & ANALYSIS =====
     async getOIClock(symbol = 'NIFTY', expiryDate = '') {
-        let d;
-        const cleanSym = symbol.replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
-
+        const cleanSym = (symbol || 'NIFTY').replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY');
+        let d = null;
         if (this.config.preferGrowwForOptionChain && typeof this.getOptionChainGroww === 'function') {
             d = await this.getOptionChainGroww(cleanSym, expiryDate);
         }
@@ -1382,228 +1259,7 @@ class NSEApi {
         if (this.dynamicSlugMap && this.dynamicSlugMap.has(up)) {
             return this.dynamicSlugMap.get(up);
         }
-        const map = {
-            "NIFTY": "nifty",
-            "BANKNIFTY": "nifty-bank",
-            "FINNIFTY": "nifty-financial-services",
-            "MIDCPNIFTY": "nifty-midcap-select",
-            "NIFTYMIDSELECT": "nifty-midcap-select",
-            "360ONE": "iifl-wealth-management-ltd-1568865430949",
-            "ABB": "abb-india-ltd",
-            "ABCAPITAL": "aditya-birla-capital-ltd",
-            "ADANIENSOL": "adani-transmission-ltd",
-            "ADANIENT": "adani-enterprises-ltd",
-            "ADANIGREEN": "adani-green-energy-ltd",
-            "ADANIPORTS": "adani-ports-and-special-economic-zone-ltd",
-            "ADANIPOWER": "adani-power-ltd",
-            "ALKEM": "alkem-laboratories-ltd",
-            "AMBER": "amber-enterprises-india-ltd",
-            "AMBUJACEM": "ambuja-cements-ltd",
-            "ANGELONE": "angel-broking-ltd",
-            "APLAPOLLO": "apl-apollo-tubes-ltd",
-            "APOLLOHOSP": "apollo-hospitals-enterprise-ltd",
-            "ASHOKLEY": "ashok-leyland-ltd",
-            "ASIANPAINT": "asian-paints-ltd",
-            "ASTRAL": "astral-poly-technik-ltd",
-            "AUBANK": "au-small-finance-bank-ltd",
-            "AUROPHARMA": "aurobindo-pharma-ltd",
-            "AXISBANK": "axis-bank-ltd",
-            "BAJAJ-AUTO": "bajaj-auto-ltd",
-            "BAJAJFINSV": "bajaj-finserv-ltd",
-            "BAJAJHLDNG": "bajaj-holdings-investment-ltd",
-            "BAJFINANCE": "bajaj-finance-ltd",
-            "BANDHANBNK": "bandhan-bank-ltd",
-            "BANKBARODA": "bank-of-baroda",
-            "BANKINDIA": "bank-of-india",
-            "BDL": "bharat-dynamics-ltd",
-            "BEL": "bharat-electronics-ltd",
-            "BHARATFORG": "bharat-forge-ltd",
-            "BHARTIARTL": "bharti-airtel-ltd",
-            "BHEL": "bharat-heavy-electricals-ltd",
-            "BIOCON": "biocon-ltd",
-            "BLUESTARCO": "blue-star-ltd",
-            "BOSCHLTD": "bosch-ltd",
-            "BPCL": "bharat-petroleum-corporation-ltd",
-            "BRITANNIA": "britannia-industries-ltd",
-            "BSE": "bse-ltd",
-            "CAMS": "computer-age-management-services-ltd",
-            "CANBK": "canara-bank",
-            "CDSL": "central-depository-services-india-ltd",
-            "CGPOWER": "cg-power-industrial-solutions-ltd",
-            "CHOLAFIN": "cholamandalam-investment-finance-company-ltd",
-            "CIPLA": "cipla-ltd",
-            "COALINDIA": "coal-india-ltd",
-            "COCHINSHIP": "cochin-shipyard-ltd",
-            "COFORGE": "niit-technologies-ltd",
-            "COLPAL": "colgatepalmolive-india-ltd",
-            "CONCOR": "container-corporation-of-india-ltd",
-            "CROMPTON": "crompton-greaves-consumer-electricals-ltd",
-            "CUMMINSIND": "cummins-india-ltd",
-            "DABUR": "dabur-india-ltd",
-            "DALBHARAT": "odisha-cement-ltd",
-            "DELHIVERY": "delhivery-ltd",
-            "DIVISLAB": "divis-laboratories-ltd",
-            "DIXON": "dixon-technologies-india-ltd",
-            "DLF": "dlf-ltd",
-            "DMART": "avenue-supermarts-ltd",
-            "DRREDDY": "dr-reddys-laboratories-ltd",
-            "EICHERMOT": "eicher-motors-ltd",
-            "ETERNAL": "zomato-ltd",
-            "EXIDEIND": "exide-industries-ltd",
-            "FEDERALBNK": "the-federal-bank-ltd",
-            "FORCEMOT": "force-motors-ltd",
-            "FORTIS": "fortis-healthcare-ltd",
-            "GAIL": "gail-india-ltd",
-            "GLENMARK": "glenmark-pharmaceuticals-ltd",
-            "GMRAIRPORT": "gmr-infrastructure-ltd",
-            "GODFRYPHLP": "godfrey-phillips-india-ltd",
-            "GODREJCP": "godrej-consumer-products-ltd",
-            "GODREJPROP": "godrej-properties-ltd",
-            "GVT&D": "godrej-consumer-products-ltd",
-            "GRASIM": "grasim-industries-ltd",
-            "HAL": "hindustan-aeronautics-ltd",
-            "HAVELLS": "havells-india-ltd",
-            "HCLTECH": "hcl-technologies-ltd",
-            "HDFCAMC": "hdfc-asset-management-company-ltd",
-            "HDFCBANK": "hdfc-bank-ltd",
-            "HDFCLIFE": "hdfc-standard-life-insurance-co-ltd",
-            "HEROMOTOCO": "hero-motocorp-ltd",
-            "HINDALCO": "hindalco-industries-ltd",
-            "HINDPETRO": "hindustan-petroleum-corporation-ltd",
-            "HINDUNILVR": "hindustan-unilever-ltd",
-            "HINDZINC": "hindustan-zinc-ltd",
-            "HUDCO": "housing-urban-development-corporation-ltd",
-            "HYUNDAI": "hyundai-motor-india-ltd",
-            "ICICIBANK": "icici-bank-ltd",
-            "ICICIGI": "icici-lombard-general-insurance-co-ltd",
-            "ICICIPRULI": "icici-prudential-life-insurance-company-ltd",
-            "IDEA": "vodafone-idea-ltd",
-            "IDFCFIRSTB": "idfc-bank-ltd",
-            "IEX": "indian-energy-exchange-ltd",
-            "INDHOTEL": "the-indian-hotels-company-ltd",
-            "INDIANB": "indian-bank",
-            "INDIGO": "interglobe-aviation-ltd",
-            "INDUSINDBK": "indusind-bank-ltd",
-            "INDUSTOWER": "bharti-infratel-ltd",
-            "INFY": "infosys-ltd",
-            "INOXWIND": "inox-wind-ltd",
-            "IOC": "indian-oil-corporation-ltd",
-            "IREDA": "indian-renewable-energy-development-agency-ltd-1569588972606",
-            "IRFC": "indian-railway-finance-corporation-ltd",
-            "ITC": "itc-ltd",
-            "JINDALSTEL": "jindal-steel-power-ltd",
-            "JIOFIN": "jio-financial-services-ltd",
-            "JSWENERGY": "jsw-energy-ltd",
-            "JSWSTEEL": "jsw-steel-ltd",
-            "JUBLFOOD": "jubilant-foodworks-ltd",
-            "KALYANKJIL": "kalyan-jewellers-india-ltd",
-            "KAYNES": "kaynes-technology-india-ltd",
-            "KEI": "kei-industries-ltd",
-            "KFINTECH": "kfin-technologies-ltd",
-            "KOTAKBANK": "kotak-mahindra-bank-ltd",
-            "KPITTECH": "kpit-engineering-ltd",
-            "LAURUSLABS": "laurus-labs-ltd",
-            "LICHSGFIN": "lic-housing-finance-ltd",
-            "LICI": "life-insurance-corporation-of-india",
-            "LODHA": "lodha-developers-ltd",
-            "LT": "larsen-toubro-ltd",
-            "LTF": "lt-finance-holdings-ltd",
-            "LTM": "larsen-toubro-infotech-ltd",
-            "LUPIN": "lupin-ltd",
-            "M&M": "mahindra-mahindra-ltd",
-            "MANAPPURAM": "manappuram-finance-ltd",
-            "MANKIND": "mankind-pharma-ltd",
-            "MARICO": "marico-ltd",
-            "MARUTI": "maruti-suzuki-india-ltd",
-            "MAXHEALTH": "max-healthcare-institute-ltd",
-            "MAZDOCK": "mazagon-dock-shipbuilders-ltd",
-            "MCX": "multi-commodity-exchange-of-india-ltd",
-            "MFSL": "max-financial-services-ltd",
-            "MOTHERSON": "motherson-sumi-systems-ltd",
-            "MOTILALOFS": "motilal-oswal-financial-services-ltd",
-            "MPHASIS": "mphasis-ltd",
-            "MUTHOOTFIN": "muthoot-finance-ltd",
-            "NAM-INDIA": "reliance-nippon-life-asset-management-ltd",
-            "NATIONALUM": "national-aluminium-company-ltd",
-            "NAUKRI": "info-edge-india-ltd",
-            "NBCC": "nbcc-india-ltd",
-            "NESTLEIND": "nestle-india-ltd",
-            "NHPC": "nhpc-ltd",
-            "NMDC": "nmdc-ltd",
-            "NTPC": "ntpc-ltd",
-            "NUVAMA": "nuvama-wealth-management-ltd",
-            "NYKAA": "fsn-ecommerce-ventures-ltd",
-            "OBEROIRLTY": "oberoi-realty-ltd",
-            "OFSS": "oracle-financial-services-software-ltd",
-            "OIL": "oil-india-ltd",
-            "ONGC": "oil-natural-gas-corporation-ltd",
-            "PAGEIND": "page-industries-ltd",
-            "PATANJALI": "ruchi-soya-industries-ltd",
-            "PAYTM": "one-communications-ltd",
-            "PERSISTENT": "persistent-systems-ltd",
-            "PETRONET": "petronet-lng-ltd",
-            "PFC": "power-finance-corporation-ltd",
-            "PGEL": "pg-electroplast-ltd",
-            "PHOENIXLTD": "phoenix-mills-ltd",
-            "PIDILITIND": "pidilite-industries-ltd",
-            "PIIND": "pi-industries-ltd",
-            "PNB": "punjab-national-bank",
-            "PNBHOUSING": "pnb-housing-finance-ltd",
-            "POLICYBZR": "pb-fintech-ltd",
-            "POLYCAB": "polycab-india-ltd",
-            "POWERGRID": "power-grid-corporation-of-india-ltd",
-            "POWERINDIA": "abb-power-products-systems-india-ltd",
-            "PPLPHARMA": "piramal-pharma-ltd",
-            "PREMIERENE": "premier-energies-ltd",
-            "PRESTIGE": "prestige-estate-projects-ltd",
-            "RBLBANK": "rbl-bank-ltd",
-            "RECLTD": "rec-ltd",
-            "RELIANCE": "reliance-industries-ltd",
-            "RVNL": "rail-vikas-nigam-ltd",
-            "SAIL": "steel-authority-of-india-ltd",
-            "SAMMAANCAP": "indiabulls-housing-finance-ltd",
-            "SBICARD": "sbi-cards-payment-services-ltd",
-            "SBILIFE": "sbi-life-insurance-company-ltd",
-            "SBIN": "state-bank-of-india",
-            "SHREECEM": "shree-cement-ltd",
-            "SHRIRAMFIN": "shriram-transport-finance-company-ltd",
-            "SIEMENS": "siemens-ltd",
-            "SOLARINDS": "solar-industries-india-ltd",
-            "SONACOMS": "sona-blw-precision-forgings-ltd",
-            "SRF": "srf-ltd",
-            "SUNPHARMA": "sun-pharmaceutical-industries-ltd",
-            "SUPREMEIND": "supreme-industries-ltd",
-            "SUZLON": "suzlon-energy-ltd",
-            "SWIGGY": "swiggy-ltd",
-            "TATACONSUM": "tata-global-beverages-ltd",
-            "TATAELXSI": "tata-elxsi-ltd",
-            "TATAPOWER": "tata-power-company-ltd",
-            "TATASTEEL": "tata-steel-ltd",
-            "TATATECH": "tata-technologies-ltd",
-            "TCS": "tata-consultancy-services-ltd",
-            "TECHM": "tech-mahindra-ltd",
-            "TIINDIA": "tube-investments-of-india-ltd",
-            "TITAN": "titan-company-ltd",
-            "TMPV": "tata-motors-ltd",
-            "TORNTPHARM": "torrent-pharmaceuticals-ltd",
-            "TORNTPOWER": "torrent-power-ltd",
-            "TRENT": "trent-ltd",
-            "TVSMOTOR": "tvs-motor-company-ltd",
-            "ULTRACEMCO": "ultratech-cement-ltd",
-            "UNIONBANK": "union-bank-of-india",
-            "UNITDSPR": "united-spirits-ltd",
-            "UNOMINDA": "minda-industries-ltd",
-            "UPL": "upl-ltd",
-            "VBL": "varun-beverages-ltd",
-            "VEDL": "vedanta-ltd",
-            "VMM": "vishal-mega-mart-ltd",
-            "VOLTAS": "voltas-ltd",
-            "WAAREEENER": "waaree-energies-ltd",
-            "WIPRO": "wipro-ltd",
-            "YESBANK": "yes-bank-ltd",
-            "ZYDUSLIFE": "cadila-healthcare-ltd"
-        };
-        return map[up] || up.toLowerCase().replace(/\s+/g, '-');
+        return this.getGrowwStockSlug(up);
     }
 
     // ===== GROWW ADAPTER =====

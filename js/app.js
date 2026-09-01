@@ -324,6 +324,10 @@ const App = {
         };
         const config = tfMap[tf] || tfMap['1h'];
         const targetSec = config.sec;
+        const nowSec = Math.floor(Date.now() / 1000);
+
+        // Staleness guard: skip symbols whose snapshot is older than 2x the timeframe (min 10 min)
+        const maxAge = Math.max(targetSec * 2, 600);
 
         const bullList = [];
         const bearList = [];
@@ -341,14 +345,30 @@ const App = {
 
             if (curVal <= 0) return;
 
+            // Skip stale data — prevents 3-hour-old snapshots from polluting bias
+            const dataAge = nowSec - curTime;
+            if (dataAge > maxAge) return;
+
             let refVal = 0;
             let refSpot = 0;
+            let refTime = 0;
 
             // 1. Direct lookup from precomputed multi-timeframe snapshot keys (m5, m15, m30, h)
             const snapRef = s[config.snapKey];
             if (Array.isArray(snapRef) && snapRef.length >= 3 && snapRef[1] > 0) {
                 refVal = snapRef[1];
                 refSpot = snapRef[2] || 0;
+                refTime = snapRef[0] || 0;
+            }
+
+            // Validate the reference tick: its age from curTime should be roughly within the target window
+            // e.g., for 1h bias, ref should be ~3600s before cur, not 30s or 5 hours
+            if (refVal && refTime) {
+                const refAge = curTime - refTime;
+                if (refAge < targetSec * 0.3 || refAge > targetSec * 2.5) {
+                    refVal = 0; // Invalid reference, try fallback
+                    refSpot = 0;
+                }
             }
 
             // 2. Fallback to client-side pcrHist if snapshot key unavailable
@@ -376,9 +396,14 @@ const App = {
             if (!refVal && tf === '1h') {
                 const h1Val = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
                 const h1Spot = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
-                if (h1Val > 0) {
-                    refVal = h1Val;
-                    refSpot = h1Spot;
+                const h1Time = s.h ? s.h[0] : (s.h1 ? s.h1.time : 0);
+                // Only use if the h1 reference is actually ~1 hour old (not 4 hours)
+                if (h1Val > 0 && h1Time > 0) {
+                    const h1Age = curTime - h1Time;
+                    if (h1Age >= 1800 && h1Age <= 7200) {
+                        refVal = h1Val;
+                        refSpot = h1Spot;
+                    }
                 }
             }
 

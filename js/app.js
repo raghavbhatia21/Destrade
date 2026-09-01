@@ -328,12 +328,13 @@ const App = {
 
         // Staleness guard: skip symbols whose snapshot is older than 2x the timeframe (min 10 min)
         const maxAge = Math.max(targetSec * 2, 600);
-
         const bullList = [];
         const bearList = [];
         const pcrHist = this.state.pcrHistory || {};
+        const validSymbols = this.getPcrSymbolList();
 
         Object.keys(snapshot).forEach(sym => {
+            if (!validSymbols.includes(sym)) return; // Exclude any delisted or invalid symbols
             const s = snapshot[sym];
             if (!s) return;
 
@@ -409,17 +410,11 @@ const App = {
 
             if (!refVal || refVal <= 0) return;
 
-            let pcrDiff = curVal - refVal;
-            let pcrPct = (pcrDiff / refVal) * 100;
+            // Pure PCR Delta calculation (no price overrides)
+            const pcrDiff = curVal - refVal;
+            const pcrPct = (pcrDiff / refVal) * 100;
             const spotDiff = (curSpot && refSpot) ? (curSpot - refSpot) : 0;
             const spotPct = refSpot > 0 ? ((spotDiff / refSpot) * 100) : 0;
-
-            // When PCR delta is zero (common for 5m/15m since Groww PCR updates slowly),
-            // use spot price movement to determine bias direction
-            if (Math.abs(pcrDiff) < 0.0005 && Math.abs(spotDiff) > 0.01) {
-                pcrDiff = spotDiff > 0 ? 0.001 : -0.001;
-                pcrPct = spotPct;
-            }
 
             const item = {
                 symbol: sym,
@@ -434,8 +429,9 @@ const App = {
                 tfLabel: config.label
             };
 
-            if (pcrDiff > 0) bullList.push(item);
-            if (pcrDiff < 0) bearList.push(item);
+            // Pure PCR directional classification
+            if (pcrDiff > 0.0001) bullList.push(item);
+            else if (pcrDiff < -0.0001) bearList.push(item);
         });
 
         bullList.sort((a, b) => b.pcr1hDiff - a.pcr1hDiff);
@@ -460,8 +456,10 @@ const App = {
 
         const bullList = [];
         const bearList = [];
+        const validSymbols = this.getPcrSymbolList();
 
         Object.keys(snapshot).forEach(sym => {
+            if (!validSymbols.includes(sym)) return;
             const s = snapshot[sym];
             if (!s) return;
 

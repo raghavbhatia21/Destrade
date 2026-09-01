@@ -55,22 +55,29 @@ function recalculateActiveSymbols(deadWorkerIds) {
     const myBase = computeBaseSlice(WORKER_ID, TOTAL_WORKERS);
     let mySymbols = ALL_SYMBOLS.slice(myBase.start, myBase.end);
 
-    // Absorb dead workers' symbols — split equally among alive workers
+    // Absorb dead workers' symbols — pool all dead symbols and distribute equally across all alive workers
     if (deadWorkerIds.length > 0) {
         const aliveWorkerIds = [];
         for (let i = 0; i < TOTAL_WORKERS; i++) {
             if (!deadWorkerIds.includes(i)) aliveWorkerIds.push(i);
         }
         const myRank = aliveWorkerIds.indexOf(WORKER_ID);
-        if (myRank >= 0) {
+        if (myRank >= 0 && aliveWorkerIds.length > 0) {
+            let allDeadSymbols = [];
             deadWorkerIds.forEach(deadId => {
                 const deadSlice = computeBaseSlice(deadId, TOTAL_WORKERS);
-                const deadSymbols = ALL_SYMBOLS.slice(deadSlice.start, deadSlice.end);
-                // Split dead worker's symbols equally among alive workers
-                const perAlive = Math.ceil(deadSymbols.length / aliveWorkerIds.length);
-                const myShare = deadSymbols.slice(myRank * perAlive, (myRank + 1) * perAlive);
-                mySymbols = mySymbols.concat(myShare);
+                allDeadSymbols = allDeadSymbols.concat(ALL_SYMBOLS.slice(deadSlice.start, deadSlice.end));
             });
+
+            // Distribute pooled dead symbols evenly among all active workers
+            const perWorker = Math.floor(allDeadSymbols.length / aliveWorkerIds.length);
+            const remainder = allDeadSymbols.length % aliveWorkerIds.length;
+
+            const start = myRank * perWorker + Math.min(myRank, remainder);
+            const count = perWorker + (myRank < remainder ? 1 : 0);
+            const myShare = allDeadSymbols.slice(start, start + count);
+
+            mySymbols = mySymbols.concat(myShare);
         }
     }
 

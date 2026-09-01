@@ -130,28 +130,11 @@ class NSEApi {
 
     async _fetchGroww(path) {
         const rawUrl = path.startsWith('http') ? path : `https://groww.in${path.startsWith('/') ? '' : '/'}${path}`;
-        const isCapacitor = typeof window !== 'undefined' && window.Capacitor;
 
-        // 1. Native Mobile App (Capacitor Android/iOS APK): Direct Fetch with timeout
-        if (isCapacitor) {
-            try {
-                const res = await fetch(rawUrl, { cache: 'no-store', signal: AbortSignal.timeout(4000) });
-                if (res.ok) {
-                    const text = await res.text();
-                    if (text && !text.trim().startsWith('<')) {
-                        const data = JSON.parse(text);
-                        if (data && !data.error && !data.errorCode) return data;
-                    }
-                }
-            } catch (e) {
-                // Direct fetch failed (blocked/timeout), fall through to cloud proxy
-            }
-        }
-
-        // 2. Cloud CORS Proxy (works for both web browsers and mobile apps)
+        // 1. Cloud CORS Proxy (Primary for Web & Android App to avoid CORS errors)
         try {
             const cloudUrl = `https://destrade-market-worker.onrender.com/api/proxy?url=${encodeURIComponent(rawUrl)}`;
-            const res = await fetch(cloudUrl, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+            const res = await fetch(cloudUrl, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
             if (res.ok) {
                 const text = await res.text();
                 if (text && !text.trim().startsWith('<')) {
@@ -161,11 +144,19 @@ class NSEApi {
             }
         } catch (e) {}
 
-        // 3. Fallback: Local Node Dev-Proxy (only when running locally, skip on Capacitor)
-        if (!isCapacitor && this.proxyUrl) {
-            const cleanPath = rawUrl.replace('https://groww.in', '');
-            const endpoint = `/groww${cleanPath.startsWith('/') ? '' : '/'}${cleanPath}`;
-            return this._fetch(endpoint);
+        // 2. Fallback: Local Node Dev-Proxy (when running local server)
+        if (this.proxyUrl) {
+            try {
+                const localUrl = `${this.proxyUrl}/api/proxy?url=${encodeURIComponent(rawUrl)}`;
+                const res = await fetch(localUrl, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+                if (res.ok) {
+                    const text = await res.text();
+                    if (text && !text.trim().startsWith('<')) {
+                        const data = JSON.parse(text);
+                        if (data && !data.error && !data.errorCode) return data;
+                    }
+                }
+            } catch (e) {}
         }
 
         return null;

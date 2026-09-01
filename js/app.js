@@ -310,7 +310,7 @@ const App = {
         setTimeout(fullRefreshLoop, FULL_REFRESH_INTERVAL);
     },
 
-    // Fast 1-Hour Bias computation using server-precomputed snapshot (no sanitize overhead)
+    // Fast Multi-Timeframe Bias computation using server-precomputed snapshot (100% Pure PCR Delta)
     computeMarketBiasFromSnapshot(targetTf) {
         const snapshot = this._liveSnapshot;
         if (!snapshot || typeof snapshot !== 'object') return { tfLabel: '1-Hour', bull: [], bear: [], topBull: [], topBear: [] };
@@ -324,30 +324,39 @@ const App = {
         };
         const config = tfMap[tf] || tfMap['1h'];
         const targetSec = config.sec;
-        const nowSec = Math.floor(Date.now() / 1000);
 
-        // Staleness guard: skip symbols whose snapshot is older than 2x the timeframe (min 10 min)
-        const maxAge = Math.max(targetSec * 2, 600);
+        // Find latest timestamp across active snapshot symbols to avoid false staleness outside market hours
+        let latestSnapshotTime = 0;
+        Object.keys(snapshot).forEach(sym => {
+            const s = snapshot[sym];
+            if (!s) return;
+            const t = s.c ? s.c[0] : (s.cur ? s.cur.time : 0);
+            if (t > latestSnapshotTime) latestSnapshotTime = t;
+        });
+        if (latestSnapshotTime === 0) latestSnapshotTime = Math.floor(Date.now() / 1000);
+
+        // Staleness guard: skip symbols whose snapshot timestamp is far older than the latest received snapshot batch
+        const maxAge = Math.max(targetSec * 2.5, 900);
         const bullList = [];
         const bearList = [];
         const pcrHist = this.state.pcrHistory || {};
         const validSymbols = this.getPcrSymbolList();
 
         Object.keys(snapshot).forEach(sym => {
-            if (!validSymbols.includes(sym)) return; // Exclude any delisted or invalid symbols
+            if (!validSymbols.includes(sym)) return; // Exclude any delisted or non-F&O symbols
             const s = snapshot[sym];
             if (!s) return;
 
             // Dual-format snapshot parser: support compact array format (c, h, l) & legacy object format (cur, h1, len)
             const curVal = s.c ? s.c[1] : (s.cur ? s.cur.value : 0);
             const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
-            const curTime = s.c ? s.c[0] : (s.cur ? s.cur.time : Math.floor(Date.now() / 1000));
+            const curTime = s.c ? s.c[0] : (s.cur ? s.cur.time : latestSnapshotTime);
             const curTimeStr = s.c ? s.c[3] : (s.cur ? s.cur.timeStr : '');
 
             if (curVal <= 0) return;
 
-            // Skip stale data — prevents 3-hour-old snapshots from polluting bias
-            const dataAge = nowSec - curTime;
+            // Skip data that lagged significantly behind the latest snapshot batch
+            const dataAge = latestSnapshotTime - curTime;
             if (dataAge > maxAge) return;
 
             let refVal = 0;
@@ -363,10 +372,9 @@ const App = {
             }
 
             // Validate the reference tick: its age from curTime should be roughly within the target window
-            // e.g., for 1h bias, ref should be ~3600s before cur, not 30s or 5 hours
             if (refVal && refTime) {
                 const refAge = curTime - refTime;
-                if (refAge < targetSec * 0.3 || refAge > targetSec * 2.5) {
+                if (refAge < targetSec * 0.2 || refAge > targetSec * 3.0) {
                     refVal = 0; // Invalid reference, try fallback
                     refSpot = 0;
                 }
@@ -398,7 +406,6 @@ const App = {
                 const h1Val = s.h ? s.h[1] : (s.h1 ? s.h1.value : 0);
                 const h1Spot = s.h ? s.h[2] : (s.h1 ? s.h1.spot : 0);
                 const h1Time = s.h ? s.h[0] : (s.h1 ? s.h1.time : 0);
-                // Only use if the h1 reference is actually ~1 hour old (not 4 hours)
                 if (h1Val > 0 && h1Time > 0) {
                     const h1Age = curTime - h1Time;
                     if (h1Age >= 1800 && h1Age <= 7200) {
@@ -410,11 +417,26 @@ const App = {
 
             if (!refVal || refVal <= 0) return;
 
-            // Pure PCR Delta calculation (no price overrides)
-            const pcrDiff = curVal - refVal;
-            const pcrPct = (pcrDiff / refVal) * 100;
+            // Pure PCR Delta calculation (100% PCR only, no price overrides)
+            let pcrDiff = curVal - refVal;
+            let pcrPct = (pcrDiff / refVal) * 100;
             const spotDiff = (curSpot && refSpot) ? (curSpot - refSpot) : 0;
             const spotPct = refSpot > 0 ? ((spotDiff / refSpot) * 100) : 0;
+
+            // If PCR delta in the exact 5m window is zero, check history for the latest delta tick
+            if (Math.abs(pcrDiff) <= 0.0001 && tf === '5m') {
+                const ticks = pcrHist[sym];
+                if (Array.isArray(ticks) && ticks.length >= 2) {
+                    for (let i = ticks.length - 2; i >= Math.max(0, ticks.length - 6); i--) {
+                        const t = ticks[i];
+                        if (t && t.value > 0 && Math.abs(curVal - t.value) > 0.0001) {
+                            pcrDiff = curVal - t.value;
+                            pcrPct = (pcrDiff / t.value) * 100;
+                            break;
+                        }
+                    }
+                }
+            }
 
             const item = {
                 symbol: sym,

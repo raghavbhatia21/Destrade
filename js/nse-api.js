@@ -296,10 +296,11 @@ class NSEApi {
             });
         }
 
-        // 4. Resilient Fallback: Populate stockMap directly from App._liveSnapshot (210 symbols)
+        // 4. Resilient Fallback: Populate stockMap directly from App._liveSnapshot (215 symbols)
         if (window.App && window.App._liveSnapshot) {
             const snap = window.App._liveSnapshot;
             Object.keys(snap).forEach(sym => {
+                if (!this.fnoSymbols.includes(sym)) return;
                 const s = snap[sym];
                 if (!s) return;
                 const curSpot = s.c ? s.c[2] : (s.cur ? s.cur.spot : 0);
@@ -332,15 +333,7 @@ class NSEApi {
                     yearHigh: curSpot * 1.05,
                     yearLow: curSpot * 0.95
                 });
-                if (!discovered.includes(sym)) discovered.push(sym);
             });
-        }
-
-        if (discovered.length > 10) {
-            if (JSON.stringify(discovered) !== JSON.stringify(this.fnoSymbols)) {
-                this.fnoSymbols = discovered;
-                console.log(`✨ Discovered ${this.fnoSymbols.length} Pure F&O Symbols`);
-            }
         }
 
         const result = {

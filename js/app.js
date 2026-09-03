@@ -25,6 +25,7 @@ const App = {
         analysisBuildup: 'ALL',
         watchlistPrices: {},
         pcrHistory: {},
+        biasTimeframe: (typeof localStorage !== 'undefined' && localStorage.getItem('destrade_bias_tf')) || '1h',
         scannerCache: { sell: [], buy: [], status: 'idle', completed: false },
         scannerExpiryMode: 'current',
         marginModel: localStorage.getItem('destrade_margin_model') || 'zerodha_live',
@@ -317,151 +318,84 @@ const App = {
         setTimeout(chartRefreshLoop, SINGLE_CHART_REFRESH_INTERVAL);
     },
 
-    // Fast Multi-Timeframe Bias computation using server-precomputed snapshot (100% Pure PCR Delta)
+    // Fast Multi-Timeframe Bias computation — 100% Pure PCR Delta, ranked strictly by PCR move magnitude
     computeMarketBiasFromSnapshot(targetTf) {
         const snapshot = this._liveSnapshot;
         if (!snapshot || typeof snapshot !== 'object') return { tfLabel: '1-Hour', bull: [], bear: [], topBull: [], topBear: [] };
 
         const tf = targetTf || (this.state && this.state.biasTimeframe) || '1h';
         const tfMap = {
-            '5m': { snapKey: 'm5', sec: 300, label: '5-Min' },
-            '15m': { snapKey: 'm15', sec: 900, label: '15-Min' },
-            '30m': { snapKey: 'm30', sec: 1800, label: '30-Min' },
-            '1h': { snapKey: 'h', sec: 3600, label: '1-Hour' }
+            '5m':  { pcrIdx: 4,  spotIdx: 12, timeIdx: 8,  label: '5-Min' },
+            '15m': { pcrIdx: 5,  spotIdx: 13, timeIdx: 9,  label: '15-Min' },
+            '30m': { pcrIdx: 6,  spotIdx: 14, timeIdx: 10, label: '30-Min' },
+            '1h':  { pcrIdx: 7,  spotIdx: 15, timeIdx: 11, label: '1-Hour' }
         };
         const config = tfMap[tf] || tfMap['1h'];
-        const targetSec = config.sec;
 
-        // Find latest timestamp across active snapshot symbols to avoid false staleness outside market hours
-        let latestSnapshotTime = 0;
+        const bullList = [];
+        const bearList = [];
+
         Object.keys(snapshot).forEach(sym => {
             const raw = snapshot[sym];
             if (!raw) return;
-            const t = Array.isArray(raw) ? raw[0] : (raw.c ? raw.c[0] : (raw.cur ? raw.cur.time : 0));
-            if (t > latestSnapshotTime) latestSnapshotTime = t;
-        });
-        if (latestSnapshotTime === 0) latestSnapshotTime = Math.floor(Date.now() / 1000);
 
-        // Staleness guard: skip symbols whose snapshot timestamp is far older than the latest received snapshot batch
-        const maxAge = Math.max(targetSec * 2.5, 900);
-        const bullList = [];
-        const bearList = [];
-        const pcrHist = this.state.pcrHistory || {};
-        const validSymbols = this.getPcrSymbolList();
+            let curPcr, curSpot, curTimeStr, refPcr, refSpot;
 
-        Object.keys(snapshot).forEach(sym => {
-            if (!validSymbols.includes(sym)) return; // Exclude any delisted or non-F&O symbols
-            const norm = this.normalizeSnapshotItem(snapshot[sym]);
-            if (!norm || norm.curVal <= 0) return;
-
-            const curVal = norm.curVal;
-            const curSpot = norm.curSpot;
-            const curTime = norm.curTime || latestSnapshotTime;
-            const curTimeStr = norm.curTimeStr;
-
-            // Skip data that lagged significantly behind the latest snapshot batch
-            const dataAge = latestSnapshotTime - curTime;
-            if (dataAge > maxAge) return;
-
-            let refVal = 0;
-            let refSpot = 0;
-            let refTime = 0;
-
-            // 1. Direct lookup from normalized multi-timeframe reference (m5, m15, m30, h)
-            const snapRef = norm[config.snapKey];
-            if (Array.isArray(snapRef) && snapRef.length >= 2 && snapRef[1] > 0) {
-                refVal = snapRef[1];
-                refSpot = snapRef[2] || 0;
-                refTime = snapRef[0] || 0;
+            if (Array.isArray(raw)) {
+                // Ultra-Compact Array format: [curTime, curPcr, curSpot, timeStr, m5Pcr, m15Pcr, m30Pcr, h1Pcr, ...]
+                curPcr = raw[1] || 0;
+                curSpot = raw[2] || 0;
+                curTimeStr = raw[3] || '';
+                refPcr = raw[config.pcrIdx] || 0;
+                refSpot = raw[config.spotIdx] || 0;
+            } else {
+                // Legacy object format fallback
+                const norm = this.normalizeSnapshotItem(raw);
+                if (!norm) return;
+                curPcr = norm.curVal;
+                curSpot = norm.curSpot;
+                curTimeStr = norm.curTimeStr || '';
+                const tfKey = tf === '5m' ? 'm5' : tf === '15m' ? 'm15' : tf === '30m' ? 'm30' : 'h';
+                const ref = norm[tfKey];
+                refPcr = (ref && ref[1]) ? ref[1] : 0;
+                refSpot = (ref && ref[2]) ? ref[2] : 0;
             }
 
-            // Validate the reference tick: its age from curTime should be roughly within the target window
-            if (refVal && refTime) {
-                const refAge = curTime - refTime;
-                if (refAge < targetSec * 0.2 || refAge > targetSec * 3.0) {
-                    refVal = 0; // Invalid reference, try fallback
-                    refSpot = 0;
-                }
-            }
+            // Must have valid current PCR and reference PCR
+            if (!curPcr || curPcr <= 0 || !refPcr || refPcr <= 0) return;
 
-            // 2. Fallback to client-side pcrHist if snapshot key unavailable
-            if (!refVal) {
-                const ticks = pcrHist[sym];
-                if (Array.isArray(ticks) && ticks.length >= 2) {
-                    const targetTime = curTime - targetSec;
-                    let bestTick = null;
-                    let minDiff = Infinity;
-                    ticks.forEach(t => {
-                        const diff = Math.abs((t.time || 0) - targetTime);
-                        if (diff < minDiff) {
-                            minDiff = diff;
-                            bestTick = t;
-                        }
-                    });
-                    if (bestTick && bestTick.value > 0 && minDiff <= Math.max(targetSec * 1.5, 900)) {
-                        refVal = bestTick.value;
-                        refSpot = parseFloat(bestTick.spot) || 0;
-                    }
-                }
-            }
+            // Pure PCR Delta — this is the ONLY factor that determines ranking
+            const pcrDiff = curPcr - refPcr;
+            const pcrPct = (pcrDiff / refPcr) * 100;
 
-            // 3. Fallback for 1h mode ONLY (do NOT pollute 5m/15m/30m with 1h tick)
-            if (!refVal && tf === '1h' && norm.h) {
-                const h1Val = norm.h[1];
-                const h1Spot = norm.h[2];
-                const h1Time = norm.h[0];
-                if (h1Val > 0 && h1Time > 0) {
-                    const h1Age = curTime - h1Time;
-                    if (h1Age >= 1800 && h1Age <= 7200) {
-                        refVal = h1Val;
-                        refSpot = h1Spot;
-                    }
-                }
-            }
-
-            if (!refVal || refVal <= 0) return;
-
-            // Pure PCR Delta calculation (100% PCR only, no price overrides)
-            let pcrDiff = curVal - refVal;
-            let pcrPct = (pcrDiff / refVal) * 100;
+            // Spot data for display only (never affects ranking or filtering)
             const spotDiff = (curSpot && refSpot) ? (curSpot - refSpot) : 0;
             const spotPct = refSpot > 0 ? ((spotDiff / refSpot) * 100) : 0;
 
-            // If PCR delta in the exact 5m window is zero, check history for the latest delta tick
-            if (Math.abs(pcrDiff) <= 0.0001 && tf === '5m') {
-                const ticks = pcrHist[sym];
-                if (Array.isArray(ticks) && ticks.length >= 2) {
-                    for (let i = ticks.length - 2; i >= Math.max(0, ticks.length - 6); i--) {
-                        const t = ticks[i];
-                        if (t && t.value > 0 && Math.abs(curVal - t.value) > 0.0001) {
-                            pcrDiff = curVal - t.value;
-                            pcrPct = (pcrDiff / t.value) * 100;
-                            break;
-                        }
-                    }
-                }
-            }
+            // Skip zero or negligible PCR changes
+            if (Math.abs(pcrDiff) < 0.0001) return;
 
             const item = {
                 symbol: sym,
-                pcrCur: curVal,
-                pcr1h: refVal,
+                pcrCur: curPcr,
+                pcr1h: refPcr,
                 pcr1hDiff: pcrDiff,
                 pcr1hPct: pcrPct,
                 spotCur: curSpot,
                 spot1hDiff: spotDiff,
                 spot1hPct: spotPct,
-                timeStr: curTimeStr || '',
+                timeStr: curTimeStr,
                 tfLabel: config.label
             };
 
-            // Pure PCR directional classification
-            if (pcrDiff > 0.0001) bullList.push(item);
-            else if (pcrDiff < -0.0001) bearList.push(item);
+            // Classify by PCR direction only: > 0 = Bullish, < 0 = Bearish
+            if (pcrDiff > 0) bullList.push(item);
+            else bearList.push(item);
         });
 
-        bullList.sort((a, b) => b.pcr1hDiff - a.pcr1hDiff);
-        bearList.sort((a, b) => a.pcr1hDiff - b.pcr1hDiff);
+        // Rank strictly by PCR delta magnitude: highest PCR expansion first for Bullish, biggest PCR collapse first for Bearish
+        bullList.sort((a, b) => (b.pcr1hDiff - a.pcr1hDiff) || (b.pcr1hPct - a.pcr1hPct));
+        bearList.sort((a, b) => (a.pcr1hDiff - b.pcr1hDiff) || (a.pcr1hPct - b.pcr1hPct));
 
         return {
             tfLabel: config.label,
@@ -482,29 +416,35 @@ const App = {
 
         const bullList = [];
         const bearList = [];
-        const validSymbols = this.getPcrSymbolList();
 
         Object.keys(snapshot).forEach(sym => {
-            if (!validSymbols.includes(sym)) return;
-            const norm = this.normalizeSnapshotItem(snapshot[sym]);
-            if (!norm || norm.curVal <= 0) return;
+            const raw = snapshot[sym];
+            if (!raw) return;
 
-            const curVal = norm.curVal;
-            const curSpot = norm.curSpot;
-            const h1Val = norm.h ? norm.h[1] : 0;
-            const h1Spot = norm.h ? norm.h[2] : 0;
+            let curPcr, curSpot, curTimeStr, h1Pcr, h1Spot;
 
-            if (curVal <= 0 || h1Val <= 0) return;
+            if (Array.isArray(raw)) {
+                curPcr = raw[1] || 0;
+                curSpot = raw[2] || 0;
+                curTimeStr = raw[3] || '';
+                h1Pcr = raw[7] || 0;
+                h1Spot = raw[15] || 0;
+            } else {
+                const norm = this.normalizeSnapshotItem(raw);
+                if (!norm) return;
+                curPcr = norm.curVal;
+                curSpot = norm.curSpot;
+                curTimeStr = norm.curTimeStr || '';
+                h1Pcr = norm.h ? norm.h[1] : 0;
+                h1Spot = norm.h ? norm.h[2] : 0;
+            }
 
-            const pcrCur = curVal;
-            const pcr1h = h1Val;
-            const pcrDiff = pcrCur - pcr1h;
-            const pcrPct = pcr1h > 0 ? ((pcrDiff / pcr1h) * 100) : 0;
+            if (curPcr <= 0 || h1Pcr <= 0) return;
 
-            const spotCur = curSpot;
-            const spot1h = h1Spot;
-            const spotDiff = (spotCur && spot1h) ? (spotCur - spot1h) : 0;
-            const spotPct = spot1h > 0 ? ((spotDiff / spot1h) * 100) : 0;
+            const pcrDiff = curPcr - h1Pcr;
+            const pcrPct = h1Pcr > 0 ? ((pcrDiff / h1Pcr) * 100) : 0;
+            const spotDiff = (curSpot && h1Spot) ? (curSpot - h1Spot) : 0;
+            const spotPct = h1Spot > 0 ? ((spotDiff / h1Spot) * 100) : 0;
 
             const isBullishAligned = (spotDiff > 0 && pcrDiff > 0);
             const isBearishAligned = (spotDiff < 0 && pcrDiff < 0);
@@ -520,34 +460,34 @@ const App = {
             if (isBullishAligned) {
                 bullList.push({
                     symbol: sym,
-                    pcrCur,
+                    pcrCur: curPcr,
                     pcrDiff,
                     pcrPct,
-                    spotCur,
+                    spotCur: curSpot,
                     spotDiff,
                     spotPct,
                     powerScore,
                     tag: '🚀 PURE DUAL SURGE',
                     tagBg: 'rgba(16, 185, 129, 0.25)',
                     tagColor: '#10b981',
-                    timeStr: s.cur.timeStr || ''
+                    timeStr: curTimeStr
                 });
             }
 
             if (isBearishAligned) {
                 bearList.push({
                     symbol: sym,
-                    pcrCur,
+                    pcrCur: curPcr,
                     pcrDiff,
                     pcrPct,
-                    spotCur,
+                    spotCur: curSpot,
                     spotDiff,
                     spotPct,
                     powerScore,
                     tag: '📉 PURE DUAL CRASH',
                     tagBg: 'rgba(239, 68, 68, 0.25)',
                     tagColor: '#ef4444',
-                    timeStr: s.cur.timeStr || ''
+                    timeStr: curTimeStr
                 });
             }
         });
@@ -2585,10 +2525,11 @@ const App = {
             if (!this.previousTop5Bias.bull.includes(item.symbol)) {
                 this.biasAlertCooldowns[item.symbol] = now;
                 const rank = idx + 1;
+                const tfName = item.tfLabel || '1-Hour';
                 const pcr1hDiffStr = (item.pcr1hDiff > 0 ? '+' : '') + item.pcr1hDiff.toFixed(4);
                 const pcr1hPctStr = (item.pcr1hPct > 0 ? '+' : '') + item.pcr1hPct.toFixed(1) + '%';
-                const title = `🟢 NEW 1-HR BIAS LEADER (#${rank}): ${item.symbol}`;
-                const body = `${item.symbol} entered Top 5 Bullish Bias Leaders! 1h PCR Shift: ${pcr1hDiffStr} (${pcr1hPctStr}) | Spot: ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}.`;
+                const title = `🟢 NEW ${tfName.toUpperCase()} BIAS LEADER (#${rank}): ${item.symbol}`;
+                const body = `${item.symbol} entered Top 5 Bullish Bias Leaders! ${tfName} PCR Shift: ${pcr1hDiffStr} (${pcr1hPctStr}) | Spot: ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}.`;
 
                 this.sendPhoneNotification(title, body);
                 this.showToast(`🎯 New Top ${rank} Bullish Bias Leader: ${item.symbol}!`);
@@ -2609,10 +2550,11 @@ const App = {
             if (!this.previousTop5Bias.bear.includes(item.symbol)) {
                 this.biasAlertCooldowns[item.symbol] = now;
                 const rank = idx + 1;
+                const tfName = item.tfLabel || '1-Hour';
                 const pcr1hDiffStr = (item.pcr1hDiff > 0 ? '+' : '') + item.pcr1hDiff.toFixed(4);
                 const pcr1hPctStr = (item.pcr1hPct > 0 ? '+' : '') + item.pcr1hPct.toFixed(1) + '%';
-                const title = `🔴 NEW 1-HR BIAS LEADER (#${rank}): ${item.symbol}`;
-                const body = `${item.symbol} entered Top 5 Bearish Bias Leaders! 1h PCR Shift: ${pcr1hDiffStr} (${pcr1hPctStr}) | Spot: ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}.`;
+                const title = `🔴 NEW ${tfName.toUpperCase()} BIAS LEADER (#${rank}): ${item.symbol}`;
+                const body = `${item.symbol} entered Top 5 Bearish Bias Leaders! ${tfName} PCR Shift: ${pcr1hDiffStr} (${pcr1hPctStr}) | Spot: ₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}.`;
 
                 this.sendPhoneNotification(title, body);
                 this.showToast(`🎯 New Top ${rank} Bearish Bias Leader: ${item.symbol}!`);
@@ -2623,7 +2565,7 @@ const App = {
         this.previousTop5Bias = { bull: currentBullSyms, bear: currentBearSyms };
     },
 
-    radarMode: 'dual',
+    radarMode: '1hr',
 
     setRadarMode(mode) {
         this.radarMode = mode;
@@ -2770,8 +2712,10 @@ const App = {
                                             ${isBull ? `🎯 ${shortTf} PCR RALLY` : `🎯 ${shortTf} PCR DROP`}
                                         </span>
                                     </div>
-                                    <div style="font-size: 0.7rem; color: var(--text-muted);">
-                                        Spot: <strong style="color: #f8fafc;">₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}</strong> <span style="color: ${item.spot1hDiff >= 0 ? '#10b981' : '#ef4444'}; font-weight:700;">(${shortTf.toLowerCase()}: ${spot1hDiffStr} | ${spot1hPctStr})</span>
+                                    <div style="font-size: 0.7rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                        <span>PCR: <strong style="color: #38bdf8;">${item.pcrCur.toFixed(3)}</strong> <span style="opacity: 0.75;">(was ${item.pcr1h ? item.pcr1h.toFixed(3) : '---'})</span></span>
+                                        <span style="opacity: 0.5;">•</span>
+                                        <span>Spot: <strong style="color: #f8fafc;">₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}</strong></span>
                                     </div>
                                 </div>
                             </div>
@@ -2780,8 +2724,8 @@ const App = {
                                 <div style="font-family:'JetBrains Mono',monospace; font-weight:800; font-size:0.85rem; color:${tagColor}; background:${tagBg}; padding:0.2rem 0.55rem; border-radius:6px; border:1px solid ${tagColor}50;">
                                     ${shortTf.toLowerCase()}: ${pcr1hDiffStr} <span style="font-size:0.68rem; opacity:0.85;">(${pcr1hPctStr})</span>
                                 </div>
-                                <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 0.1rem;">
-                                    PCR: <strong style="color: #38bdf8;">${item.pcrCur.toFixed(4)}</strong>
+                                <div style="font-size: 0.65rem; color: ${tagColor}; font-weight: 700; margin-top: 0.15rem;">
+                                    ${isBull ? '▲ PCR Expansion' : '▼ PCR Collapse'}
                                 </div>
                             </div>
                         </div>

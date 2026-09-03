@@ -291,12 +291,12 @@ const App = {
         if (this._pcrAutoRefreshStarted) return;
         this._pcrAutoRefreshStarted = true;
 
-        // Continuous 35s snapshot polling for near-real-time Market Bias & Market Pulse
-        const SNAPSHOT_INTERVAL = 35 * 1000;
+        // Continuous 30s snapshot polling for near-real-time Market Bias & Market Pulse
+        const SNAPSHOT_INTERVAL = 30 * 1000;
         // Slower single-symbol chart history refresh every 2 minutes (when viewing PCR Analytics)
         const SINGLE_CHART_REFRESH_INTERVAL = 2 * 60 * 1000;
 
-        // --- CONTINUOUS SNAPSHOT LOOP (35s) ---
+        // --- CONTINUOUS SNAPSHOT LOOP (30s) ---
         const snapshotLoop = async () => {
             await this.fetchPcrSnapshotImmediate();
             setTimeout(snapshotLoop, SNAPSHOT_INTERVAL);

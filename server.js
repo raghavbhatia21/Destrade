@@ -442,8 +442,8 @@ async function executeMarketSync() {
 
     const summary = {};
     const nowSec = Math.floor(Date.now() / 1000);
-    const BATCH_SIZE = 10;
-    const BATCH_DELAY_MS = 1200;
+    const BATCH_SIZE = 15;
+    const BATCH_DELAY_MS = 400;
 
     for (let i = 0; i < activeSymbols.length; i += BATCH_SIZE) {
         const batch = activeSymbols.slice(i, i + BATCH_SIZE);
@@ -900,13 +900,16 @@ async function continuousScanLoop() {
     try {
         const isMarketLive = await executeMarketSync();
 
-        const elapsed = ((Date.now() - cycleStart) / 1000).toFixed(1);
+        const elapsedMs = Date.now() - cycleStart;
+        const elapsed = (elapsedMs / 1000).toFixed(1);
         console.log(`⏱️ [W#${WORKER_ID}] Cycle #${cycleCount} completed in ${elapsed}s`);
 
         if (isMarketLive) {
-            // Market is live: scan every 35 seconds continuous cycle
-            console.log(`⚡ [W#${WORKER_ID}] Market live — next cycle in 35 seconds...`);
-            setTimeout(continuousScanLoop, 35 * 1000);
+            // Maintain exact 30-second cadence from start of cycle to start of next cycle
+            const TARGET_CADENCE_MS = 30 * 1000;
+            const nextDelay = Math.max(3000, TARGET_CADENCE_MS - elapsedMs);
+            console.log(`⚡ [W#${WORKER_ID}] Market live — next cycle in ${(nextDelay / 1000).toFixed(1)}s (target 30s cadence)...`);
+            setTimeout(continuousScanLoop, nextDelay);
         } else {
             // Outside market hours: check every 5 minutes
             console.log(`🌙 [W#${WORKER_ID}] Market closed — re-checking in 5 minutes...`);
@@ -914,7 +917,7 @@ async function continuousScanLoop() {
         }
     } catch (err) {
         console.error('❌ Scan cycle error:', err);
-        setTimeout(continuousScanLoop, 30 * 1000);
+        setTimeout(continuousScanLoop, 15 * 1000);
     } finally {
         isScanRunning = false;
     }

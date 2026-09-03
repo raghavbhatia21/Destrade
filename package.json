@@ -1,6 +1,6 @@
 {
   "name": "destrade-cloud-worker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Destrade Pro Autonomous 24/7 Cloud Market Worker",
   "main": "server.js",
   "scripts": {

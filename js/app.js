@@ -270,17 +270,34 @@ const App = {
 
     async fetchPcrSnapshotImmediate() {
         try {
-            const res = await fetch(`https://destrade-default-rtdb.firebaseio.com/pcr_snapshot.json?t=${Date.now()}`, { cache: 'no-store' });
-            if (res.ok) {
-                const snapshot = await res.json();
-                if (snapshot && typeof snapshot === 'object') {
-                    this._liveSnapshot = snapshot;
-                    this._snapshotLastUpdated = Date.now();
-                    console.log(`⚡ Snapshot Refreshed (${Object.keys(snapshot).length} symbols)`);
-                    this.renderPcrIntradayScreener();
-                    this.renderMarketPulse();
-                    this.renderSectorQuickLook();
-                }
+            const now = Date.now();
+            const url1 = `${window.FIREBASE_URL_1 || 'https://destrade-default-rtdb.firebaseio.com'}/pcr_snapshot.json?t=${now}`;
+            const url2 = `${window.FIREBASE_URL_2 || 'https://destrade-2-default-rtdb.firebaseio.com'}/pcr_snapshot.json?t=${now}`;
+
+            const [res1, res2] = await Promise.all([
+                fetch(url1, { cache: 'no-store' }).catch(() => null),
+                fetch(url2, { cache: 'no-store' }).catch(() => null)
+            ]);
+
+            let snap1 = null;
+            let snap2 = null;
+
+            if (res1 && res1.ok) {
+                try { snap1 = await res1.json(); } catch (e) { }
+            }
+            if (res2 && res2.ok) {
+                try { snap2 = await res2.json(); } catch (e) { }
+            }
+
+            const mergedSnapshot = Object.assign({}, snap1 || {}, snap2 || {});
+            const totalKeys = Object.keys(mergedSnapshot).length;
+            if (totalKeys > 0) {
+                this._liveSnapshot = mergedSnapshot;
+                this._snapshotLastUpdated = Date.now();
+                console.log(`⚡ Multi-DB Snapshot Refreshed (${totalKeys} symbols [DB1: ${Object.keys(snap1 || {}).length}, DB2: ${Object.keys(snap2 || {}).length}])`);
+                this.renderPcrIntradayScreener();
+                this.renderMarketPulse();
+                this.renderSectorQuickLook();
             }
         } catch (e) {
             console.warn('Instant snapshot fetch notice:', e);
@@ -1424,7 +1441,8 @@ const App = {
                 try { this._fbActiveStreamRef.off(); } catch (e) { }
             }
 
-            const db = window.firebase.database();
+            const db = (window.getFirebaseDbForSymbol ? window.getFirebaseDbForSymbol(cleanSym) : null) || (window.firebase && window.firebase.database ? window.firebase.database() : null);
+            if (!db) return;
             this._fbActiveStreamPath = streamPath;
             this._fbActiveStreamRef = db.ref(streamPath);
 
@@ -1524,10 +1542,14 @@ const App = {
         this.initFirebaseTimeEngine(cleanSym);
 
         let loadedList = [];
+        const primaryUrl = window.getFirebaseUrlForSymbol ? window.getFirebaseUrlForSymbol(cleanSym) : 'https://destrade-default-rtdb.firebaseio.com';
+        const fallbackUrl = primaryUrl.includes('destrade-2')
+            ? (window.FIREBASE_URL_1 || 'https://destrade-default-rtdb.firebaseio.com')
+            : (window.FIREBASE_URL_2 || 'https://destrade-2-default-rtdb.firebaseio.com');
 
-        // 1. Fast REST fetch directly from Firebase (<100ms load time)
+        // 1. Fast REST fetch directly from assigned Firebase DB (<100ms load time)
         try {
-            const res = await fetch(`https://destrade-default-rtdb.firebaseio.com/pcr_history/${cleanSym}/${targetDateStr}.json?t=${Date.now()}`, { cache: 'no-store' });
+            const res = await fetch(`${primaryUrl}/pcr_history/${cleanSym}/${targetDateStr}.json?t=${Date.now()}`, { cache: 'no-store' });
             if (res.ok) {
                 const val = await res.json();
                 if (val) {
@@ -1536,13 +1558,29 @@ const App = {
             }
         } catch (e) { }
 
-        // 2. Fallback to Web SDK if REST returned empty
-        if (loadedList.length < 1 && window.firebase && window.firebase.database) {
+        // 1b. Fallback to secondary DB if primary returned empty (during migration/failover)
+        if (loadedList.length < 1) {
             try {
-                const snapshot = await window.firebase.database().ref(`pcr_history/${cleanSym}/${targetDateStr}`).once('value');
-                if (snapshot.exists()) {
-                    const val = snapshot.val();
-                    loadedList = this.sanitize5MinPcrList(Array.isArray(val) ? val : Object.values(val));
+                const resFb = await fetch(`${fallbackUrl}/pcr_history/${cleanSym}/${targetDateStr}.json?t=${Date.now()}`, { cache: 'no-store' });
+                if (resFb.ok) {
+                    const val = await resFb.json();
+                    if (val) {
+                        loadedList = this.sanitize5MinPcrList(Array.isArray(val) ? val : Object.values(val));
+                    }
+                }
+            } catch (e) { }
+        }
+
+        // 2. Fallback to Web SDK if REST returned empty
+        if (loadedList.length < 1 && window.firebase) {
+            try {
+                const dbTarget = window.getFirebaseDbForSymbol ? window.getFirebaseDbForSymbol(cleanSym) : (window.db1 || window.db);
+                if (dbTarget) {
+                    const snapshot = await dbTarget.ref(`pcr_history/${cleanSym}/${targetDateStr}`).once('value');
+                    if (snapshot.exists()) {
+                        const val = snapshot.val();
+                        loadedList = this.sanitize5MinPcrList(Array.isArray(val) ? val : Object.values(val));
+                    }
                 }
             } catch (e) { }
         }

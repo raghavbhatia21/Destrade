@@ -15,7 +15,23 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 3000;
-const FIREBASE_HOST = (process.env.FIREBASE_HOST || 'destrade-default-rtdb.firebaseio.com').replace(/^https?:\/\//, '').replace(/\/$/, '');
+const FIREBASE_HOST_1 = (process.env.FIREBASE_HOST || 'destrade-default-rtdb.firebaseio.com').replace(/^https?:\/\//, '').replace(/\/$/, '');
+const FIREBASE_HOST_2 = (process.env.FIREBASE_HOST_2 || 'destrade-2-default-rtdb.firebaseio.com').replace(/^https?:\/\//, '').replace(/\/$/, '');
+const FIREBASE_HOST = FIREBASE_HOST_1; // default fallback
+
+// Symbol Sharding Helper (Indices + A-I -> DB1, J-Z -> DB2)
+function isSecondaryDbSymbol(sym) {
+    if (!sym) return false;
+    const clean = String(sym).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'NIFTYNXT50', 'SENSEX', 'BANKEX'];
+    if (indices.includes(clean)) return false;
+    const firstChar = clean[0];
+    return firstChar >= 'J' && firstChar <= 'Z';
+}
+
+function getFirebaseHostForSymbol(sym) {
+    return isSecondaryDbSymbol(sym) ? FIREBASE_HOST_2 : FIREBASE_HOST_1;
+}
 
 // ===== DISTRIBUTED WORKER CONFIG =====
 const WORKER_ID = parseInt(process.env.WORKER_ID || '0', 10);
@@ -170,11 +186,11 @@ function fetchUrl(url) {
     });
 }
 
-function firebaseGet(path) {
+function firebaseGet(path, host = FIREBASE_HOST_1) {
     return new Promise((resolve) => {
         const delim = path.includes('?') ? '&' : '?';
         const cbPath = path + delim + 't=' + Date.now();
-        https.get(`https://${FIREBASE_HOST}${cbPath}`, {
+        https.get(`https://${host}${cbPath}`, {
             headers: {
                 'Cache-Control': 'no-cache, no-store, must-revalidate',
                 'Pragma': 'no-cache'
@@ -189,12 +205,12 @@ function firebaseGet(path) {
     });
 }
 
-function firebasePut(path, data) {
+function firebasePut(path, data, host = FIREBASE_HOST_1) {
     return new Promise((resolve) => {
         const payload = JSON.stringify(data);
         estimatedBandwidthBytes += Buffer.byteLength(payload) + 200; // payload + HTTP overhead
         const req = https.request({
-            hostname: FIREBASE_HOST,
+            hostname: host,
             path: path,
             method: 'PUT',
             headers: {
@@ -212,11 +228,11 @@ function firebasePut(path, data) {
     });
 }
 
-function firebaseDelete(path) {
+function firebaseDelete(path, host = FIREBASE_HOST_1) {
     return new Promise((resolve) => {
         estimatedBandwidthBytes += 300;
         const req = https.request({
-            hostname: FIREBASE_HOST,
+            hostname: host,
             path: path,
             method: 'DELETE',
             headers: {
@@ -232,12 +248,12 @@ function firebaseDelete(path) {
 }
 
 // PATCH merges keys into existing Firebase object (critical for multi-worker snapshot writes)
-function firebasePatch(fbPath, data) {
+function firebasePatch(fbPath, data, host = FIREBASE_HOST_1) {
     return new Promise((resolve) => {
         const payload = JSON.stringify(data);
         estimatedBandwidthBytes += Buffer.byteLength(payload) + 200;
         const req = https.request({
-            hostname: FIREBASE_HOST,
+            hostname: host,
             path: fbPath,
             method: 'PATCH',
             headers: {
@@ -454,12 +470,13 @@ async function executeMarketSync() {
             try {
                 const data = await fetchOptionChainPCR(sym);
                 const histPath = `/pcr_history/${sym}/${dateStr}.json`;
+                const targetHost = getFirebaseHostForSymbol(sym);
 
                 if (data && data.pcr > 0) {
                     summary[sym] = { pcr: data.pcr, spot: data.spot };
 
                     if (!memoryHistoryCache[sym]) {
-                        const existing = await firebaseGet(histPath);
+                        const existing = await firebaseGet(histPath, targetHost);
                         memoryHistoryCache[sym] = Array.isArray(existing) ? existing : (existing ? Object.values(existing) : []);
                     }
 
@@ -481,7 +498,7 @@ async function executeMarketSync() {
 
                         const trimmedList = list.slice(-250);
                         memoryHistoryCache[sym] = trimmedList;
-                        await firebasePut(histPath, trimmedList);
+                        await firebasePut(histPath, trimmedList, targetHost);
                     }
                 } else {
                     // Fallback: read from RAM cache first (0ms delay), then Firebase if RAM empty
@@ -490,7 +507,7 @@ async function executeMarketSync() {
                         const latest = list[list.length - 1];
                         summary[sym] = { pcr: latest.value, spot: latest.spot };
                     } else {
-                        const existing = await firebaseGet(histPath);
+                        const existing = await firebaseGet(histPath, targetHost);
                         if (existing) {
                             const fetchedList = Array.isArray(existing) ? existing : Object.values(existing);
                             if (fetchedList.length > 0) {
@@ -538,8 +555,9 @@ async function executeMarketSync() {
         return { tick: closest, delta: minDelta };
     }
 
-    // Write this worker's snapshot slice using PATCH (merge, not overwrite)
-    const snapshot = {};
+    // Write this worker's snapshot slice using PATCH (merge, not overwrite) to partitioned databases
+    const snapshot1 = {};
+    const snapshot2 = {};
     for (const sym of Object.keys(memoryHistoryCache)) {
         const list = memoryHistoryCache[sym];
         if (Array.isArray(list) && list.length > 0) {
@@ -572,9 +590,7 @@ async function executeMarketSync() {
             const m15Spot = (t15 && t15.delta <= 1200) ? Number((t15.tick.spot || 0).toFixed(1)) : 0;
             const m30Spot = (t30 && t30.delta <= 2400) ? Number((t30.tick.spot || 0).toFixed(1)) : 0;
 
-            // Ultra-Compact Snapshot Array (70% bandwidth reduction, 100% data fidelity)
-            // Schema: [0:curTime, 1:curPcr, 2:curSpot, 3:curTimeStr, 4:m5Pcr, 5:m15Pcr, 6:m30Pcr, 7:h1Pcr, 8:m5Time, 9:m15Time, 10:m30Time, 11:h1Time, 12:m5Spot, 13:m15Spot, 14:m30Spot, 15:h1Spot]
-            snapshot[sym] = [
+            const entry = [
                 curTime,   // 0: curTime
                 pcrR,      // 1: curPcr
                 spotR,     // 2: curSpot
@@ -592,10 +608,24 @@ async function executeMarketSync() {
                 m30Spot,   // 14: m30Spot
                 h1SpotR    // 15: h1Spot
             ];
+
+            if (isSecondaryDbSymbol(sym)) {
+                snapshot2[sym] = entry;
+            } else {
+                snapshot1[sym] = entry;
+            }
         }
     }
-    // Use PATCH so each worker merges its symbols into the shared snapshot
-    await firebasePatch('/pcr_snapshot.json', snapshot);
+
+    // Use PATCH so each worker merges its symbols into both shared snapshots
+    const snapPromises = [];
+    if (Object.keys(snapshot1).length > 0) {
+        snapPromises.push(firebasePatch('/pcr_snapshot.json', snapshot1, FIREBASE_HOST_1));
+    }
+    if (Object.keys(snapshot2).length > 0) {
+        snapPromises.push(firebasePatch('/pcr_snapshot.json', snapshot2, FIREBASE_HOST_2));
+    }
+    await Promise.all(snapPromises);
 
     // Write worker heartbeat status
     await firebasePatch('/worker_status.json', {
@@ -638,21 +668,22 @@ async function cleanupPreviousDayPcrHistory() {
     console.log(`🧹 [Worker #${WORKER_ID}] Starting 08:00 AM IST database cleanup of previous days' data...`);
 
     try {
-        const historyData = await firebaseGet('/pcr_history.json');
-        if (!historyData || typeof historyData !== 'object') return;
-
         let deletedCount = 0;
-        const symbols = Object.keys(historyData);
+        for (const host of [FIREBASE_HOST_1, FIREBASE_HOST_2]) {
+            const historyData = await firebaseGet('/pcr_history.json', host);
+            if (!historyData || typeof historyData !== 'object') continue;
 
-        for (const sym of symbols) {
-            const dateObj = historyData[sym];
-            if (dateObj && typeof dateObj === 'object') {
-                const dates = Object.keys(dateObj);
-                for (const dKey of dates) {
-                    // Purge any date folder strictly older than today's IST date string
-                    if (dKey < dateStr) {
-                        await firebaseDelete(`/pcr_history/${sym}/${dKey}.json`);
-                        deletedCount++;
+            const symbols = Object.keys(historyData);
+            for (const sym of symbols) {
+                const dateObj = historyData[sym];
+                if (dateObj && typeof dateObj === 'object') {
+                    const dates = Object.keys(dateObj);
+                    for (const dKey of dates) {
+                        // Purge any date folder strictly older than today's IST date string
+                        if (dKey < dateStr) {
+                            await firebaseDelete(`/pcr_history/${sym}/${dKey}.json`, host);
+                            deletedCount++;
+                        }
                     }
                 }
             }
@@ -660,7 +691,7 @@ async function cleanupPreviousDayPcrHistory() {
 
         // Reset memory history cache for today's fresh trading session
         memoryHistoryCache = {};
-        console.log(`✅ [Worker #${WORKER_ID}] Daily Cleanup Complete! Purged ${deletedCount} old date records from Firebase.`);
+        console.log(`✅ [Worker #${WORKER_ID}] Daily Cleanup Complete! Purged ${deletedCount} old date records across both Firebase databases.`);
     } catch (e) {
         console.warn('Daily database cleanup warning:', e);
     }

@@ -667,7 +667,7 @@ class NSEApi {
             'ASHOKLEY': { slug: 'ashok-leyland-ltd', type: 'STOCKS' },
             'ASIANPAINT': { slug: 'asian-paints-ltd', type: 'STOCKS' },
             'ASTRAL': { slug: 'astral-poly-technik-ltd', type: 'STOCKS' },
-            'ATHERENERG': { slug: 'ather-energy', type: 'STOCKS' },
+            'ATHERENERG': { slug: 'ather-energy-ltd', type: 'STOCKS' },
             'AUBANK': { slug: 'au-small-finance-bank-ltd', type: 'STOCKS' },
             'AUROPHARMA': { slug: 'aurobindo-pharma-ltd', type: 'STOCKS' },
             'AXISBANK': { slug: 'axis-bank-ltd', type: 'STOCKS' },
@@ -723,7 +723,7 @@ class NSEApi {
             'GODREJCP': { slug: 'godrej-consumer-products-ltd', type: 'STOCKS' },
             'GODREJPROP': { slug: 'godrej-properties-ltd', type: 'STOCKS' },
             'GRASIM': { slug: 'grasim-industries-ltd', type: 'STOCKS' },
-            'GVT&D': { slug: 'gvt-and-d', type: 'STOCKS' },
+            'GVT&D': { slug: 'ge-td-india-ltd', type: 'STOCKS' },
             'HAL': { slug: 'hindustan-aeronautics-ltd', type: 'STOCKS' },
             'HAVELLS': { slug: 'havells-india-ltd', type: 'STOCKS' },
             'HCLTECH': { slug: 'hcl-technologies-ltd', type: 'STOCKS' },
@@ -819,12 +819,12 @@ class NSEApi {
             'POWERINDIA': { slug: 'abb-power-products-systems-india-ltd', type: 'STOCKS' },
             'PREMIERENE': { slug: 'premier-energies-ltd', type: 'STOCKS' },
             'PRESTIGE': { slug: 'prestige-estate-projects-ltd', type: 'STOCKS' },
-            'RADICO': { slug: 'radico-khaitan', type: 'STOCKS' },
+            'RADICO': { slug: 'radico-khaitan-ltd', type: 'STOCKS' },
             'RBLBANK': { slug: 'rbl-bank-ltd', type: 'STOCKS' },
             'RECLTD': { slug: 'rec-ltd', type: 'STOCKS' },
             'RELIANCE': { slug: 'reliance-industries-ltd', type: 'STOCKS' },
             'RVNL': { slug: 'rail-vikas-nigam-ltd', type: 'STOCKS' },
-            'SAGILITY': { slug: 'sagility-india', type: 'STOCKS' },
+            'SAGILITY': { slug: 'sagility-india-ltd', type: 'STOCKS' },
             'SAIL': { slug: 'steel-authority-of-india-ltd', type: 'STOCKS' },
             'SBICARD': { slug: 'sbi-cards-payment-services-ltd', type: 'STOCKS' },
             'SBILIFE': { slug: 'sbi-life-insurance-company-ltd', type: 'STOCKS' },
@@ -864,7 +864,7 @@ class NSEApi {
             'WIPRO': { slug: 'wipro-ltd', type: 'STOCKS' },
             'YESBANK': { slug: 'yes-bank-ltd', type: 'STOCKS' },
             'ZYDUSLIFE': { slug: 'cadila-healthcare-ltd', type: 'STOCKS' },
-            'NIFTYNXT50': { slug: 'nifty-next-50', type: 'INDICES' }
+            'NIFTYNXT50': { slug: 'nifty-next', type: 'INDICES' }
         };
     }
 

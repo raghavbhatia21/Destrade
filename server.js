@@ -556,9 +556,11 @@ async function executeMarketSync() {
     }
 
     // Write this worker's snapshot slice using PATCH (merge, not overwrite) to partitioned databases
+    // CRITICAL: Only write symbols actively assigned to and scanned by this worker.
+    // Never iterate over full memoryHistoryCache, which contains stale un-scanned symbols from peer workers.
     const snapshot1 = {};
     const snapshot2 = {};
-    for (const sym of Object.keys(memoryHistoryCache)) {
+    for (const sym of activeSymbols) {
         const list = memoryHistoryCache[sym];
         if (Array.isArray(list) && list.length > 0) {
             const latest = list[list.length - 1];
@@ -631,6 +633,7 @@ async function executeMarketSync() {
     await firebasePatch('/worker_status.json', {
         [WORKER_ID]: {
             id: WORKER_ID,
+            version: '1.0.4',
             active: true,
             throttled: false,
             estimatedBandwidthMB: Math.round(estimatedBandwidthBytes / (1024 * 1024)),
@@ -641,7 +644,7 @@ async function executeMarketSync() {
         }
     });
 
-    console.log(`🎉 [Worker #${WORKER_ID}] Cycle done! Synced ${Object.keys(summary).length}/${activeSymbols.length} symbols. BW: ${(estimatedBandwidthBytes / (1024 * 1024)).toFixed(0)} MB`);
+    console.log(`🎉 [Worker #${WORKER_ID} v1.0.4] Cycle done! Synced ${Object.keys(summary).length}/${activeSymbols.length} symbols. BW: ${(estimatedBandwidthBytes / (1024 * 1024)).toFixed(0)} MB`);
 
     // Only leader worker runs alert detection and daily 08:00 AM database cleanup
     if (isLeader) {

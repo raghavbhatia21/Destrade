@@ -137,19 +137,45 @@ const App = {
                         }
                     }
                 }, () => { });
-                // Realtime Instant Push for PCR Snapshot (fires instantly on every 35s scan completion)
-                db.ref('pcr_snapshot').on('value', snap => {
-                    if (snap.exists()) {
-                        const snapshot = snap.val();
-                        if (snapshot && typeof snapshot === 'object') {
-                            this._liveSnapshot = snapshot;
-                            this._snapshotLastUpdated = Date.now();
-                            console.log(`🔥 Realtime Firebase Snapshot Push received (${Object.keys(snapshot).length} symbols)`);
-                            this.renderPcrIntradayScreener();
-                            this.renderMarketPulse();
+                // Realtime Instant Push for PCR Snapshot across both partitioned databases (DB1: A-I + Indices, DB2: J-Z)
+                this._liveSnapshotDb1 = {};
+                this._liveSnapshotDb2 = {};
+
+                const updateMergedLiveSnapshot = () => {
+                    this._liveSnapshot = Object.assign({}, this._liveSnapshotDb1, this._liveSnapshotDb2);
+                    this._snapshotLastUpdated = Date.now();
+                    this.renderPcrIntradayScreener();
+                    this.renderMarketPulse();
+                    this.renderSectorQuickLook();
+                };
+
+                const dbPrimary = window.db1 || db;
+                if (dbPrimary && typeof dbPrimary.ref === 'function') {
+                    dbPrimary.ref('pcr_snapshot').on('value', snap => {
+                        if (snap.exists()) {
+                            const val = snap.val();
+                            if (val && typeof val === 'object') {
+                                this._liveSnapshotDb1 = val;
+                                updateMergedLiveSnapshot();
+                                console.log(`🔥 DB1 Snapshot Push (${Object.keys(val).length} symbols)`);
+                            }
                         }
-                    }
-                }, () => { });
+                    }, () => { });
+                }
+
+                const dbSecondary = window.db2;
+                if (dbSecondary && typeof dbSecondary.ref === 'function') {
+                    dbSecondary.ref('pcr_snapshot').on('value', snap => {
+                        if (snap.exists()) {
+                            const val = snap.val();
+                            if (val && typeof val === 'object') {
+                                this._liveSnapshotDb2 = val;
+                                updateMergedLiveSnapshot();
+                                console.log(`🔥 DB2 Snapshot Push (${Object.keys(val).length} symbols)`);
+                            }
+                        }
+                    }, () => { });
+                }
             }
             // Auto-prefill full PCR history for Screener on startup
             this.prefillAllPcrHistoryForScreener();
@@ -289,12 +315,15 @@ const App = {
                 try { snap2 = await res2.json(); } catch (e) { }
             }
 
-            const mergedSnapshot = Object.assign({}, snap1 || {}, snap2 || {});
+            if (snap1 && typeof snap1 === 'object') this._liveSnapshotDb1 = snap1;
+            if (snap2 && typeof snap2 === 'object') this._liveSnapshotDb2 = snap2;
+
+            const mergedSnapshot = Object.assign({}, this._liveSnapshotDb1 || {}, this._liveSnapshotDb2 || {});
             const totalKeys = Object.keys(mergedSnapshot).length;
             if (totalKeys > 0) {
                 this._liveSnapshot = mergedSnapshot;
                 this._snapshotLastUpdated = Date.now();
-                console.log(`⚡ Multi-DB Snapshot Refreshed (${totalKeys} symbols [DB1: ${Object.keys(snap1 || {}).length}, DB2: ${Object.keys(snap2 || {}).length}])`);
+                console.log(`⚡ Multi-DB Snapshot Refreshed (${totalKeys} symbols [DB1: ${Object.keys(this._liveSnapshotDb1 || {}).length}, DB2: ${Object.keys(this._liveSnapshotDb2 || {}).length}])`);
                 this.renderPcrIntradayScreener();
                 this.renderMarketPulse();
                 this.renderSectorQuickLook();
@@ -1636,9 +1665,13 @@ const App = {
             } catch (e) { }
 
             // MERGE with existing Firebase data
-            if (window.firebase && window.firebase.database && (!this._lastFbPush || Date.now() - this._lastFbPush > 5000)) {
+            const targetDb = (typeof window.getFirebaseDbForSymbol === 'function')
+                ? window.getFirebaseDbForSymbol(sym)
+                : (window.db1 || (window.firebase && window.firebase.database ? window.firebase.database() : null));
+
+            if (targetDb && (!this._lastFbPush || Date.now() - this._lastFbPush > 5000)) {
                 this._lastFbPush = Date.now();
-                const fbRef = window.firebase.database().ref(`pcr_history/${sym}/${dateStr}`);
+                const fbRef = targetDb.ref(`pcr_history/${sym}/${dateStr}`);
                 fbRef.once('value').then(snapshot => {
                     let serverList = [];
                     if (snapshot.exists()) {
@@ -1666,7 +1699,7 @@ const App = {
                             const delta = Math.abs(merged[i].time - targetTime);
                             if (delta < minDelta) { minDelta = delta; tick1hAgo = merged[i]; }
                         }
-                        window.firebase.database().ref(`pcr_snapshot/${sym}`).set({
+                        targetDb.ref(`pcr_snapshot/${sym}`).set({
                             cur: { time: latestTick.time, value: latestTick.value, spot: latestTick.spot, timeStr: latestTick.timeStr },
                             h1: { time: tick1hAgo.time, value: tick1hAgo.value, spot: tick1hAgo.spot },
                             len: merged.length

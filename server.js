@@ -1004,6 +1004,54 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    // Zerodha SPAN Calculator Proxy
+    if (req.url.startsWith('/api/zerodha-margin')) {
+        if (req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => {
+                body += chunk.toString();
+            });
+            req.on('end', () => {
+                const postReq = https.request({
+                    hostname: 'zerodha.com',
+                    path: '/margin-calculator/SPAN/',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Content-Length': Buffer.byteLength(body),
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+                    }
+                }, (postRes) => {
+                    res.writeHead(postRes.statusCode, {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                        'Access-Control-Allow-Headers': '*'
+                    });
+                    postRes.pipe(res);
+                });
+                postReq.on('error', (e) => {
+                    res.writeHead(500, {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    });
+                    res.end(JSON.stringify({ error: e.message }));
+                });
+                postReq.setTimeout(12000, () => {
+                    postReq.destroy();
+                    res.writeHead(504, {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    });
+                    res.end(JSON.stringify({ error: 'Zerodha SPAN timeout' }));
+                });
+                postReq.write(body);
+                postReq.end();
+            });
+            return;
+        }
+    }
+
     if (req.url === '/trigger') {
         executeMarketSync().catch(console.error);
         res.writeHead(200);

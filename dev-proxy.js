@@ -85,6 +85,43 @@ const server = http.createServer(async (req, res) => {
             return;
         }
 
+        // Generic Proxy
+        if (targetPath.startsWith('/api/proxy')) {
+            try {
+                const parsedUrl = new URL(targetPath, `http://${req.headers.host}`);
+                const targetUrl = parsedUrl.searchParams.get('url');
+                if (!targetUrl) {
+                    res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+                    res.end(JSON.stringify({ error: 'Missing target url parameter' }));
+                    return;
+                }
+                const pUrl = new URL(targetUrl);
+                const pReq = https.request({
+                    hostname: pUrl.hostname,
+                    path: pUrl.pathname + pUrl.search,
+                    method: 'GET',
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                        'Accept': 'application/json, text/plain, */*',
+                        'Origin': 'https://' + pUrl.hostname,
+                        'Referer': 'https://' + pUrl.hostname
+                    }
+                }, (pRes) => {
+                    res.writeHead(pRes.statusCode, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+                    pRes.pipe(res);
+                });
+                pReq.on('error', (e) => {
+                    res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+                    res.end(JSON.stringify({ error: e.message }));
+                });
+                pReq.end();
+            } catch (e) {
+                res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+                res.end(JSON.stringify({ error: e.message }));
+            }
+            return;
+        }
+
         // Zerodha SPAN Calculator Proxy
         if (targetPath.startsWith('/api/zerodha-margin')) {
             if (req.method === 'POST') {
@@ -103,11 +140,11 @@ const server = http.createServer(async (req, res) => {
                             'User-Agent': 'Mozilla/5.0'
                         }
                     }, (postRes) => {
-                        res.writeHead(postRes.statusCode, { 'Content-Type': 'application/json' });
+                        res.writeHead(postRes.statusCode, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
                         postRes.pipe(res);
                     });
                     postReq.on('error', (e) => {
-                        res.writeHead(500);
+                        res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
                         res.end(JSON.stringify({ error: e.message }));
                     });
                     postReq.write(body);

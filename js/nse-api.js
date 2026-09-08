@@ -5,7 +5,7 @@
 
 class NSEApi {
     constructor() {
-        const isCapacitor = !!(window.Capacitor || window.location.protocol === 'capacitor:' || window.location.href.includes('android_asset'));
+        const isCapacitor = !!(window.Capacitor || window.location.protocol === 'capacitor:' || window.location.href?.includes('android_asset'));
         const host = window.location.hostname;
         const isLocalDevServer = !isCapacitor && (host === 'localhost' || host === '127.0.0.1' || /^192\.168\./.test(host) || /^10\./.test(host) || host.endsWith('.local'));
         
@@ -131,10 +131,10 @@ class NSEApi {
     async _fetchGroww(path) {
         const rawUrl = path.startsWith('http') ? path : `https://groww.in${path.startsWith('/') ? '' : '/'}${path}`;
 
-        // 1. Cloud CORS Proxy (Primary for Web & Android App to avoid CORS errors)
+        // 1. Cloud CORS Proxy (Primary for Web & Android App)
         try {
             const cloudUrl = `https://destrade-market-worker.onrender.com/api/proxy?url=${encodeURIComponent(rawUrl)}`;
-            const res = await fetch(cloudUrl, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+            const res = await fetch(cloudUrl, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
             if (res.ok) {
                 const text = await res.text();
                 if (text && !text.trim().startsWith('<')) {
@@ -144,7 +144,19 @@ class NSEApi {
             }
         } catch (e) {}
 
-        // 2. Fallback: Local Node Dev-Proxy (when running local server)
+        // 2. Direct fetch (works seamlessly in Capacitor native webview without browser CORS restrictions)
+        try {
+            const res = await fetch(rawUrl, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+            if (res.ok) {
+                const text = await res.text();
+                if (text && !text.trim().startsWith('<')) {
+                    const data = JSON.parse(text);
+                    if (data && !data.error && !data.errorCode) return data;
+                }
+            }
+        } catch (e) {}
+
+        // 3. Fallback: Local Node Dev-Proxy (when running local server)
         if (this.proxyUrl) {
             try {
                 const localUrl = `${this.proxyUrl}/api/proxy?url=${encodeURIComponent(rawUrl)}`;
@@ -872,15 +884,21 @@ class NSEApi {
     async getOIClock(symbol = 'NIFTY', expiryDate = '') {
         const cleanSym = (symbol || 'NIFTY').replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY');
         let d = null;
-        if (this.config.preferGrowwForOptionChain && typeof this.getOptionChainGroww === 'function') {
-            d = await this.getOptionChainGroww(cleanSym, expiryDate);
+        try {
+            if (this.config.preferGrowwForOptionChain && typeof this.getOptionChainGroww === 'function') {
+                d = await this.getOptionChainGroww(cleanSym, expiryDate);
+            }
+        } catch (e) {
+            console.warn('Groww Option Chain fetch error:', e);
         }
 
-        if (!d) {
-            d = await this.getOptionChain(cleanSym);
+        if (!d && typeof this.getOptionChain === 'function') {
+            try {
+                d = await this.getOptionChain(cleanSym);
+            } catch (e) {}
         }
 
-        if (!d?.records?.data) {
+        if (!d?.records?.data || d.records.data.length === 0) {
             const rawSnap = window.App && window.App._liveSnapshot ? window.App._liveSnapshot[cleanSym] : null;
             const snap = this.normalizeSnapshotItem(rawSnap);
             if (snap && snap.curSpot > 0) {
@@ -888,6 +906,9 @@ class NSEApi {
                 const curPcr = snap.curVal || 1.0;
                 const timeStr = snap.curTimeStr || '';
                 const pcrVal = parseFloat(curPcr || 1.0);
+                const maxPain = Math.round(curSpot);
+                const ceStrike = Math.round(curSpot * 1.02);
+                const peStrike = Math.round(curSpot * 0.98);
                 return {
                     symbol: cleanSym,
                     pcr: pcrVal.toFixed(4),
@@ -895,9 +916,14 @@ class NSEApi {
                     underlying: curSpot,
                     totalCEOI: 1000000,
                     totalPEOI: Math.round(1000000 * pcrVal),
-                    maxCEStrike: curSpot * 1.02,
-                    maxPEStrike: curSpot * 0.98,
-                    maxPain: curSpot,
+                    maxCEStrike: ceStrike,
+                    maxPEStrike: peStrike,
+                    maxPain: maxPain,
+                    maxPainStrike: maxPain,
+                    expiryDates: [],
+                    currentExpiry: '',
+                    lotSize: typeof this._getLotSize === 'function' ? this._getLotSize(cleanSym) : 100,
+                    timestamp: timeStr,
                     data: [],
                     timeStr: timeStr
                 };
@@ -972,6 +998,7 @@ class NSEApi {
         }
 
         return {
+            symbol: cleanSym,
             pcr, sentiment, underlying, totalCEOI, totalPEOI, totalCEChange, totalPEChange,
             maxCEStrike, maxPEStrike, maxCEOI, maxPEOI, maxPainStrike,
             expiryDates: d.records.expiryDates || [],
@@ -1297,7 +1324,8 @@ class NSEApi {
         if (this.dynamicSlugMap && this.dynamicSlugMap.has(up)) {
             return this.dynamicSlugMap.get(up);
         }
-        return this.getGrowwStockSlug(up);
+        const map = this.getGrowwMap();
+        return map[up]?.slug || up.toLowerCase();
     }
 
     // ===== GROWW ADAPTER =====
@@ -1404,7 +1432,12 @@ class NSEApi {
     async fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiryDate) {
         const cleanSym = symbol.replace(/[^A-Z0-9&\-]/g, '');
         
-        let scrip = `${cleanSym}26JUL`; // default fallback
+        const now = new Date();
+        const curYY = String(now.getFullYear()).slice(2);
+        const curMonths = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+        const curMMM = curMonths[now.getMonth()];
+        let scrip = `${cleanSym}${curYY}${curMMM}`; // dynamic current month fallback
+        
         if (expiryDate && expiryDate.length >= 7) {
             const parts = expiryDate.split('-');
             if (parts.length === 3) {
@@ -1423,7 +1456,7 @@ class NSEApi {
                 const isMonthly = !isIndex || (expiryDateObj.getMonth() !== nextWeekDateObj.getMonth());
 
                 if (isMonthly) {
-                    const mmm = months[monthIdx] || 'JUL';
+                    const mmm = months[monthIdx] || curMMM;
                     scrip = `${cleanSym}${yy}${mmm}`;
                 } else {
                     let mChar = String(monthIdx + 1);
@@ -1439,23 +1472,39 @@ class NSEApi {
         
         const body = `action=calculate&exchange%5B%5D=NFO&product%5B%5D=OPT&scrip%5B%5D=${encodeURIComponent(scrip)}&option_type%5B%5D=${type}&strike_price%5B%5D=${strike}&qty%5B%5D=${lotSize}&trade%5B%5D=sell`;
 
-        try {
-            const res = await fetch('/api/zerodha-margin', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: body
-            });
-            const data = await res.json();
-            if (data && data.total && typeof data.total.total === 'number' && data.total.total > 0) {
-                return {
-                    span: data.total.span,
-                    exposure: data.total.exposure,
-                    total: data.total.total,
-                    modelName: 'Zerodha Live SPAN'
-                };
+        // Multi-tier fetch strategy:
+        // 1. Local Node Dev-Proxy (when running local dev server on desktop)
+        // 2. Cloud Render worker proxy (primary for mobile phones & remote clients)
+        // 3. Direct Zerodha POST (for mobile WebView without CORS restrictions)
+        const endpoints = [];
+        if (this.proxyUrl) {
+            endpoints.push(`${this.proxyUrl}/api/zerodha-margin`);
+        }
+        endpoints.push('https://destrade-market-worker.onrender.com/api/zerodha-margin');
+        endpoints.push('https://zerodha.com/margin-calculator/SPAN/');
+
+        for (const ep of endpoints) {
+            try {
+                const res = await fetch(ep, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: body,
+                    signal: AbortSignal.timeout(6000)
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.total && typeof data.total.total === 'number' && data.total.total > 0) {
+                        return {
+                            span: data.total.span,
+                            exposure: data.total.exposure,
+                            total: data.total.total,
+                            modelName: 'Zerodha Live SPAN'
+                        };
+                    }
+                }
+            } catch (e) {
+                // Try next endpoint in pipeline
             }
-        } catch (e) {
-            // failover
         }
         return null;
     }

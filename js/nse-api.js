@@ -15,6 +15,7 @@ class NSEApi {
         } else {
             this.proxyUrl = '';
         }
+        this.isCapacitor = isCapacitor;
         this._cache = new Map();
         this._cacheTTL = 800; // 0.8s cache TTL for 1s real-time streaming
         this.fnoSymbols = ["360ONE","ABB","ABCAPITAL","ADANIENSOL","ADANIENT","ADANIGREEN","ADANIPORTS","ADANIPOWER","ALKEM","AMBER","AMBUJACEM","ANGELONE","APLAPOLLO","APOLLOHOSP","ASHOKLEY","ASIANPAINT","ASTRAL","ATHERENERG","AUBANK","AUROPHARMA","AXISBANK","BAJAJ-AUTO","BAJAJFINSV","BAJAJHLDNG","BAJFINANCE","BANDHANBNK","BANKBARODA","BANKINDIA","BANKNIFTY","BDL","BEL","BHARATFORG","BHARTIARTL","BHEL","BIOCON","BLUESTARCO","BOSCHLTD","BPCL","BRITANNIA","BSE","CAMS","CANBK","CDSL","CGPOWER","CHOLAFIN","CIPLA","COALINDIA","COCHINSHIP","COFORGE","COLPAL","CONCOR","CROMPTON","CUMMINSIND","DABUR","DELHIVERY","DIVISLAB","DIXON","DLF","DMART","DRREDDY","EICHERMOT","ETERNAL","FEDERALBNK","FINNIFTY","FORCEMOT","FORTIS","GAIL","GLENMARK","GMRAIRPORT","GODFRYPHLP","GODREJCP","GODREJPROP","GRASIM","GVT&D","HAL","HAVELLS","HCLTECH","HDFCAMC","HDFCBANK","HDFCLIFE","HEROMOTOCO","HINDALCO","HINDPETRO","HINDUNILVR","HINDZINC","HYUNDAI","ICICIBANK","ICICIGI","ICICIPRULI","IDEA","IDFCFIRSTB","IEX","INDHOTEL","INDIANB","INDIGO","INDUSINDBK","INDUSTOWER","INFY","INOXWIND","IOC","IREDA","IRFC","ITC","JINDALSTEL","JIOFIN","JSWENERGY","JSWSTEEL","JUBLFOOD","KALYANKJIL","KAYNES","KEI","KFINTECH","KOTAKBANK","KPITTECH","LAURUSLABS","LICHSGFIN","LICI","LODHA","LT","LTF","LTM","LUPIN","M&M","MAHABANK","MANAPPURAM","MANKIND","MARICO","MARUTI","MAXHEALTH","MAZDOCK","MCX","MFSL","MIDCPNIFTY","MOTHERSON","MOTILALOFS","MPHASIS","MUTHOOTFIN","NAM-INDIA","NATIONALUM","NAUKRI","NBCC","NESTLEIND","NHPC","NIFTY","NIFTYNXT50","NMDC","NTPC","NYKAA","OBEROIRLTY","OFSS","OIL","ONGC","PAGEIND","PATANJALI","PAYTM","PERSISTENT","PETRONET","PFC","PGEL","PHOENIXLTD","PIDILITIND","PIIND","PNB","PNBHOUSING","POLICYBZR","POLYCAB","POWERGRID","POWERINDIA","PREMIERENE","PRESTIGE","RADICO","RBLBANK","RECLTD","RELIANCE","RVNL","SAGILITY","SAIL","SBICARD","SBILIFE","SBIN","SHREECEM","SHRIRAMFIN","SIEMENS","SOLARINDS","SONACOMS","SRF","SUNPHARMA","SUPREMEIND","SUZLON","SWIGGY","TATACONSUM","TATAELXSI","TATAPOWER","TATASTEEL","TCS","TECHM","TIINDIA","TITAN","TMPV","TORNTPHARM","TRENT","TVSMOTOR","ULTRACEMCO","UNIONBANK","UNITDSPR","UNOMINDA","UPL","VBL","VEDL","VMM","VOLTAS","WAAREEENER","WIPRO","YESBANK","ZYDUSLIFE"];
@@ -58,71 +59,42 @@ class NSEApi {
         if (!this.proxyUrl) return null;
 
         const isOC = endpoint.includes('option-chain') || endpoint.includes('quote-equity');
-        const effectiveRetries = isOC ? 0 : retries;
-
-        // 1. Client-side cache check
-        const cached = this._cache.get(endpoint);
-        if (cached && Date.now() - cached.t < this._cacheTTL) {
-            return cached.d;
+        const cacheKey = `nse_${endpoint}`;
+        if (this._cache.has(cacheKey)) {
+            const entry = this._cache.get(cacheKey);
+            if (Date.now() - entry.time < this._cacheTTL) return entry.data;
         }
 
-        // 2. In-flight request deduplication
-        if (!this._inFlight) this._inFlight = new Map();
-        if (this._inFlight.has(endpoint)) {
+        // De-duplicate concurrent identical in-flight fetches
+        if (this._inFlight && this._inFlight.has(endpoint)) {
             return this._inFlight.get(endpoint);
         }
 
-        // 3. Perform the actual fetch
+        if (!this._inFlight) this._inFlight = new Map();
+
         const fetchPromise = (async () => {
-            const clean = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
-            const connector = clean.includes('?') ? '&' : '?';
-            const bustedEndpoint = `${clean}${connector}_t=${Date.now()}`;
-            const url = this.proxyUrl ? `${this.proxyUrl}${bustedEndpoint}` : bustedEndpoint;
-
-            try {
-                const res = await fetch(url, {
-                    cache: 'no-store',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Referer': 'https://www.nseindia.com/'
-                    },
-                    signal: AbortSignal.timeout(isOC ? 4000 : 15 * 1000)
-                });
-
-                const contentType = res.headers.get('content-type') || '';
-                if (!res.ok || contentType.includes('text/html')) {
-                    if (effectiveRetries > 0 && res.status !== 404 && !contentType.includes('text/html')) {
-                        console.warn(`[API RETRY] ${url} Status: ${res.status}. Retrying in ${backoff}ms...`);
-                        await new Promise(r => setTimeout(r, backoff));
-                        return this._fetch(endpoint, effectiveRetries - 1, backoff * 2);
+            const url = `${this.proxyUrl}${endpoint}`;
+            for (let i = 0; i <= retries; i++) {
+                try {
+                    const res = await fetch(url, { signal: AbortSignal.timeout(isOC ? 7000 : 5000) });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const text = await res.text();
+                    if (text.trim().startsWith('<')) throw new Error('Proxy returned HTML');
+                    const data = JSON.parse(text);
+                    this._cache.set(cacheKey, { data, time: Date.now() });
+                    this.proxyDetails.status = 'Connected';
+                    this.proxyDetails.lastError = null;
+                    return data;
+                } catch (e) {
+                    if (i < retries) {
+                        await new Promise(r => setTimeout(r, backoff * (i + 1)));
                     }
-                    this.proxyDetails.lastError = `Unreachable endpoint ${endpoint}`;
-                    return null;
                 }
-
-                const text = await res.text();
-                if (!text || text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
-                    return null;
-                }
-
-                const data = JSON.parse(text);
-                this._cache.set(endpoint, { d: data, t: Date.now() });
-                this.proxyDetails.lastError = null;
-                return data;
-            } catch (e) {
-                if (effectiveRetries > 0) {
-                    console.warn(`[API RETRY] ${url} Error: ${e.message}. Retrying in ${backoff}ms...`);
-                    await new Promise(r => setTimeout(r, backoff));
-                    return this._fetch(endpoint, effectiveRetries - 1, backoff * 2);
-                }
-                if (!isOC) console.warn(`⚠️ ${endpoint}: ${e.message}`);
-                this.proxyDetails.lastError = e.message;
-                return null;
-            } finally {
-                this._inFlight.delete(endpoint);
             }
-        })();
+            return null;
+        })().finally(() => {
+            if (this._inFlight) this._inFlight.delete(endpoint);
+        });
 
         this._inFlight.set(endpoint, fetchPromise);
         return fetchPromise;
@@ -131,32 +103,21 @@ class NSEApi {
     async _fetchGroww(path) {
         const rawUrl = path.startsWith('http') ? path : `https://groww.in${path.startsWith('/') ? '' : '/'}${path}`;
 
-        // 1. Cloud CORS Proxy (Primary for Web & Android App)
-        try {
-            const cloudUrl = `https://destrade-market-worker.onrender.com/api/proxy?url=${encodeURIComponent(rawUrl)}`;
-            const res = await fetch(cloudUrl, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
-            if (res.ok) {
-                const text = await res.text();
-                if (text && !text.trim().startsWith('<')) {
-                    const data = JSON.parse(text);
-                    if (data && !data.error && !data.errorCode) return data;
+        // 1. Direct fetch (Preferred on mobile / Capacitor WebView — uses 0 Render bandwidth!)
+        if (this.isCapacitor) {
+            try {
+                const res = await fetch(rawUrl, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+                if (res.ok) {
+                    const text = await res.text();
+                    if (text && !text.trim().startsWith('<')) {
+                        const data = JSON.parse(text);
+                        if (data && !data.error && !data.errorCode) return data;
+                    }
                 }
-            }
-        } catch (e) {}
+            } catch (e) {}
+        }
 
-        // 2. Direct fetch (works seamlessly in Capacitor native webview without browser CORS restrictions)
-        try {
-            const res = await fetch(rawUrl, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
-            if (res.ok) {
-                const text = await res.text();
-                if (text && !text.trim().startsWith('<')) {
-                    const data = JSON.parse(text);
-                    if (data && !data.error && !data.errorCode) return data;
-                }
-            }
-        } catch (e) {}
-
-        // 3. Fallback: Local Node Dev-Proxy (when running local server)
+        // 2. Local Node Dev-Proxy (when running local server on desktop — uses 0 Render bandwidth!)
         if (this.proxyUrl) {
             try {
                 const localUrl = `${this.proxyUrl}/api/proxy?url=${encodeURIComponent(rawUrl)}`;
@@ -170,6 +131,19 @@ class NSEApi {
                 }
             } catch (e) {}
         }
+
+        // 3. Cloud CORS Proxy (Primary for browser web without local proxy, or mobile fallback)
+        try {
+            const cloudUrl = `https://destrade-market-worker.onrender.com/api/proxy?url=${encodeURIComponent(rawUrl)}`;
+            const res = await fetch(cloudUrl, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+            if (res.ok) {
+                const text = await res.text();
+                if (text && !text.trim().startsWith('<')) {
+                    const data = JSON.parse(text);
+                    if (data && !data.error && !data.errorCode) return data;
+                }
+            }
+        } catch (e) {}
 
         return null;
     }
@@ -1479,6 +1453,9 @@ class NSEApi {
         const endpoints = [];
         if (this.proxyUrl) {
             endpoints.push(`${this.proxyUrl}/api/zerodha-margin`);
+        }
+        if (this.isCapacitor) {
+            endpoints.push('https://zerodha.com/margin-calculator/SPAN/');
         }
         endpoints.push('https://destrade-market-worker.onrender.com/api/zerodha-margin');
         endpoints.push('https://zerodha.com/margin-calculator/SPAN/');

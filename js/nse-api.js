@@ -1389,7 +1389,7 @@ class NSEApi {
         };
     }
 
-    async fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiryDate) {
+    async fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiryDate, hedgeStrike = null) {
         const cleanSym = symbol.replace(/[^A-Z0-9&\-]/g, '');
         
         const now = new Date();
@@ -1432,12 +1432,16 @@ class NSEApi {
         
         // In-memory cache to make repetitive strike calculations instant (0ms)
         if (!this._spanCache) this._spanCache = new Map();
-        const cacheKey = `${cleanSym}_${type}_${strike}_${lotSize}_${scrip}`;
+        const cacheKey = `${cleanSym}_${type}_${strike}_${hedgeStrike || 'naked'}_${lotSize}_${scrip}`;
         if (this._spanCache.has(cacheKey)) {
             return this._spanCache.get(cacheKey);
         }
 
-        const body = `action=calculate&exchange%5B%5D=NFO&product%5B%5D=OPT&scrip%5B%5D=${encodeURIComponent(scrip)}&option_type%5B%5D=${type}&strike_price%5B%5D=${strike}&qty%5B%5D=${lotSize}&trade%5B%5D=sell`;
+        let body = `action=calculate&exchange%5B%5D=NFO&product%5B%5D=OPT&scrip%5B%5D=${encodeURIComponent(scrip)}&option_type%5B%5D=${type}&strike_price%5B%5D=${strike}&qty%5B%5D=${lotSize}&trade%5B%5D=sell`;
+
+        if (hedgeStrike) {
+            body += `&exchange%5B%5D=NFO&product%5B%5D=OPT&scrip%5B%5D=${encodeURIComponent(scrip)}&option_type%5B%5D=${type}&strike_price%5B%5D=${hedgeStrike}&qty%5B%5D=${lotSize}&trade%5B%5D=buy`;
+        }
 
         const endpoints = [];
         if (this.proxyUrl) {

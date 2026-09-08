@@ -458,8 +458,8 @@ async function executeMarketSync() {
 
     const summary = {};
     const nowSec = Math.floor(Date.now() / 1000);
-    const BATCH_SIZE = 25;
-    const BATCH_DELAY_MS = 150;
+    const BATCH_SIZE = 15;
+    const BATCH_DELAY_MS = 400;
 
     for (let i = 0; i < activeSymbols.length; i += BATCH_SIZE) {
         const batch = activeSymbols.slice(i, i + BATCH_SIZE);
@@ -560,16 +560,13 @@ async function executeMarketSync() {
     // Never iterate over full memoryHistoryCache, which contains stale un-scanned symbols from peer workers.
     const snapshot1 = {};
     const snapshot2 = {};
-    const snapNowSec = Math.floor(Date.now() / 1000);
-    const { timeStr: snapTimeStr } = getISTInfo();
-
     for (const sym of activeSymbols) {
         const list = memoryHistoryCache[sym];
         if (Array.isArray(list) && list.length > 0) {
             const latest = list[list.length - 1];
             const live = summary[sym];
-            const curTime = live ? snapNowSec : latest.time;
-            const curTimeStr = live ? snapTimeStr : (latest.timeStr || '');
+            const curTime = live ? nowSec : latest.time;
+            const curTimeStr = live ? timeStr : (latest.timeStr || '');
             const curPcr = live ? live.pcr : latest.value;
             const curSpot = live ? live.spot : latest.spot;
 
@@ -636,7 +633,7 @@ async function executeMarketSync() {
     await firebasePatch('/worker_status.json', {
         [WORKER_ID]: {
             id: WORKER_ID,
-            version: '1.0.5',
+            version: '1.0.4',
             active: true,
             throttled: false,
             estimatedBandwidthMB: Math.round(estimatedBandwidthBytes / (1024 * 1024)),
@@ -647,7 +644,7 @@ async function executeMarketSync() {
         }
     });
 
-    console.log(`🎉 [Worker #${WORKER_ID} v1.0.5] Cycle done! Synced ${Object.keys(summary).length}/${activeSymbols.length} symbols. BW: ${(estimatedBandwidthBytes / (1024 * 1024)).toFixed(0)} MB`);
+    console.log(`🎉 [Worker #${WORKER_ID} v1.0.4] Cycle done! Synced ${Object.keys(summary).length}/${activeSymbols.length} symbols. BW: ${(estimatedBandwidthBytes / (1024 * 1024)).toFixed(0)} MB`);
 
     // Only leader worker runs alert detection and daily 08:00 AM database cleanup
     if (isLeader) {
@@ -942,10 +939,10 @@ async function continuousScanLoop() {
         console.log(`⏱️ [W#${WORKER_ID}] Cycle #${cycleCount} completed in ${elapsed}s`);
 
         if (isMarketLive) {
-            // Maintain exact 20-second cadence from start of cycle to start of next cycle
-            const TARGET_CADENCE_MS = 20 * 1000;
-            const nextDelay = Math.max(2000, TARGET_CADENCE_MS - elapsedMs);
-            console.log(`⚡ [W#${WORKER_ID}] Market live — next cycle in ${(nextDelay / 1000).toFixed(1)}s (target 20s cadence)...`);
+            // Maintain exact 30-second cadence from start of cycle to start of next cycle
+            const TARGET_CADENCE_MS = 30 * 1000;
+            const nextDelay = Math.max(3000, TARGET_CADENCE_MS - elapsedMs);
+            console.log(`⚡ [W#${WORKER_ID}] Market live — next cycle in ${(nextDelay / 1000).toFixed(1)}s (target 30s cadence)...`);
             setTimeout(continuousScanLoop, nextDelay);
         } else {
             // Outside market hours: check every 5 minutes

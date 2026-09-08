@@ -70,13 +70,10 @@ const App = {
     setupVisibilityAPI() {
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
-                console.log('▶️ App active — instant Market Bias & data refresh');
-                this._stopPolling = false;
-                this.fetchData();
+                console.log('▶️ App active — instant Market Bias refresh');
                 this.fetchPcrSnapshotImmediate();
             } else {
-                console.log('⏸️ App backgrounded — pausing polling');
-                this._stopPolling = true;
+                console.log('⏸️ App backgrounded — snapshot polling sleeping to save bandwidth');
             }
         });
     },
@@ -98,6 +95,19 @@ const App = {
             const popup = document.getElementById('pcr-symbol-suggestions');
             if (wrapper && popup && !wrapper.contains(e.target)) {
                 popup.style.display = 'none';
+            }
+        });
+    },
+
+    setupVisibilityAPI() {
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                console.log('💤 Tab hidden, pausing polling...');
+                this._stopPolling = true;
+            } else {
+                console.log('✨ Tab visible, resuming polling...');
+                this._stopPolling = false;
+                this.fetchData(); // Immediate fetch on resume
             }
         });
     },
@@ -327,8 +337,8 @@ const App = {
         if (this._pcrAutoRefreshStarted) return;
         this._pcrAutoRefreshStarted = true;
 
-        // Continuous 12s snapshot polling for near-real-time Market Bias & Market Pulse
-        const SNAPSHOT_INTERVAL = 12 * 1000;
+        // Continuous 30s snapshot polling for near-real-time Market Bias & Market Pulse
+        const SNAPSHOT_INTERVAL = 30 * 1000;
         // Slower single-symbol chart history refresh every 2 minutes (when viewing PCR Analytics)
         const SINGLE_CHART_REFRESH_INTERVAL = 2 * 60 * 1000;
 

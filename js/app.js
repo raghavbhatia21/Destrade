@@ -4168,9 +4168,9 @@ const App = {
         let completed = 0;
         const total = symbols.length;
 
-        // Process in batches of 4 to prevent rate limiting (429)
-        for (let i = 0; i < total; i += 4) {
-            const batch = symbols.slice(i, i + 4);
+        // Process in batches of 10 for fast parallel scanning
+        for (let i = 0; i < total; i += 10) {
+            const batch = symbols.slice(i, i + 10);
             if (sStatus) sStatus.textContent = `Analyzing ${batch[0]} and others (${targetExpiryMode.toUpperCase()} expiry)...`;
 
             const promises = batch.map(async (sym) => {
@@ -4197,36 +4197,44 @@ const App = {
                     const peMaxDist = 1 - (finalMinOtm / 100);
                     const peMinDist = 1 - (finalMaxOtm / 100);
 
+                    const marginPromises = [];
+
                     for (const row of oi.data) {
                         const strike = row.strikePrice;
 
                         // CE Sell (Near OTM with user selected parameters & Daily OI Change > 0)
                         if (strike >= spot * ceMinDist && strike <= spot * ceMaxDist && row.CE && row.CE.lastPrice > 0 && (row.CE.openInterest || 0) > 0 && (row.CE.changeinOpenInterest || 0) > 0) {
                             const premiumValue = row.CE.lastPrice * lotSize;
-                            const estMargin = await this.calculateMargin(spot, strike, row.CE.lastPrice, 'CE', isIndex, lotSize, oi.currentExpiry || '', sym);
-
-                            const roi = (premiumValue / estMargin.total) * 100;
-                            if (roi > 0.5 && roi < 50) { // filter out absurd outliers
-                                sellCandidates.push({
-                                    symbol: sym, type: 'CE', strike, spot, premium: row.CE.lastPrice, lotSize,
-                                    margin: estMargin, value: premiumValue, roi, iv: row.CE.impliedVolatility || 0,
-                                    oiChg: row.CE.changeinOpenInterest, expiry: oi.currentExpiry || ''
-                                });
-                            }
+                            marginPromises.push(
+                                this.calculateMargin(spot, strike, row.CE.lastPrice, 'CE', isIndex, lotSize, oi.currentExpiry || '', sym)
+                                    .then(estMargin => {
+                                        const roi = (premiumValue / estMargin.total) * 100;
+                                        if (roi > 0.5 && roi < 50) {
+                                            sellCandidates.push({
+                                                symbol: sym, type: 'CE', strike, spot, premium: row.CE.lastPrice, lotSize,
+                                                margin: estMargin, value: premiumValue, roi, iv: row.CE.impliedVolatility || 0,
+                                                oiChg: row.CE.changeinOpenInterest, expiry: oi.currentExpiry || ''
+                                            });
+                                        }
+                                    }).catch(() => {})
+                            );
                         }
                         // PE Sell (Near OTM with user selected parameters & Daily OI Change > 0)
                         if (strike <= spot * peMaxDist && strike >= spot * peMinDist && row.PE && row.PE.lastPrice > 0 && (row.PE.openInterest || 0) > 0 && (row.PE.changeinOpenInterest || 0) > 0) {
                             const premiumValue = row.PE.lastPrice * lotSize;
-                            const estMargin = await this.calculateMargin(spot, strike, row.PE.lastPrice, 'PE', isIndex, lotSize, oi.currentExpiry || '', sym);
-
-                            const roi = (premiumValue / estMargin.total) * 100;
-                            if (roi > 0.5 && roi < 50) {
-                                sellCandidates.push({
-                                    symbol: sym, type: 'PE', strike, spot, premium: row.PE.lastPrice, lotSize,
-                                    margin: estMargin, value: premiumValue, roi, iv: row.PE.impliedVolatility || 0,
-                                    oiChg: row.PE.changeinOpenInterest, expiry: oi.currentExpiry || ''
-                                });
-                            }
+                            marginPromises.push(
+                                this.calculateMargin(spot, strike, row.PE.lastPrice, 'PE', isIndex, lotSize, oi.currentExpiry || '', sym)
+                                    .then(estMargin => {
+                                        const roi = (premiumValue / estMargin.total) * 100;
+                                        if (roi > 0.5 && roi < 50) {
+                                            sellCandidates.push({
+                                                symbol: sym, type: 'PE', strike, spot, premium: row.PE.lastPrice, lotSize,
+                                                margin: estMargin, value: premiumValue, roi, iv: row.PE.impliedVolatility || 0,
+                                                oiChg: row.PE.changeinOpenInterest, expiry: oi.currentExpiry || ''
+                                            });
+                                        }
+                                    }).catch(() => {})
+                            );
                         }
 
                         // Buy Logic: ATM options with active Price & Daily OI Change > 0
@@ -4254,6 +4262,10 @@ const App = {
                                 });
                             }
                         }
+                    }
+
+                    if (marginPromises.length > 0) {
+                        await Promise.all(marginPromises);
                     }
                 } catch (e) {
                     // Fail silently for bad scripts

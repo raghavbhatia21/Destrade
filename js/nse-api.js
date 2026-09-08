@@ -103,25 +103,11 @@ class NSEApi {
     async _fetchGroww(path) {
         const rawUrl = path.startsWith('http') ? path : `https://groww.in${path.startsWith('/') ? '' : '/'}${path}`;
 
-        // 1. Direct fetch (Preferred on mobile / Capacitor WebView — uses 0 Render bandwidth!)
-        if (this.isCapacitor) {
-            try {
-                const res = await fetch(rawUrl, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
-                if (res.ok) {
-                    const text = await res.text();
-                    if (text && !text.trim().startsWith('<')) {
-                        const data = JSON.parse(text);
-                        if (data && !data.error && !data.errorCode) return data;
-                    }
-                }
-            } catch (e) {}
-        }
-
-        // 2. Local Node Dev-Proxy (when running local server on desktop — uses 0 Render bandwidth!)
+        // 1. Local Node Dev-Proxy (when running local server on desktop)
         if (this.proxyUrl) {
             try {
                 const localUrl = `${this.proxyUrl}/api/proxy?url=${encodeURIComponent(rawUrl)}`;
-                const res = await fetch(localUrl, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+                const res = await fetch(localUrl, { cache: 'no-store', signal: AbortSignal.timeout(4000) });
                 if (res.ok) {
                     const text = await res.text();
                     if (text && !text.trim().startsWith('<')) {
@@ -132,10 +118,10 @@ class NSEApi {
             } catch (e) {}
         }
 
-        // 3. Cloud CORS Proxy (Primary for browser web without local proxy, or mobile fallback)
+        // 2. Cloud CORS Proxy (Fast & Reliable on mobile WebView & remote web)
         try {
             const cloudUrl = `https://destrade-market-worker.onrender.com/api/proxy?url=${encodeURIComponent(rawUrl)}`;
-            const res = await fetch(cloudUrl, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+            const res = await fetch(cloudUrl, { cache: 'no-store', signal: AbortSignal.timeout(7000) });
             if (res.ok) {
                 const text = await res.text();
                 if (text && !text.trim().startsWith('<')) {
@@ -1444,21 +1430,20 @@ class NSEApi {
             }
         }
         
+        // In-memory cache to make repetitive strike calculations instant (0ms)
+        if (!this._spanCache) this._spanCache = new Map();
+        const cacheKey = `${cleanSym}_${type}_${strike}_${lotSize}_${scrip}`;
+        if (this._spanCache.has(cacheKey)) {
+            return this._spanCache.get(cacheKey);
+        }
+
         const body = `action=calculate&exchange%5B%5D=NFO&product%5B%5D=OPT&scrip%5B%5D=${encodeURIComponent(scrip)}&option_type%5B%5D=${type}&strike_price%5B%5D=${strike}&qty%5B%5D=${lotSize}&trade%5B%5D=sell`;
 
-        // Multi-tier fetch strategy:
-        // 1. Local Node Dev-Proxy (when running local dev server on desktop)
-        // 2. Cloud Render worker proxy (primary for mobile phones & remote clients)
-        // 3. Direct Zerodha POST (for mobile WebView without CORS restrictions)
         const endpoints = [];
         if (this.proxyUrl) {
             endpoints.push(`${this.proxyUrl}/api/zerodha-margin`);
         }
-        if (this.isCapacitor) {
-            endpoints.push('https://zerodha.com/margin-calculator/SPAN/');
-        }
         endpoints.push('https://destrade-market-worker.onrender.com/api/zerodha-margin');
-        endpoints.push('https://zerodha.com/margin-calculator/SPAN/');
 
         for (const ep of endpoints) {
             try {
@@ -1466,22 +1451,22 @@ class NSEApi {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: body,
-                    signal: AbortSignal.timeout(6000)
+                    signal: AbortSignal.timeout(5000)
                 });
                 if (res.ok) {
                     const data = await res.json();
                     if (data && data.total && typeof data.total.total === 'number' && data.total.total > 0) {
-                        return {
+                        const result = {
                             span: data.total.span,
                             exposure: data.total.exposure,
                             total: data.total.total,
                             modelName: 'Zerodha Live SPAN'
                         };
+                        this._spanCache.set(cacheKey, result);
+                        return result;
                     }
                 }
-            } catch (e) {
-                // Try next endpoint in pipeline
-            }
+            } catch (e) {}
         }
         return null;
     }

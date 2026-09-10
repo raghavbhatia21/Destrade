@@ -4490,12 +4490,11 @@ const App = {
                             const hedgeStrike = bestHedge ? bestHedge.strike : null;
                             const hedgePremium = bestHedge ? bestHedge.premium : 0;
 
-                            // Use calibrated Zerodha formula during scan for blazing fast 0ms screening
                             marginPromises.push(
-                                this.calculateMargin(spot, strike, row.CE.lastPrice, 'CE', isIndex, lotSize, oi.currentExpiry || '', sym, 'zerodha', hedgeStrike, hedgePremium)
+                                this.calculateMargin(spot, strike, row.CE.lastPrice, 'CE', isIndex, lotSize, oi.currentExpiry || '', sym, this.state.marginModel, hedgeStrike, hedgePremium)
                                     .then(estMargin => {
                                         const roi = (estMargin.premiumReceivable / estMargin.total) * 100;
-                                        if (roi > 0.5 && roi <= 15.0) {
+                                        if (roi > 0.5) {
                                             sellCandidates.push({
                                                 symbol: sym, type: 'CE', strike, spot, premium: row.CE.lastPrice, lotSize,
                                                 margin: estMargin, value: estMargin.premiumReceivable, roi, iv: row.CE.impliedVolatility || 0,
@@ -4517,12 +4516,11 @@ const App = {
                             const hedgeStrike = bestHedge ? bestHedge.strike : null;
                             const hedgePremium = bestHedge ? bestHedge.premium : 0;
 
-                            // Use calibrated Zerodha formula during scan for blazing fast 0ms screening
                             marginPromises.push(
-                                this.calculateMargin(spot, strike, row.PE.lastPrice, 'PE', isIndex, lotSize, oi.currentExpiry || '', sym, 'zerodha', hedgeStrike, hedgePremium)
+                                this.calculateMargin(spot, strike, row.PE.lastPrice, 'PE', isIndex, lotSize, oi.currentExpiry || '', sym, this.state.marginModel, hedgeStrike, hedgePremium)
                                     .then(estMargin => {
                                         const roi = (estMargin.premiumReceivable / estMargin.total) * 100;
-                                        if (roi > 0.5 && roi <= 15.0) {
+                                        if (roi > 0.5) {
                                             sellCandidates.push({
                                                 symbol: sym, type: 'PE', strike, spot, premium: row.PE.lastPrice, lotSize,
                                                 margin: estMargin, value: estMargin.premiumReceivable, roi, iv: row.PE.impliedVolatility || 0,
@@ -4579,30 +4577,7 @@ const App = {
             if (pText) pText.textContent = `${completed} / ${total}`;
             if (pBar) pBar.style.width = `${(completed / total) * 100}%`;
 
-            await new Promise(r => setTimeout(r, 60)); // Fast safe buffer
-        }
-
-        // Fast parallel live Zerodha SPAN enrichment for top displayed candidates only
-        if (this.state.marginModel === 'zerodha_live' && window.nseApi && window.nseApi.fetchZerodhaSpanMargin) {
-            const topCE = sellCandidates.filter(d => d.type === 'CE').sort((a, b) => b.roi - a.roi).slice(0, 10);
-            const topPE = sellCandidates.filter(d => d.type === 'PE').sort((a, b) => b.roi - a.roi).slice(0, 10);
-            const topToEnrich = [...topCE, ...topPE];
-            if (sStatus) sStatus.textContent = "Syncing live Zerodha SPAN margins...";
-
-            await Promise.allSettled(topToEnrich.map(async (c) => {
-                try {
-                    const isIdx = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'].some(idx => c.symbol.includes(idx));
-                    const live = await this.calculateMargin(c.spot, c.strike, c.premium, c.type, isIdx, c.lotSize, c.expiry, c.symbol, 'zerodha_live', c.hedgeStrike, c.hedgePremium);
-                    if (live && live.total) {
-                        c.margin = live;
-                        c.value = live.premiumReceivable;
-                        c.roi = (live.premiumReceivable / live.total) * 100;
-                        c.nakedMargin = live.nakedMargin || live.total;
-                        c.marginSaved = live.marginSaved || 0;
-                        c.marginSavedPercent = live.marginSavedPercent || 0;
-                    }
-                } catch (e) {}
-            }));
+            await new Promise(r => setTimeout(r, 120)); // Rate-limit safe buffer
         }
 
         this.state.scannerCache = {

@@ -4076,21 +4076,33 @@ const App = {
         if (model === 'zerodha_live' && symbol && window.nseApi && window.nseApi.fetchZerodhaSpanMargin) {
             const liveMargin = await window.nseApi.fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiryDate, hedgeStrike);
             if (liveMargin) {
+                const actualLot = liveMargin.lotSize || lotSize;
+                let actualNakedMargin = nakedTotalMargin;
+                if (hedgeStrike) {
+                    const liveNaked = await window.nseApi.fetchZerodhaSpanMargin(symbol, strike, type, actualLot, expiryDate, null);
+                    if (liveNaked && liveNaked.total > 0) actualNakedMargin = liveNaked.total;
+                } else {
+                    actualNakedMargin = liveMargin.total;
+                }
+
                 const netPremium = Math.max(0.05, premium - (hedgePremium || 0));
-                const netCredit = netPremium * lotSize;
-                const marginSaved = hedgeStrike ? Math.max(0, nakedTotalMargin - liveMargin.total) : 0;
-                const marginSavedPercent = (hedgeStrike && nakedTotalMargin > 0) ? Math.round((marginSaved / nakedTotalMargin) * 100) : 0;
+                const netCredit = netPremium * actualLot;
+                const marginSaved = hedgeStrike ? Math.max(0, actualNakedMargin - liveMargin.total) : 0;
+                const marginSavedPercent = (hedgeStrike && actualNakedMargin > 0) ? Math.round((marginSaved / actualNakedMargin) * 100) : 0;
 
                 return {
                     span: liveMargin.span,
                     exposure: liveMargin.exposure,
                     total: liveMargin.total,
-                    nakedMargin: nakedTotalMargin,
+                    nakedMargin: actualNakedMargin,
                     marginSaved: marginSaved,
                     marginSavedPercent: marginSavedPercent,
                     premiumReceivable: netCredit,
-                    grossPremium: premium * lotSize,
-                    hedgeCost: (hedgePremium || 0) * lotSize,
+                    grossPremium: premium * actualLot,
+                    hedgeCost: (hedgePremium || 0) * actualLot,
+                    lotSize: actualLot,
+                    scrip: liveMargin.scrip,
+                    exchange: liveMargin.exchange,
                     modelName: 'Zerodha Live SPAN'
                 };
             }
@@ -4236,18 +4248,15 @@ const App = {
             c.estRoi = (c.netP * lotSize / estimatedBasketMargin) * 100;
         }
 
-        // Optimize for: highest yield up to 15% ROI with lowest capital investment
-        const validRoiCandidates = candidates.filter(c => c.estRoi <= 15.0);
-        const pool = validRoiCandidates.length > 0 ? validRoiCandidates : candidates;
-
-        for (const c of pool) {
+        // Optimize for: highest yield with lowest capital investment and best liquidity (no artificial ROI cap)
+        for (const c of candidates) {
             const capitalFactor = 100000 / (c.estimatedBasketMargin + 1000);
             const oiFactor = Math.log10(c.oi + 1);
             c.score = (c.estRoi * 25) + (capitalFactor * 20) + (oiFactor * 3);
         }
 
-        pool.sort((a, b) => b.score - a.score);
-        return pool[0];
+        candidates.sort((a, b) => b.score - a.score);
+        return candidates[0];
     },
 
     changeMarginModel(model) {

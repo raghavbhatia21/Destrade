@@ -1053,47 +1053,48 @@ class NSEApi {
         const mapping = {
             "360ONE": 500, "ABB": 125, "ABCAPITAL": 3100, "ADANIENSOL": 675, "ADANIENT": 309,
             "ADANIGREEN": 600, "ADANIPORTS": 475, "ADANIPOWER": 3550, "ALKEM": 125, "AMBER": 100,
-            "AMBUJACEM": 1050, "ANGELONE": 2500, "APLAPOLLO": 350, "APOLLOHOSP": 125, "ASHOKLEY": 5000,
-            "ASIANPAINT": 250, "ASTRAL": 425, "AUBANK": 1000, "AUROPHARMA": 550, "AXISBANK": 625,
-            "BAJAJ-AUTO": 75, "BAJAJFINSV": 250, "BAJAJHLDNG": 50, "BAJFINANCE": 750, "BANDHANBNK": 3600,
-            "BANKBARODA": 2925, "BANKINDIA": 5200, "BANKNIFTY": 30, "BDL": 350, "BEL": 1425,
-            "BHARATFORG": 500, "BHARTIARTL": 475, "BHEL": 2625, "BIOCON": 2500, "BLUESTARCO": 325,
-            "BOSCHLTD": 25, "BPCL": 1975, "BRITANNIA": 125, "BSE": 375, "CAMS": 750,
-            "CANBK": 6750, "CDSL": 475, "CGPOWER": 850, "CHOLAFIN": 625, "CIPLA": 375,
-            "COALINDIA": 1350, "COCHINSHIP": 400, "COFORGE": 375, "COLPAL": 225, "CONCOR": 1250,
-            "CROMPTON": 1800, "CUMMINSIND": 200, "DABUR": 1250, "DELHIVERY": 2075,
-            "DIVISLAB": 100, "DIXON": 50, "DLF": 825, "DMART": 150, "DRREDDY": 625,
-            "EICHERMOT": 100, "ETERNAL": 2425, "FEDERALBNK": 5000, "FINNIFTY": 60,
-            "FORCEMOT": 25, "FORTIS": 775, "GAIL": 3150, "GLENMARK": 375, "GMRAIRPORT": 6975,
-            "GODFRYPHLP": 275, "GODREJCP": 500, "GODREJPROP": 275, "GRASIM": 250, "HAL": 150,
-            "HAVELLS": 500, "HCLTECH": 350, "HDFCAMC": 300, "HDFCBANK": 550, "HDFCLIFE": 1100,
+            "AMBUJACEM": 1200, "ANGELONE": 2500, "APLAPOLLO": 350, "APOLLOHOSP": 125, "ASHOKLEY": 5000,
+            "ASIANPAINT": 250, "ASTRAL": 425, "ATHERENERG": 375, "AUBANK": 1000, "AUROPHARMA": 550,
+            "AXISBANK": 625, "BAJAJ-AUTO": 75, "BAJAJFINSV": 300, "BAJAJHLDNG": 75, "BAJFINANCE": 750,
+            "BANDHANBNK": 3600, "BANKBARODA": 2925, "BANKINDIA": 5200, "BANKNIFTY": 30, "BDL": 425,
+            "BEL": 1425, "BHARATFORG": 500, "BHARTIARTL": 475, "BHEL": 2625, "BIOCON": 2500,
+            "BLUESTARCO": 325, "BOSCHLTD": 25, "BPCL": 1975, "BRITANNIA": 125, "BSE": 200,
+            "CAMS": 825, "CANBK": 6750, "CDSL": 475, "CGPOWER": 850, "CHOLAFIN": 625,
+            "CIPLA": 425, "COALINDIA": 1350, "COCHINSHIP": 400, "COFORGE": 475, "COLPAL": 275,
+            "CONCOR": 1250, "CROMPTON": 2150, "CUMMINSIND": 200, "DABUR": 1250, "DELHIVERY": 2075,
+            "DIVISLAB": 100, "DIXON": 50, "DLF": 950, "DMART": 150, "DRREDDY": 625,
+            "EICHERMOT": 100, "ETERNAL": 2425, "FEDERALBNK": 2500, "FINNIFTY": 60, "FORCEMOT": 25,
+            "FORTIS": 775, "GAIL": 3550, "GLENMARK": 375, "GMRAIRPORT": 6975, "GODFRYPHLP": 275,
+            "GODREJCP": 500, "GODREJPROP": 325, "GRASIM": 250, "GVT&D": 125, "HAL": 150,
+            "HAVELLS": 500, "HCLTECH": 400, "HDFCAMC": 300, "HDFCBANK": 650, "HDFCLIFE": 1100,
             "HEROMOTOCO": 150, "HINDALCO": 700, "HINDPETRO": 2025, "HINDUNILVR": 300, "HINDZINC": 1225,
-            "HYUNDAI": 275, "ICICIBANK": 700, "ICICIGI": 325, "ICICIPRULI": 925,
-            "IDEA": 71475, "IDFCFIRSTB": 9275, "IEX": 3750, "INDHOTEL": 1000, "INDIANB": 1000,
-            "INDIGO": 150, "INDUSINDBK": 700, "INDUSTOWER": 1700, "INFY": 400, "INOXWIND": 3575,
-            "IOC": 4875, "IREDA": 3450, "IRFC": 4250, "ITC": 1600, "JINDALSTEL": 625,
-            "JIOFIN": 2350, "JSWENERGY": 1000, "JSWSTEEL": 675, "JUBLFOOD": 1250, "KALYANKJIL": 1175,
-            "KAYNES": 100, "KEI": 175, "KFINTECH": 500, "KOTAKBANK": 2000, "KPITTECH": 425,
-            "LAURUSLABS": 850, "LICHSGFIN": 1000, "LICI": 700, "LODHA": 450, "LT": 175,
-            "LTF": 2250, "LTM": 150, "LUPIN": 425, "M&M": 200, "MANAPPURAM": 3000,
-            "MANKIND": 225, "MARICO": 1200, "MARUTI": 50, "MAXHEALTH": 525, "MAZDOCK": 200,
-            "MCX": 625, "MFSL": 400, "MIDCPNIFTY": 120, "MOTHERSON": 6150, "MOTILALOFS": 775,
-            "MPHASIS": 275, "MUTHOOTFIN": 275, "NAM-INDIA": 625, "NATIONALUM": 3750, "NAUKRI": 375,
-            "NBCC": 6500, "NESTLEIND": 500, "NHPC": 6400, "NIFTY": 65, "NMDC": 6750,
-            "NTPC": 1500, "NYKAA": 3125, "OBEROIRLTY": 350, "OFSS": 75,
-            "OIL": 1400, "ONGC": 2250, "PAGEIND": 15, "PATANJALI": 900, "PAYTM": 725,
-            "PERSISTENT": 100, "PETRONET": 1900, "PFC": 1300, "PGEL": 950, "PHOENIXLTD": 350,
-            "PIDILITIND": 500, "PIIND": 175, "PNB": 8000, "PNBHOUSING": 650, "POLICYBZR": 350,
-            "POLYCAB": 125, "POWERGRID": 1900, "POWERINDIA": 50, "PREMIERENE": 575,
-            "PRESTIGE": 450, "RBLBANK": 3175, "RECLTD": 1400, "RELIANCE": 500, "RVNL": 1525,
-            "SAIL": 4700, "SBICARD": 800, "SBILIFE": 375, "SBIN": 750,
-            "SHREECEM": 25, "SHRIRAMFIN": 825, "SIEMENS": 175, "SOLARINDS": 50, "SONACOMS": 1225,
-            "SRF": 200, "SUNPHARMA": 350, "SUPREMEIND": 175, "SUZLON": 9025, "SWIGGY": 1300,
-            "TATACONSUM": 550, "TATAELXSI": 100, "TATAPOWER": 1450, "TATASTEEL": 5500, "TCS": 175, "TECHM": 600, "TIINDIA": 200, "TITAN": 175, "TMPV": 800,
-            "TORNTPHARM": 250, "TRENT": 100, "TVSMOTOR": 175, "ULTRACEMCO": 50,
-            "UNIONBANK": 4425, "UNITDSPR": 400, "UNOMINDA": 550, "UPL": 1355, "VBL": 1125,
+            "HYUNDAI": 275, "ICICIBANK": 700, "ICICIGI": 325, "ICICIPRULI": 925, "IDEA": 71475,
+            "IDFCFIRSTB": 9275, "IEX": 4350, "INDHOTEL": 1000, "INDIANB": 1000, "INDIGO": 150,
+            "INDUSINDBK": 700, "INDUSTOWER": 1700, "INFY": 400, "INOXWIND": 6400, "IOC": 4875,
+            "IREDA": 4525, "IRFC": 5425, "ITC": 1725, "JINDALSTEL": 625, "JIOFIN": 2350,
+            "JSWENERGY": 1075, "JSWSTEEL": 675, "JUBLFOOD": 1250, "KALYANKJIL": 1350, "KAYNES": 150,
+            "KEI": 175, "KFINTECH": 575, "KOTAKBANK": 2000, "KPITTECH": 775, "LAURUSLABS": 850,
+            "LICHSGFIN": 1000, "LICI": 1400, "LODHA": 625, "LT": 175, "LTF": 2250,
+            "LTM": 150, "LUPIN": 425, "M&M": 200, "MAHABANK": 6500, "MANAPPURAM": 3000,
+            "MANKIND": 250, "MARICO": 1200, "MARUTI": 50, "MAXHEALTH": 525, "MAZDOCK": 225,
+            "MCX": 225, "MFSL": 400, "MIDCPNIFTY": 120, "MOTHERSON": 6150, "MOTILALOFS": 775,
+            "MPHASIS": 275, "MUTHOOTFIN": 275, "NAM-INDIA": 625, "NATIONALUM": 1875, "NAUKRI": 550,
+            "NBCC": 6500, "NESTLEIND": 500, "NHPC": 6950, "NIFTY": 65, "NIFTYFPI": 1100,
+            "NIFTYNXT50": 25, "NMDC": 6750, "NTPC": 1500, "NYKAA": 3125, "OBEROIRLTY": 350,
+            "OFSS": 100, "OIL": 1400, "ONGC": 2250, "PAGEIND": 20, "PATANJALI": 1075,
+            "PAYTM": 725, "PERSISTENT": 125, "PETRONET": 1900, "PFC": 1300, "PGEL": 950,
+            "PHOENIXLTD": 350, "PIDILITIND": 500, "PIIND": 175, "PNB": 8000, "PNBHOUSING": 650,
+            "POLICYBZR": 350, "POLYCAB": 125, "POWERGRID": 1900, "POWERINDIA": 25, "PREMIERENE": 650,
+            "PRESTIGE": 450, "RADICO": 150, "RBLBANK": 3175, "RECLTD": 1575, "RELIANCE": 500,
+            "RVNL": 1925, "SAGILITY": 12000, "SAIL": 4700, "SBICARD": 800, "SBILIFE": 375,
+            "SBIN": 750, "SENSEX": 20, "SHREECEM": 25, "SHRIRAMFIN": 825, "SIEMENS": 175,
+            "SOLARINDS": 50, "SONACOMS": 1225, "SRF": 200, "SUNPHARMA": 350, "SUPREMEIND": 175,
+            "SUZLON": 12700, "SWIGGY": 1825, "TATACONSUM": 550, "TATAELXSI": 125, "TATAPOWER": 1450,
+            "TATASTEEL": 2750, "TCS": 225, "TECHM": 600, "TIINDIA": 200, "TITAN": 175,
+            "TMPV": 1600, "TORNTPHARM": 125, "TRENT": 225, "TVSMOTOR": 175, "ULTRACEMCO": 50,
+            "UNIONBANK": 4425, "UNITDSPR": 400, "UNOMINDA": 550, "UPL": 1355, "VBL": 1275,
             "VEDL": 1150, "VMM": 4850, "VOLTAS": 375, "WAAREEENER": 175, "WIPRO": 3000,
-            "YESBANK": 31100, "ZYDUSLIFE": 900, "NIFTYNXT50": 25
+            "YESBANK": 31100, "ZYDUSLIFE": 900
         };
 
         // Exact match check
@@ -1389,58 +1390,73 @@ class NSEApi {
         };
     }
 
-    async fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiryDate, hedgeStrike = null) {
-        const cleanSym = symbol.replace(/[^A-Z0-9&\-]/g, '');
-        
+    _resolveZerodhaScripAndLot(symbol, expiryDate) {
+        const cleanSym = symbol.toUpperCase().replace(/[^A-Z0-9&\-]/g, '');
+        const actualLot = typeof this._getLotSize === 'function' ? this._getLotSize(cleanSym) : 100;
+
         const now = new Date();
         const curYY = String(now.getFullYear()).slice(2);
         const curMonths = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-        const curMMM = curMonths[now.getMonth()];
-        let scrip = `${cleanSym}${curYY}${curMMM}`; // dynamic current month fallback
-        
+        let mmm = curMonths[now.getMonth()];
+        let dd = '';
+
         if (expiryDate && expiryDate.length >= 7) {
             const parts = expiryDate.split('-');
             if (parts.length === 3) {
-                const yearFull = parts[0];
-                const yy = yearFull.slice(2);
-                const mm = parts[1];
-                const dd = parts[2];
-
-                const monthIdx = parseInt(mm) - 1;
-                const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-                
-                const isIndex = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX'].some(idx => cleanSym.includes(idx));
-                
-                const expiryDateObj = new Date(yearFull, monthIdx, parseInt(dd));
-                const nextWeekDateObj = new Date(expiryDateObj.getTime() + 7 * 24 * 60 * 60 * 1000);
-                const isMonthly = !isIndex || (expiryDateObj.getMonth() !== nextWeekDateObj.getMonth());
-
-                if (isMonthly) {
-                    const mmm = months[monthIdx] || curMMM;
-                    scrip = `${cleanSym}${yy}${mmm}`;
-                } else {
-                    let mChar = String(monthIdx + 1);
-                    if (mChar === '10') mChar = 'O';
-                    else if (mChar === '11') mChar = 'N';
-                    else if (mChar === '12') mChar = 'D';
-                    
-                    const dChar = dd.padStart(2, '0');
-                    scrip = `${cleanSym}${yy}${mChar}${dChar}`;
-                }
+                const mIdx = parseInt(parts[1], 10) - 1;
+                if (mIdx >= 0 && mIdx < 12) mmm = curMonths[mIdx];
+                dd = parts[2].padStart(2, '0');
             }
         }
+
+        let scrip = `${cleanSym}${curYY}${mmm}`;
+
+        if (cleanSym === 'NIFTY') {
+            const niftyWeeklyMap = {
+                '15': `NIFTY${curYY}915`,
+                '22': `NIFTY${curYY}922`,
+                '29': `NIFTY${curYY}SEP`,
+                '06': `NIFTY${curYY}O06`,
+                '13': `NIFTY${curYY}O13`,
+                '27': `NIFTY${curYY}OCT`,
+                '23': `NIFTY${curYY}NOV`
+            };
+            if (dd && niftyWeeklyMap[dd]) scrip = niftyWeeklyMap[dd];
+        } else if (cleanSym === 'SENSEX') {
+            const sensexWeeklyMap = {
+                '10': `SENSEX${curYY}910`,
+                '17': `SENSEX${curYY}917`,
+                '01': `SENSEX${curYY}O01`,
+                '08': `SENSEX${curYY}O08`,
+                '15': `SENSEX${curYY}O15`,
+                '22': `SENSEX${curYY}O22`
+            };
+            if (dd && sensexWeeklyMap[dd]) scrip = sensexWeeklyMap[dd];
+        }
+        // BANKNIFTY, FINNIFTY, MIDCPNIFTY and all stock F&O use monthly contracts on Zerodha SPAN
+
+        return { scrip, lotSize: actualLot };
+    }
+
+    async fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiryDate, hedgeStrike = null) {
+        const cleanSym = symbol.toUpperCase().replace(/[^A-Z0-9&\-]/g, '');
+        const { scrip, lotSize: resolvedLot } = this._resolveZerodhaScripAndLot(cleanSym, expiryDate);
         
+        // Ensure quantity is an exact valid multiple of Zerodha lot size
+        const effLot = resolvedLot || lotSize || 100;
+        const qty = Math.max(effLot, Math.ceil((lotSize || effLot) / effLot) * effLot);
+
         // In-memory cache to make repetitive strike calculations instant (0ms)
         if (!this._spanCache) this._spanCache = new Map();
-        const cacheKey = `${cleanSym}_${type}_${strike}_${hedgeStrike || 'naked'}_${lotSize}_${scrip}`;
+        const cacheKey = `${cleanSym}_${type}_${strike}_${hedgeStrike || 'naked'}_${qty}_${scrip}`;
         if (this._spanCache.has(cacheKey)) {
             return this._spanCache.get(cacheKey);
         }
 
-        let body = `action=calculate&exchange%5B%5D=NFO&product%5B%5D=OPT&scrip%5B%5D=${encodeURIComponent(scrip)}&option_type%5B%5D=${type}&strike_price%5B%5D=${strike}&qty%5B%5D=${lotSize}&trade%5B%5D=sell`;
+        let body = `action=calculate&exchange%5B%5D=NFO&product%5B%5D=OPT&scrip%5B%5D=${encodeURIComponent(scrip)}&option_type%5B%5D=${type}&strike_price%5B%5D=${strike}&qty%5B%5D=${qty}&trade%5B%5D=sell`;
 
         if (hedgeStrike) {
-            body += `&exchange%5B%5D=NFO&product%5B%5D=OPT&scrip%5B%5D=${encodeURIComponent(scrip)}&option_type%5B%5D=${type}&strike_price%5B%5D=${hedgeStrike}&qty%5B%5D=${lotSize}&trade%5B%5D=buy`;
+            body += `&exchange%5B%5D=NFO&product%5B%5D=OPT&scrip%5B%5D=${encodeURIComponent(scrip)}&option_type%5B%5D=${type}&strike_price%5B%5D=${hedgeStrike}&qty%5B%5D=${qty}&trade%5B%5D=buy`;
         }
 
         const endpoints = [];
@@ -1455,7 +1471,7 @@ class NSEApi {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: body,
-                    signal: AbortSignal.timeout(5000)
+                    signal: AbortSignal.timeout(12000)
                 });
                 if (res.ok) {
                     const data = await res.json();

@@ -1004,7 +1004,7 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // Zerodha SPAN Calculator Proxy
+    // Zerodha SPAN Calculator Proxy with In-Memory Response Caching
     if (req.url.startsWith('/api/zerodha-margin')) {
         if (req.method === 'POST') {
             let body = '';
@@ -1012,6 +1012,21 @@ const server = http.createServer(async (req, res) => {
                 body += chunk.toString();
             });
             req.on('end', () => {
+                // Return cached response instantly (0ms)
+                if (!global._spanProxyCache) global._spanProxyCache = new Map();
+                const cached = global._spanProxyCache.get(body);
+                if (cached && (Date.now() - cached.time < 2 * 60 * 60 * 1000)) {
+                    res.writeHead(200, {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                        'Access-Control-Allow-Headers': '*',
+                        'X-Span-Cache': 'HIT'
+                    });
+                    res.end(cached.data);
+                    return;
+                }
+
                 const postReq = https.request({
                     hostname: 'zerodha.com',
                     path: '/margin-calculator/SPAN/',
@@ -1022,13 +1037,20 @@ const server = http.createServer(async (req, res) => {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
                     }
                 }, (postRes) => {
-                    res.writeHead(postRes.statusCode, {
-                        'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*',
-                        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-                        'Access-Control-Allow-Headers': '*'
+                    let resBody = '';
+                    postRes.on('data', c => resBody += c);
+                    postRes.on('end', () => {
+                        if (postRes.statusCode === 200 && resBody.includes('"total"')) {
+                            global._spanProxyCache.set(body, { data: resBody, time: Date.now() });
+                        }
+                        res.writeHead(postRes.statusCode, {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*',
+                            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                            'Access-Control-Allow-Headers': '*'
+                        });
+                        res.end(resBody);
                     });
-                    postRes.pipe(res);
                 });
                 postReq.on('error', (e) => {
                     res.writeHead(500, {
@@ -1037,7 +1059,7 @@ const server = http.createServer(async (req, res) => {
                     });
                     res.end(JSON.stringify({ error: e.message }));
                 });
-                postReq.setTimeout(12000, () => {
+                postReq.setTimeout(15000, () => {
                     postReq.destroy();
                     res.writeHead(504, {
                         'Content-Type': 'application/json',

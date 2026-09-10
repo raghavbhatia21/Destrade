@@ -249,16 +249,14 @@ class NSEApi {
         const growwGainersEp = '/v1/api/stocks_fo_data/v1/live-aggregations/explore/market_trends/instrument/STOCKS?exchange=NSE&interval=ONE_DAY&limit=300&marketTrendFactor=PRICE&type=GAINERS';
         const growwLosersEp = '/v1/api/stocks_fo_data/v1/live-aggregations/explore/market_trends/instrument/STOCKS?exchange=NSE&interval=ONE_DAY&limit=300&marketTrendFactor=PRICE&type=LOSERS';
 
-        const runNse = !!this.proxyUrl;
-
-        const [growwGainers, growwLosers, gainersData, loosersData, oiData, underData] = await Promise.all([
+        const [growwGainers, growwLosers] = await Promise.all([
             this._fetchGroww(growwGainersEp).catch(() => null),
-            this._fetchGroww(growwLosersEp).catch(() => null),
-            runNse ? this._fetch('/live-analysis-variations?index=gainers').catch(() => null) : Promise.resolve(null),
-            runNse ? this._fetch('/live-analysis-variations?index=loosers').catch(() => null) : Promise.resolve(null),
-            runNse ? this._fetch('/live-analysis-oi-spurts-underlyings').catch(() => null) : Promise.resolve(null),
-            runNse ? this._fetch('/underlying-information').catch(() => null) : Promise.resolve(null)
+            this._fetchGroww(growwLosersEp).catch(() => null)
         ]);
+        const gainersData = null;
+        const loosersData = null;
+        const oiData = null;
+        const underData = null;
 
         const stockMap = new Map();
         const discovered = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];

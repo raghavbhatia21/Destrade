@@ -1440,23 +1440,19 @@ class NSEApi {
 
     async fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiryDate, hedgeStrike = null) {
         const cleanSym = symbol.toUpperCase().replace(/[^A-Z0-9&\-]/g, '');
-        const { scrip, lotSize: resolvedLot } = this._resolveZerodhaScripAndLot(cleanSym, expiryDate);
+        const { scrip } = this._resolveZerodhaScripAndLot(cleanSym, expiryDate);
         
-        // Ensure quantity is an exact valid multiple of Zerodha lot size
-        const effLot = resolvedLot || lotSize || 100;
-        const qty = Math.max(effLot, Math.ceil((lotSize || effLot) / effLot) * effLot);
-
         // In-memory cache to make repetitive strike calculations instant (0ms)
         if (!this._spanCache) this._spanCache = new Map();
-        const cacheKey = `${cleanSym}_${type}_${strike}_${hedgeStrike || 'naked'}_${qty}_${scrip}`;
+        const cacheKey = `${cleanSym}_${type}_${strike}_${hedgeStrike || 'naked'}_${lotSize}_${scrip}`;
         if (this._spanCache.has(cacheKey)) {
             return this._spanCache.get(cacheKey);
         }
 
-        let body = `action=calculate&exchange%5B%5D=NFO&product%5B%5D=OPT&scrip%5B%5D=${encodeURIComponent(scrip)}&option_type%5B%5D=${type}&strike_price%5B%5D=${strike}&qty%5B%5D=${qty}&trade%5B%5D=sell`;
+        let body = `action=calculate&exchange%5B%5D=NFO&product%5B%5D=OPT&scrip%5B%5D=${encodeURIComponent(scrip)}&option_type%5B%5D=${type}&strike_price%5B%5D=${strike}&qty%5B%5D=${lotSize}&trade%5B%5D=sell`;
 
         if (hedgeStrike) {
-            body += `&exchange%5B%5D=NFO&product%5B%5D=OPT&scrip%5B%5D=${encodeURIComponent(scrip)}&option_type%5B%5D=${type}&strike_price%5B%5D=${hedgeStrike}&qty%5B%5D=${qty}&trade%5B%5D=buy`;
+            body += `&exchange%5B%5D=NFO&product%5B%5D=OPT&scrip%5B%5D=${encodeURIComponent(scrip)}&option_type%5B%5D=${type}&strike_price%5B%5D=${hedgeStrike}&qty%5B%5D=${lotSize}&trade%5B%5D=buy`;
         }
 
         const endpoints = [];

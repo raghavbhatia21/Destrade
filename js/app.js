@@ -4055,8 +4055,8 @@ const App = {
 
     async calculateMargin(spot, strike, premium, type, isIndex, lotSize, expiryDate = '', symbol = '', model = this.state.marginModel || 'zerodha_live', hedgeStrike = null, hedgePremium = 0) {
         const contractValue = spot * lotSize;
-        const spanPercent = isIndex ? 0.055 : 0.15; // Realistic NSE SPAN: ~5.5% index, ~15% stock
-        const expPercent = isIndex ? 0.020 : 0.035; // Realistic Exposure: 2.0% index, 3.5% stock
+        const spanPercent = isIndex ? 0.12 : 0.20;
+        const expPercent = isIndex ? 0.02 : 0.035;
 
         const spanBase = contractValue * spanPercent;
         const expMargin = contractValue * expPercent;
@@ -4065,8 +4065,8 @@ const App = {
         if (type === 'CE' && strike > spot) otmAmount = (strike - spot) * lotSize;
         else if (type === 'PE' && strike < spot) otmAmount = (spot - strike) * lotSize;
 
-        const floorSpan = contractValue * (isIndex ? 0.035 : 0.07);
-        const finalSpan = Math.max(floorSpan, spanBase - (otmAmount * 0.3));
+        const floorSpan = contractValue * (isIndex ? 0.05 : 0.08);
+        const finalSpan = Math.max(floorSpan, spanBase - (otmAmount * 0.5));
 
         // Zerodha alternative option margin rule: (strike + premium) * lotSize * 0.025
         const altMargin = (strike + premium) * lotSize * 0.025;
@@ -4076,25 +4076,16 @@ const App = {
         if (model === 'zerodha_live' && symbol && window.nseApi && window.nseApi.fetchZerodhaSpanMargin) {
             const liveMargin = await window.nseApi.fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiryDate, hedgeStrike);
             if (liveMargin) {
-                let nakedMarginVal = nakedTotalMargin;
-                if (hedgeStrike) {
-                    try {
-                        const nakedLive = await window.nseApi.fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiryDate, null);
-                        if (nakedLive && nakedLive.total) {
-                            nakedMarginVal = nakedLive.total;
-                        }
-                    } catch (e) {}
-                }
                 const netPremium = Math.max(0.05, premium - (hedgePremium || 0));
                 const netCredit = netPremium * lotSize;
-                const marginSaved = hedgeStrike ? Math.max(0, nakedMarginVal - liveMargin.total) : 0;
-                const marginSavedPercent = (hedgeStrike && nakedMarginVal > 0) ? Math.round((marginSaved / nakedMarginVal) * 100) : 0;
+                const marginSaved = hedgeStrike ? Math.max(0, nakedTotalMargin - liveMargin.total) : 0;
+                const marginSavedPercent = (hedgeStrike && nakedTotalMargin > 0) ? Math.round((marginSaved / nakedTotalMargin) * 100) : 0;
 
                 return {
                     span: liveMargin.span,
                     exposure: liveMargin.exposure,
                     total: liveMargin.total,
-                    nakedMargin: nakedMarginVal,
+                    nakedMargin: nakedTotalMargin,
                     marginSaved: marginSaved,
                     marginSavedPercent: marginSavedPercent,
                     premiumReceivable: netCredit,
@@ -4105,15 +4096,15 @@ const App = {
             }
         }
 
-        // Formula Models (or fallback if live SPAN fails/offline)
+        // Formula Models (or fallback if live SPAN fails)
         if (model === 'zerodha_live' || model === 'zerodha') {
             if (hedgeStrike) {
-                // Defined risk spread formula: margin bounded by spread width and fractional exposure
+                // Defined risk spread formula: margin is bounded by spread width + fractional exposure
                 const spreadDistance = Math.abs(strike - hedgeStrike);
                 const spreadRisk = spreadDistance * lotSize;
-                const hedgedSpan = Math.min(finalSpan * 0.35, Math.max(spreadRisk * 0.70, contractValue * 0.015));
-                const hedgedExposure = expMargin * 0.35;
-                const hedgedTotal = Math.min(nakedTotalMargin * 0.45, Math.max(hedgedSpan + hedgedExposure, spreadRisk * 0.85));
+                const hedgedSpan = Math.min(finalSpan * 0.40, Math.max(spreadRisk * 0.75, contractValue * 0.025));
+                const hedgedExposure = expMargin * 0.40;
+                const hedgedTotal = Math.max(hedgedSpan + hedgedExposure, spreadRisk * 0.85);
 
                 const netPremium = Math.max(0.05, premium - (hedgePremium || 0));
                 const netCredit = netPremium * lotSize;
@@ -4148,24 +4139,24 @@ const App = {
             };
         } else {
             // Backup Heuristic Model
-            const bSpanPercent = isIndex ? 0.055 : 0.16;
+            const bSpanPercent = isIndex ? 0.12 : 0.23;
             const bExpPercent = isIndex ? 0.02 : 0.035;
-            const bMinPercent = isIndex ? 0.035 : 0.07;
+            const bMinPercent = isIndex ? 0.05 : 0.10;
 
             let bSpanBase = contractValue * bSpanPercent;
             let bExpMargin = contractValue * bExpPercent;
-            let bFinalSpan = Math.max(contractValue * bMinPercent, bSpanBase - (otmAmount * 0.3));
+            let bFinalSpan = Math.max(contractValue * bMinPercent, bSpanBase - (otmAmount * 0.4));
             let bTotalMargin = bFinalSpan + bExpMargin;
 
             if (hedgeStrike) {
                 const spreadDistance = Math.abs(strike - hedgeStrike);
                 const spreadRisk = spreadDistance * lotSize;
-                const hedgedTotal = Math.min(bTotalMargin * 0.45, Math.max(spreadRisk * 0.85, contractValue * 0.02));
+                const hedgedTotal = Math.max(bTotalMargin * 0.45, spreadRisk * 0.85);
                 const netPremium = Math.max(0.05, premium - (hedgePremium || 0));
 
                 return {
-                    span: bFinalSpan * 0.35,
-                    exposure: bExpMargin * 0.35,
+                    span: bFinalSpan * 0.45,
+                    exposure: bExpMargin * 0.45,
                     total: hedgedTotal,
                     nakedMargin: bTotalMargin,
                     marginSaved: Math.max(0, bTotalMargin - hedgedTotal),

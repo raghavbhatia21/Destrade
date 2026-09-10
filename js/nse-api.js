@@ -1461,6 +1461,83 @@ class NSEApi {
         return { scrip: contracts[0][0], lotSize: contracts[0][2], exchange };
     }
 
+    async _enqueueSpanRequest(body, cacheKey, resolved, actualLot) {
+        if (!this._spanQueue) this._spanQueue = [];
+        if (this._spanActiveCount === undefined) this._spanActiveCount = 0;
+
+        return new Promise((resolve) => {
+            this._spanQueue.push({ body, cacheKey, resolved, actualLot, resolve });
+            this._processSpanQueue();
+        });
+    }
+
+    async _processSpanQueue() {
+        if (!this._spanQueue || this._spanQueue.length === 0) return;
+        if (this._spanActiveCount >= 2) return; // Strict max 2 concurrent requests to Zerodha SPAN
+
+        const task = this._spanQueue.shift();
+        this._spanActiveCount++;
+
+        try {
+            const result = await this._executeSpanFetch(task.body, task.cacheKey, task.resolved, task.actualLot);
+            task.resolve(result);
+        } catch (e) {
+            task.resolve(null);
+        } finally {
+            this._spanActiveCount--;
+            // Rate-limit buffer between requests
+            setTimeout(() => this._processSpanQueue(), 80);
+        }
+    }
+
+    async _executeSpanFetch(body, cacheKey, resolved, actualLot, retryCount = 0) {
+        if (this._spanCache && this._spanCache.has(cacheKey)) {
+            return this._spanCache.get(cacheKey);
+        }
+
+        const endpoints = [];
+        if (this.proxyUrl) {
+            endpoints.push(`${this.proxyUrl}/api/zerodha-margin`);
+        }
+        endpoints.push('https://destrade-market-worker.onrender.com/api/zerodha-margin');
+
+        for (const ep of endpoints) {
+            try {
+                const res = await fetch(ep, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: body,
+                    signal: AbortSignal.timeout(10000)
+                });
+
+                if (res.status === 429 && retryCount < 2) {
+                    // Backoff delay on 429 Too Many Requests
+                    await new Promise(r => setTimeout(r, 600 * (retryCount + 1)));
+                    return this._executeSpanFetch(body, cacheKey, resolved, actualLot, retryCount + 1);
+                }
+
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.total && typeof data.total.total === 'number' && data.total.total > 0) {
+                        const result = {
+                            span: data.total.span,
+                            exposure: data.total.exposure,
+                            total: data.total.total,
+                            netOptionValue: data.total.netoptionvalue || 0,
+                            lotSize: actualLot,
+                            scrip: resolved.scrip,
+                            exchange: resolved.exchange,
+                            modelName: 'Zerodha Live SPAN'
+                        };
+                        this._spanCache.set(cacheKey, result);
+                        return result;
+                    }
+                }
+            } catch (e) {}
+        }
+        return null;
+    }
+
     async fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiryDate, hedgeStrike = null) {
         const cleanSym = (symbol || '').toUpperCase().replace(/[^A-Z0-9&\-]/g, '');
         const resolved = this._resolveZerodhaScripAndLot(cleanSym, expiryDate);
@@ -1482,40 +1559,7 @@ class NSEApi {
             body += `&exchange%5B%5D=${exchange}&product%5B%5D=OPT&scrip%5B%5D=${encodeURIComponent(scrip)}&option_type%5B%5D=${type}&strike_price%5B%5D=${hedgeStrike}&qty%5B%5D=${actualLot}&trade%5B%5D=buy`;
         }
 
-        const endpoints = [];
-        if (this.proxyUrl) {
-            endpoints.push(`${this.proxyUrl}/api/zerodha-margin`);
-        }
-        endpoints.push('https://destrade-market-worker.onrender.com/api/zerodha-margin');
-
-        for (const ep of endpoints) {
-            try {
-                const res = await fetch(ep, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: body,
-                    signal: AbortSignal.timeout(12000)
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data && data.total && typeof data.total.total === 'number' && data.total.total > 0) {
-                        const result = {
-                            span: data.total.span,
-                            exposure: data.total.exposure,
-                            total: data.total.total,
-                            netOptionValue: data.total.netoptionvalue || 0,
-                            lotSize: actualLot,
-                            scrip: scrip,
-                            exchange: exchange,
-                            modelName: 'Zerodha Live SPAN'
-                        };
-                        this._spanCache.set(cacheKey, result);
-                        return result;
-                    }
-                }
-            } catch (e) {}
-        }
-        return null;
+        return this._enqueueSpanRequest(body, cacheKey, resolved, actualLot);
     }
 }
 

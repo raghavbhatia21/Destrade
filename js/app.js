@@ -3695,17 +3695,20 @@ const App = {
                         <span style="color:var(--text-muted)">Net Premium Received:</span>
                         <b class="mono" style="color:var(--up)">₹${netPremium.toFixed(2)} (₹${netCredit.toLocaleString()})</b>
                     </div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:0.4rem; font-size:0.85rem">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:0.2rem; font-size:0.85rem">
                         <span style="color:var(--text-muted)">Hedged Capital Required:</span>
-                        <b class="mono" style="color:var(--text-bright); font-size:0.95rem">₹${basketMargin.toLocaleString()}</b>
+                        <b class="mono" id="basket-capital-val" style="color:var(--text-bright); font-size:0.95rem">₹${basketMargin.toLocaleString()}</b>
+                    </div>
+                    <div id="basket-live-badge" style="font-size:0.75rem; color:var(--text-muted); text-align:right; margin-bottom:0.4rem">
+                        <i class="fas fa-shield-alt" style="color:var(--primary)"></i> Zerodha SPAN Model
                     </div>
                     <div style="display:flex; justify-content:space-between; margin-bottom:0.4rem; font-size:0.8rem">
                         <span style="color:var(--text-muted)">Capital Saved vs Naked:</span>
-                        <span style="color:#10b981; font-weight:600">Save ${marginSavedPercent}% (₹${marginSaved.toLocaleString()})</span>
+                        <span id="basket-save-val" style="color:#10b981; font-weight:600">Save ${marginSavedPercent}% (₹${marginSaved.toLocaleString()})</span>
                     </div>
                     <div style="display:flex; justify-content:space-between; font-size:0.85rem; border-top:1px solid rgba(255,255,255,0.05); padding-top:0.4rem; margin-top:0.4rem">
                         <span style="color:var(--text-muted)">Est. Hedged ROI:</span>
-                        <b class="mono" style="color:var(--primary); font-size:1rem">+${roi}%</b>
+                        <b class="mono" id="basket-roi-val" style="color:var(--primary); font-size:1rem">+${roi}%</b>
                     </div>
                 </div>
 
@@ -3720,6 +3723,32 @@ const App = {
             </div>
         `;
         modal.style.display = 'flex';
+
+        // Dynamically verify live Zerodha SPAN in real time
+        if (window.nseApi && window.nseApi.fetchZerodhaSpanMargin) {
+            window.nseApi.fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiry, hedgeStrike).then(live => {
+                if (live && live.total > 0) {
+                    const reqEl = document.getElementById('basket-capital-val');
+                    const badgeEl = document.getElementById('basket-live-badge');
+                    const saveEl = document.getElementById('basket-save-val');
+                    const roiEl = document.getElementById('basket-roi-val');
+
+                    if (reqEl) reqEl.textContent = `₹${Math.round(live.total).toLocaleString()}`;
+                    if (badgeEl) {
+                        badgeEl.innerHTML = `<span style="color:#10b981; font-weight:600"><i class="fas fa-check-circle"></i> Official Zerodha SPAN (SPAN: ₹${Math.round(live.span).toLocaleString()} + Exp: ₹${Math.round(live.exposure).toLocaleString()})</span>`;
+                    }
+                    if (nakedMargin > 0 && saveEl) {
+                        const newSaved = Math.max(0, nakedMargin - live.total);
+                        const newPct = Math.round((newSaved / nakedMargin) * 100);
+                        saveEl.textContent = `Save ${newPct}% (₹${Math.round(newSaved).toLocaleString()})`;
+                    }
+                    if (roiEl && netCredit > 0) {
+                        const newRoi = ((netCredit / live.total) * 100).toFixed(1);
+                        roiEl.textContent = `+${newRoi}%`;
+                    }
+                }
+            }).catch(() => {});
+        }
     },
 
     async copyBasketText(symbol, type, strike, hedgeStrike, sellPremium, hedgePremium, lotSize, basketMargin, netCredit, roi, expiry) {
@@ -4479,8 +4508,6 @@ const App = {
                     const peMaxDist = 1 - (finalMinOtm / 100);
                     const peMinDist = 1 - (finalMaxOtm / 100);
 
-                    const marginPromises = [];
-
                     for (const row of oi.data) {
                         const strike = row.strikePrice;
 
@@ -4490,25 +4517,24 @@ const App = {
                             const hedgeStrike = bestHedge ? bestHedge.strike : null;
                             const hedgePremium = bestHedge ? bestHedge.premium : 0;
 
-                            marginPromises.push(
-                                this.calculateMargin(spot, strike, row.CE.lastPrice, 'CE', isIndex, lotSize, oi.currentExpiry || '', sym, this.state.marginModel, hedgeStrike, hedgePremium)
-                                    .then(estMargin => {
-                                        const roi = (estMargin.premiumReceivable / estMargin.total) * 100;
-                                        if (roi > 0.5) {
-                                            sellCandidates.push({
-                                                symbol: sym, type: 'CE', strike, spot, premium: row.CE.lastPrice, lotSize,
-                                                margin: estMargin, value: estMargin.premiumReceivable, roi, iv: row.CE.impliedVolatility || 0,
-                                                oiChg: row.CE.changeinOpenInterest, expiry: oi.currentExpiry || '',
-                                                hedgeStrike: hedgeStrike, hedgePremium: hedgePremium,
-                                                netPremium: row.CE.lastPrice - hedgePremium,
-                                                strategyName: 'Bear Call Spread',
-                                                nakedMargin: estMargin.nakedMargin || estMargin.total,
-                                                marginSaved: estMargin.marginSaved || 0,
-                                                marginSavedPercent: estMargin.marginSavedPercent || 0
-                                            });
-                                        }
-                                    }).catch(() => {})
-                            );
+                            // Fast instant screening formula (0ms, zero network calls)
+                            this.calculateMargin(spot, strike, row.CE.lastPrice, 'CE', isIndex, lotSize, oi.currentExpiry || '', sym, 'zerodha', hedgeStrike, hedgePremium)
+                                .then(estMargin => {
+                                    const roi = (estMargin.premiumReceivable / estMargin.total) * 100;
+                                    if (roi > 0.5) {
+                                        sellCandidates.push({
+                                            symbol: sym, type: 'CE', strike, spot, premium: row.CE.lastPrice, lotSize,
+                                            margin: estMargin, value: estMargin.premiumReceivable, roi, iv: row.CE.impliedVolatility || 0,
+                                            oiChg: row.CE.changeinOpenInterest, expiry: oi.currentExpiry || '',
+                                            hedgeStrike: hedgeStrike, hedgePremium: hedgePremium,
+                                            netPremium: row.CE.lastPrice - hedgePremium,
+                                            strategyName: 'Bear Call Spread',
+                                            nakedMargin: estMargin.nakedMargin || estMargin.total,
+                                            marginSaved: estMargin.marginSaved || 0,
+                                            marginSavedPercent: estMargin.marginSavedPercent || 0
+                                        });
+                                    }
+                                }).catch(() => {});
                         }
                         // PE Sell (Near OTM with user selected parameters & Daily OI Change > 0)
                         if (strike <= spot * peMaxDist && strike >= spot * peMinDist && row.PE && row.PE.lastPrice > 0 && (row.PE.openInterest || 0) > 0 && (row.PE.changeinOpenInterest || 0) > 0) {
@@ -4516,25 +4542,24 @@ const App = {
                             const hedgeStrike = bestHedge ? bestHedge.strike : null;
                             const hedgePremium = bestHedge ? bestHedge.premium : 0;
 
-                            marginPromises.push(
-                                this.calculateMargin(spot, strike, row.PE.lastPrice, 'PE', isIndex, lotSize, oi.currentExpiry || '', sym, this.state.marginModel, hedgeStrike, hedgePremium)
-                                    .then(estMargin => {
-                                        const roi = (estMargin.premiumReceivable / estMargin.total) * 100;
-                                        if (roi > 0.5) {
-                                            sellCandidates.push({
-                                                symbol: sym, type: 'PE', strike, spot, premium: row.PE.lastPrice, lotSize,
-                                                margin: estMargin, value: estMargin.premiumReceivable, roi, iv: row.PE.impliedVolatility || 0,
-                                                oiChg: row.PE.changeinOpenInterest, expiry: oi.currentExpiry || '',
-                                                hedgeStrike: hedgeStrike, hedgePremium: hedgePremium,
-                                                netPremium: row.PE.lastPrice - hedgePremium,
-                                                strategyName: 'Bull Put Spread',
-                                                nakedMargin: estMargin.nakedMargin || estMargin.total,
-                                                marginSaved: estMargin.marginSaved || 0,
-                                                marginSavedPercent: estMargin.marginSavedPercent || 0
-                                            });
-                                        }
-                                    }).catch(() => {})
-                            );
+                            // Fast instant screening formula (0ms, zero network calls)
+                            this.calculateMargin(spot, strike, row.PE.lastPrice, 'PE', isIndex, lotSize, oi.currentExpiry || '', sym, 'zerodha', hedgeStrike, hedgePremium)
+                                .then(estMargin => {
+                                    const roi = (estMargin.premiumReceivable / estMargin.total) * 100;
+                                    if (roi > 0.5) {
+                                        sellCandidates.push({
+                                            symbol: sym, type: 'PE', strike, spot, premium: row.PE.lastPrice, lotSize,
+                                            margin: estMargin, value: estMargin.premiumReceivable, roi, iv: row.PE.impliedVolatility || 0,
+                                            oiChg: row.PE.changeinOpenInterest, expiry: oi.currentExpiry || '',
+                                            hedgeStrike: hedgeStrike, hedgePremium: hedgePremium,
+                                            netPremium: row.PE.lastPrice - hedgePremium,
+                                            strategyName: 'Bull Put Spread',
+                                            nakedMargin: estMargin.nakedMargin || estMargin.total,
+                                            marginSaved: estMargin.marginSaved || 0,
+                                            marginSavedPercent: estMargin.marginSavedPercent || 0
+                                        });
+                                    }
+                                }).catch(() => {});
                         }
 
                         // Buy Logic: ATM options with active Price & Daily OI Change > 0
@@ -4563,10 +4588,6 @@ const App = {
                             }
                         }
                     }
-
-                    if (marginPromises.length > 0) {
-                        await Promise.all(marginPromises);
-                    }
                 } catch (e) {
                     // Fail silently for bad scripts
                 }
@@ -4577,7 +4598,35 @@ const App = {
             if (pText) pText.textContent = `${completed} / ${total}`;
             if (pBar) pBar.style.width = `${(completed / total) * 100}%`;
 
-            await new Promise(r => setTimeout(r, 120)); // Rate-limit safe buffer
+            await new Promise(r => setTimeout(r, 60)); // Fast batch buffer
+        }
+
+        // Precision enrichment: If Zerodha Live SPAN model is active, enrich top setups
+        if ((this.state.marginModel || 'zerodha_live') === 'zerodha_live' && sellCandidates.length > 0) {
+            if (sStatus) sStatus.textContent = "Fetching official Zerodha SPAN for top setups...";
+            const topCE = sellCandidates.filter(d => d.type === 'CE').sort((a, b) => b.roi - a.roi).slice(0, 20);
+            const topPE = sellCandidates.filter(d => d.type === 'PE').sort((a, b) => b.roi - a.roi).slice(0, 20);
+            const toEnrich = [...topCE, ...topPE];
+
+            for (let j = 0; j < toEnrich.length; j++) {
+                const item = toEnrich[j];
+                if (pText) pText.textContent = `Live SPAN: ${j + 1} / ${toEnrich.length}`;
+                try {
+                    const isIdx = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'].some(idx => item.symbol.includes(idx));
+                    const liveMargin = await this.calculateMargin(
+                        item.spot, item.strike, item.premium, item.type, isIdx, item.lotSize,
+                        item.expiry, item.symbol, 'zerodha_live', item.hedgeStrike, item.hedgePremium
+                    );
+                    if (liveMargin && liveMargin.total > 0) {
+                        item.margin = liveMargin;
+                        item.nakedMargin = liveMargin.nakedMargin || liveMargin.total;
+                        item.marginSaved = liveMargin.marginSaved || 0;
+                        item.marginSavedPercent = liveMargin.marginSavedPercent || 0;
+                        item.value = liveMargin.premiumReceivable;
+                        item.roi = (liveMargin.premiumReceivable / liveMargin.total) * 100;
+                    }
+                } catch (e) {}
+            }
         }
 
         this.state.scannerCache = {

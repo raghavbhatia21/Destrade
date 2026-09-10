@@ -135,20 +135,27 @@ class NSEApi {
         return null;
     }
 
-    // ===== GROWW LIVE PRICE (Index + Stock) =====
-    async getLivePriceGroww(symbol = 'NIFTY') {
-        const up = symbol.toUpperCase();
-        const indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
-        const isIndex = indices.includes(up);
+    _normalizeIndexSymbol(sym) {
+        const up = (sym || '').toUpperCase().trim();
+        if (up === 'NIFTY 50' || up === 'NIFTY50') return 'NIFTY';
+        if (up === 'NIFTY BANK' || up === 'BANK NIFTY' || up === 'BANKNIFTY') return 'BANKNIFTY';
+        if (up === 'NIFTY FINANCIAL SERVICES' || up === 'FIN NIFTY' || up === 'FINNIFTY') return 'FINNIFTY';
+        if (up === 'NIFTY MIDCAP 100' || up === 'MIDCPNIFTY' || up === 'NIFTY MIDCAP') return 'MIDCPNIFTY';
+        return up;
+    }
 
-        let ticker = up;
+        // ===== GROWW LIVE PRICE (Index + Stock) =====
+    async getLivePriceGroww(symbol = 'NIFTY') {
+        const norm = this._normalizeIndexSymbol(symbol);
+        const indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
+        const isIndex = indices.includes(norm);
+
+        let ticker = isIndex ? norm : symbol.toUpperCase().trim();
         let endpoint;
 
         if (isIndex) {
-            // Indices: use tr_live_indices
             endpoint = `/v1/api/stocks_data/v1/tr_live_indices/exchange/NSE/segment/CASH/${ticker}/latest`;
         } else {
-            // Stocks: use tr_live_prices with NSE ticker directly
             endpoint = `/v1/api/stocks_data/v1/tr_live_prices/exchange/NSE/segment/CASH/${ticker}/latest`;
         }
 
@@ -518,12 +525,12 @@ class NSEApi {
         return sectors;
     }
 
-    async getLiveQuoteGroww(symbol = 'NIFTY') {
-        const up = symbol.toUpperCase();
+        async getLiveQuoteGroww(symbol = 'NIFTY') {
+        const norm = this._normalizeIndexSymbol(symbol);
         const indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
-        const isIndex = indices.includes(up);
+        const isIndex = indices.includes(norm);
 
-        let ticker = up;
+        let ticker = isIndex ? norm : symbol.toUpperCase().trim();
         let endpoint;
 
         if (isIndex) {

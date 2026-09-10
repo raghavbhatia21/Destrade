@@ -157,6 +157,9 @@ const server = http.createServer(async (req, res) => {
         if (!cookies) await initSession();
         targetHeaders['Referer'] = getReferer(targetPath);
         targetHeaders['Cookie'] = cookies;
+        if (!targetPath.startsWith('/api/')) {
+            targetPath = '/api' + targetPath;
+        }
     }
 
     const options = {

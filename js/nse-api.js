@@ -73,7 +73,8 @@ class NSEApi {
         if (!this._inFlight) this._inFlight = new Map();
 
         const fetchPromise = (async () => {
-            const url = `${this.proxyUrl}${endpoint}`;
+            const apiPath = endpoint.startsWith('/api/') ? endpoint : (endpoint.startsWith('/') ? `/api${endpoint}` : `/api/${endpoint}`);
+            const url = `${this.proxyUrl}${apiPath}`;
             for (let i = 0; i <= retries; i++) {
                 try {
                     const res = await fetch(url, { signal: AbortSignal.timeout(isOC ? 7000 : 5000) });

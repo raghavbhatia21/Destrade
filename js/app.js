@@ -1506,20 +1506,21 @@ const App = {
         }
     },
 
-    getTodayISTStartSec() {
-        const todayDateStr = this.getISTDateStr(); // Always YYYY-MM-DD for TODAY in IST
-        if (!todayDateStr || !todayDateStr.includes('-')) return 0;
-        const [yr, mo, dy] = todayDateStr.split('-').map(Number);
+    getTodayISTStartSec(targetDateStr) {
+        const target = targetDateStr || this.getTargetTradingDateStr() || this.getISTDateStr();
+        if (!target || !target.includes('-')) return 0;
+        const [yr, mo, dy] = target.split('-').map(Number);
         const startMs = Date.UTC(yr, mo - 1, dy, 0, 0, 0) - (5.5 * 3600 * 1000);
         return Math.floor(startMs / 1000);
     },
 
-    sanitize5MinPcrList(rawList) {
+    sanitize5MinPcrList(rawList, targetDateStr) {
         if (!Array.isArray(rawList)) return [];
         const valid = rawList.filter(item => item && typeof item === 'object' && typeof item.value === 'number' && !isNaN(item.value) && item.value > 0);
         if (valid.length === 0) return [];
 
-        const todayStartSec = this.getTodayISTStartSec();
+        const activeTradingDate = targetDateStr || this.getTargetTradingDateStr();
+        const todayStartSec = this.getTodayISTStartSec(activeTradingDate);
 
         // Sort strictly ascending by epoch timestamp
         valid.sort((a, b) => (a.time || a.timestamp || 0) - (b.time || b.timestamp || 0));
@@ -1529,8 +1530,9 @@ const App = {
             let timeSec = item.time || (item.timestamp ? Math.floor(item.timestamp / 1000) : 0);
             if (!timeSec) continue;
 
-            // Strict Intraday Focus: exclude previous days' ticks
+            // Strict Intraday Focus: anchor to the active trading day session
             if (todayStartSec > 0 && timeSec < todayStartSec) continue;
+            if (todayStartSec > 0 && timeSec > todayStartSec + (24 * 3600)) continue;
 
             let str = (item.timeStr || '').trim();
             if (!str || /^\d{2}:\d{2}$/.test(str)) {
@@ -3291,7 +3293,8 @@ const App = {
 
             const chg = changes[i];
             const barMagnitude = Math.abs(chg);
-            const barHeight = showBars ? Math.max(barMagnitude > 0 ? 3 : 0, (barMagnitude / barMaxScale) * (barH - 4)) : 0;
+            // Ensure every snapshot interval has at least a 3px visible bar
+            const barHeight = showBars ? Math.max(3, (barMagnitude / barMaxScale) * (barH - 4)) : 0;
             const barY = barBottom - barHeight;
             const slotW = (data.length > 1) ? (chartW / (data.length - 1)) : 20;
             const barWidth = Math.max(3, Math.min(18, slotW * 0.68));
@@ -3427,14 +3430,21 @@ const App = {
                 // Render Vertical Volume-Style Bars
                 pts.forEach((pt) => {
                     if (pt.barHeight <= 0) return;
-                    const isBullish = pt.chg >= 0;
+                    const isFlat = Math.abs(pt.chg) < 0.0001;
+                    const isBullish = pt.chg > 0.0001;
                     const barGrad = ctx.createLinearGradient(0, pt.barY, 0, barBottom);
-                    if (isBullish) {
+                    if (isFlat) {
+                        barGrad.addColorStop(0, 'rgba(148, 163, 184, 0.7)');
+                        barGrad.addColorStop(1, 'rgba(148, 163, 184, 0.25)');
+                        ctx.strokeStyle = 'rgba(148, 163, 184, 0.6)';
+                    } else if (isBullish) {
                         barGrad.addColorStop(0, 'rgba(16, 185, 129, 0.95)');
                         barGrad.addColorStop(1, 'rgba(16, 185, 129, 0.35)');
+                        ctx.strokeStyle = 'rgba(16, 185, 129, 0.8)';
                     } else {
                         barGrad.addColorStop(0, 'rgba(239, 68, 68, 0.95)');
                         barGrad.addColorStop(1, 'rgba(239, 68, 68, 0.35)');
+                        ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
                     }
                     ctx.fillStyle = barGrad;
                     ctx.beginPath();
@@ -3444,8 +3454,6 @@ const App = {
                         ctx.rect(pt.barX, pt.barY, pt.barWidth, pt.barHeight);
                     }
                     ctx.fill();
-
-                    ctx.strokeStyle = isBullish ? 'rgba(16, 185, 129, 0.8)' : 'rgba(239, 68, 68, 0.8)';
                     ctx.lineWidth = 1;
                     ctx.stroke();
                 });

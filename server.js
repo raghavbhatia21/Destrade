@@ -35,8 +35,8 @@ function getFirebaseHostForSymbol(sym) {
 
 // ===== DISTRIBUTED WORKER CONFIG =====
 const WORKER_ID = parseInt(process.env.WORKER_ID || '0', 10);
-const TOTAL_WORKERS = parseInt(process.env.TOTAL_WORKERS || '5', 10);
-const BANDWIDTH_LIMIT_BYTES = 4.2 * 1024 * 1024 * 1024; // 4.2 GB safety threshold (of 5 GB free)
+const TOTAL_WORKERS = parseInt(process.env.TOTAL_WORKERS || '7', 10);
+const BANDWIDTH_LIMIT_BYTES = 85 * 1024 * 1024 * 1024; // 85 GB safety threshold (Render free tier provides 100 GB/month)
 let estimatedBandwidthBytes = 0;
 let isThrottled = false;
 
@@ -1072,6 +1072,38 @@ const server = http.createServer(async (req, res) => {
             });
             return;
         }
+    }
+
+    if (req.url && req.url.startsWith('/reset-throttle')) {
+        isThrottled = false;
+        estimatedBandwidthBytes = 0;
+        console.log(`🔓 [Worker #${WORKER_ID}] Bandwidth throttling reset via /reset-throttle`);
+        if (!isScanRunning) {
+            setTimeout(continuousScanLoop, 1000);
+        }
+        firebasePatch('/worker_status.json', {
+            [WORKER_ID]: {
+                id: WORKER_ID,
+                active: true,
+                throttled: false,
+                estimatedBandwidthMB: 0,
+                lastHeartbeat: Date.now(),
+                symbolCount: activeSymbols.length
+            }
+        }).catch(console.error);
+
+        res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+        });
+        res.end(JSON.stringify({
+            message: `Worker #${WORKER_ID} Throttling Reset Successfully`,
+            workerId: WORKER_ID,
+            throttled: false,
+            bandwidthMB: 0,
+            symbols: activeSymbols.length
+        }));
+        return;
     }
 
     if (req.url === '/trigger') {

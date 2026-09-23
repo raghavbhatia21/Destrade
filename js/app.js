@@ -1514,25 +1514,25 @@ const App = {
         return Math.floor(startMs / 1000);
     },
 
-    sanitize5MinPcrList(rawList, targetDateStr) {
+    sanitize5MinPcrList(rawList) {
         if (!Array.isArray(rawList)) return [];
         const valid = rawList.filter(item => item && typeof item === 'object' && typeof item.value === 'number' && !isNaN(item.value) && item.value > 0);
         if (valid.length === 0) return [];
 
-        const activeTradingDate = targetDateStr || this.getTargetTradingDateStr();
-        const todayStartSec = this.getTodayISTStartSec(activeTradingDate);
-
         // Sort strictly ascending by epoch timestamp
         valid.sort((a, b) => (a.time || a.timestamp || 0) - (b.time || b.timestamp || 0));
+
+        // Find latest timestamp in dataset and keep all ticks from that same trading session (within 16 hours)
+        const maxTimeSec = Math.max(...valid.map(t => t.time || (t.timestamp ? Math.floor(t.timestamp / 1000) : 0)));
+        const sessionCutoff = maxTimeSec > 0 ? (maxTimeSec - (16 * 3600)) : 0;
 
         const cleanMap = new Map();
         for (const item of valid) {
             let timeSec = item.time || (item.timestamp ? Math.floor(item.timestamp / 1000) : 0);
             if (!timeSec) continue;
 
-            // Strict Intraday Focus: anchor to the active trading day session
-            if (todayStartSec > 0 && timeSec < todayStartSec) continue;
-            if (todayStartSec > 0 && timeSec > todayStartSec + (24 * 3600)) continue;
+            // Anchor to active session of the dataset itself (timezone-proof)
+            if (sessionCutoff > 0 && timeSec < sessionCutoff) continue;
 
             let str = (item.timeStr || '').trim();
             if (!str || /^\d{2}:\d{2}$/.test(str)) {
@@ -1578,36 +1578,54 @@ const App = {
             ? (window.FIREBASE_URL_1 || 'https://destrade-default-rtdb.firebaseio.com')
             : (window.FIREBASE_URL_2 || 'https://destrade-2-default-rtdb.firebaseio.com');
 
-        // 1. Fast REST fetch directly from assigned Firebase DB (<100ms load time)
-        try {
-            const res = await fetch(`${primaryUrl}/pcr_history/${cleanSym}/${targetDateStr}.json?t=${Date.now()}`, { cache: 'no-store' });
-            if (res.ok) {
-                const val = await res.json();
-                if (val) {
-                    loadedList = this.sanitize5MinPcrList(Array.isArray(val) ? val : Object.values(val));
-                }
-            }
-        } catch (e) { }
-
-        // 1b. Fallback to secondary DB if primary returned empty (during migration/failover)
-        if (loadedList.length < 1) {
+        const tryFetchDate = async (dStr) => {
+            if (!dStr) return [];
             try {
-                const resFb = await fetch(`${fallbackUrl}/pcr_history/${cleanSym}/${targetDateStr}.json?t=${Date.now()}`, { cache: 'no-store' });
-                if (resFb.ok) {
-                    const val = await resFb.json();
+                const res = await fetch(`${primaryUrl}/pcr_history/${cleanSym}/${dStr}.json?t=${Date.now()}`, { cache: 'no-store' });
+                if (res.ok) {
+                    const val = await res.json();
                     if (val) {
-                        loadedList = this.sanitize5MinPcrList(Array.isArray(val) ? val : Object.values(val));
+                        const list = this.sanitize5MinPcrList(Array.isArray(val) ? val : Object.values(val));
+                        if (list.length > 0) return list;
                     }
                 }
             } catch (e) { }
+
+            try {
+                const resFb = await fetch(`${fallbackUrl}/pcr_history/${cleanSym}/${dStr}.json?t=${Date.now()}`, { cache: 'no-store' });
+                if (resFb.ok) {
+                    const val = await resFb.json();
+                    if (val) {
+                        const list = this.sanitize5MinPcrList(Array.isArray(val) ? val : Object.values(val));
+                        if (list.length > 0) return list;
+                    }
+                }
+            } catch (e) { }
+
+            return [];
+        };
+
+        // 1. Try target trading date
+        loadedList = await tryFetchDate(targetDateStr);
+
+        // 2. Fallback: If no ticks yet for target date (e.g. before market open), fetch previous trading day
+        if (loadedList.length < 1) {
+            const prevDateStr = this.getLastTradingDateStr();
+            if (prevDateStr && prevDateStr !== targetDateStr) {
+                loadedList = await tryFetchDate(prevDateStr);
+            }
         }
 
-        // 2. Fallback to Web SDK if REST returned empty
+        // 3. Fallback to Web SDK if REST failed
         if (loadedList.length < 1 && window.firebase) {
             try {
                 const dbTarget = window.getFirebaseDbForSymbol ? window.getFirebaseDbForSymbol(cleanSym) : (window.db1 || window.db);
                 if (dbTarget) {
-                    const snapshot = await dbTarget.ref(`pcr_history/${cleanSym}/${targetDateStr}`).once('value');
+                    let snapshot = await dbTarget.ref(`pcr_history/${cleanSym}/${targetDateStr}`).once('value');
+                    if (!snapshot.exists()) {
+                        const prevDate = this.getLastTradingDateStr();
+                        if (prevDate) snapshot = await dbTarget.ref(`pcr_history/${cleanSym}/${prevDate}`).once('value');
+                    }
                     if (snapshot.exists()) {
                         const val = snapshot.val();
                         loadedList = this.sanitize5MinPcrList(Array.isArray(val) ? val : Object.values(val));
@@ -1616,13 +1634,12 @@ const App = {
             } catch (e) { }
         }
 
-        if (loadedList.length >= 1) {
-            this.state.pcrHistory[cleanSym] = loadedList;
-            if (this.state.activeView === 'pcr-analytics') {
-                this.renderPcrAnalyticsChartCanvas(cleanSym);
-            } else {
-                this.renderPcrChartCanvas(cleanSym);
-            }
+        this.state.pcrHistory[cleanSym] = loadedList;
+        if (this.state.activeView === 'pcr-analytics') {
+            this.renderPcrAnalyticsChartCanvas(cleanSym);
+            this.renderPcrSnapshotsTable(cleanSym);
+        } else {
+            this.renderPcrChartCanvas(cleanSym);
         }
     },
 
@@ -3139,7 +3156,7 @@ const App = {
             const estStrike = Math.round(spotPrice / step) * step;
             maxPain = '₹' + estStrike.toLocaleString();
         }
-        const pcrVal = (topData && topData.pcr) ? topData.pcr.toFixed(4) : '--';
+        const pcrVal = (topData && topData.pcr) ? topData.pcr.toFixed(4) : (lastTick && lastTick.value ? Number(lastTick.value).toFixed(4) : '--');
 
         // Calculate CHG IN OI PCR from latest snapshot delta
         let chgPcrVal = '--';
@@ -3234,7 +3251,16 @@ const App = {
         this.state.pcrHistory[sym] = data;
 
         if (!data || data.length < 1) {
-            container.innerHTML = `<div style="color:var(--text-muted);font-size:0.95rem;text-align:center;padding-top:120px"><i class="fas fa-satellite-dish fa-spin" style="font-size:2rem;color:var(--primary);margin-bottom:1rem"></i><br>Connecting to live multi-device market stream for ${sym}...</div>`;
+            container.innerHTML = `
+                <div style="color:var(--text-muted); font-size:0.92rem; text-align:center; padding-top:100px; display:flex; flex-direction:column; align-items:center; gap:0.75rem;">
+                    <i class="fas fa-chart-line" style="font-size:2.2rem; color:var(--primary); opacity:0.8;"></i>
+                    <div style="font-weight:700; color:#f8fafc;">No Intraday Snapshots Yet for ${sym}</div>
+                    <div style="font-size:0.8rem; color:var(--text-muted); max-width:320px;">Intraday 5-minute ticks will automatically populate once market opens (09:15 - 15:30 IST).</div>
+                    <button onclick="App.refreshPcrAnalytics()" class="btn" style="margin-top:0.5rem; background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); font-size:0.8rem; padding:0.4rem 1rem; border-radius:6px; cursor:pointer;">
+                        <i class="fas fa-sync-alt"></i> Re-check Data
+                    </button>
+                </div>
+            `;
             return;
         }
 
@@ -3609,7 +3635,12 @@ const App = {
 
         let data = this.sanitize5MinPcrList(rawList);
         if (!data || data.length === 0) {
-            container.innerHTML = `<div style="text-align:center; padding: 2rem; color: var(--text-muted); font-size: 0.85rem;"><i class="fas fa-spinner fa-spin"></i> Loading PCR intraday snapshots...</div>`;
+            container.innerHTML = `
+                <div style="text-align:center; padding: 2.5rem 1rem; color: var(--text-muted); font-size: 0.85rem; background: rgba(15, 23, 42, 0.4); border-radius: 12px; border: 1px dashed rgba(255,255,255,0.08); margin-top: 1rem;">
+                    <i class="fas fa-chart-bar" style="font-size: 1.5rem; opacity: 0.5; margin-bottom: 0.5rem; display: block;"></i>
+                    No intraday snapshot history recorded yet for ${sym}.
+                </div>
+            `;
             return;
         }
 

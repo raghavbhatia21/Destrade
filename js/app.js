@@ -2873,10 +2873,11 @@ const App = {
     statePcrMode: 'pcr',
 
     setPcrChartMode(mode) {
-        this.statePcrMode = mode || 'pcr';
+        // Map legacy 'chg_pcr' to 'pcr' (which displays both PCR line + Chg OI Bars)
+        this.statePcrMode = (mode === 'chg_pcr' || !mode) ? 'pcr' : mode;
         const radios = document.querySelectorAll('input[name="pcr-mode-radio"]');
         radios.forEach(r => {
-            r.checked = (r.value === this.statePcrMode);
+            r.checked = (r.value === this.statePcrMode || (r.value === 'pcr' && this.statePcrMode === 'chg_pcr'));
             if (r.parentElement) {
                 r.parentElement.style.color = r.checked ? '#ffffff' : '#94a3b8';
             }
@@ -3138,9 +3139,20 @@ const App = {
         }
         const pcrVal = (topData && topData.pcr) ? topData.pcr.toFixed(4) : '--';
 
-        // Calculate CHG IN OI PCR estimate
+        // Calculate CHG IN OI PCR from latest snapshot delta
         let chgPcrVal = '--';
-        if (topData && topData.callOI > 0 && topData.putOI > 0) {
+        let rawListForChg = [];
+        if (this.state.pcrHistory && typeof this.state.pcrHistory === 'object' && !Array.isArray(this.state.pcrHistory)) {
+            rawListForChg = this.state.pcrHistory[cleanSym] || [];
+        }
+        const cleanHistoryForChg = this.sanitize5MinPcrList(rawListForChg);
+        if (cleanHistoryForChg && cleanHistoryForChg.length >= 2) {
+            const latest = cleanHistoryForChg[cleanHistoryForChg.length - 1];
+            const prev = cleanHistoryForChg[cleanHistoryForChg.length - 2];
+            const diff = latest.value - prev.value;
+            const sign = diff >= 0 ? '+' : '';
+            chgPcrVal = `${sign}${diff.toFixed(4)}`;
+        } else if (topData && topData.callOI > 0 && topData.putOI > 0) {
             chgPcrVal = (topData.putOI / topData.callOI).toFixed(4);
         }
 
@@ -3155,7 +3167,16 @@ const App = {
         if (elPcr) elPcr.textContent = pcrVal;
 
         const elChgPcr = document.getElementById('pcr-m-chgpcr');
-        if (elChgPcr) elChgPcr.textContent = chgPcrVal !== '--' ? chgPcrVal : pcrVal;
+        if (elChgPcr) {
+            elChgPcr.textContent = chgPcrVal;
+            if (chgPcrVal.startsWith('+')) {
+                elChgPcr.style.color = '#10b981';
+            } else if (chgPcrVal.startsWith('-')) {
+                elChgPcr.style.color = '#ef4444';
+            } else {
+                elChgPcr.style.color = '';
+            }
+        }
 
         // Record live PCR tick if valid
         if (topData && topData.pcr) {
@@ -3216,6 +3237,7 @@ const App = {
         }
 
         const mode = this.statePcrMode || 'pcr';
+        const showBars = (mode !== 'pcr_only');
 
         const dpr = window.devicePixelRatio || 1;
         const width = container.clientWidth || 800;
@@ -3226,13 +3248,8 @@ const App = {
         const ctx = canvas.getContext('2d');
         ctx.scale(dpr, dpr);
 
-        const values = data.map((d, idx) => {
-            if (mode === 'chg_pcr' && idx > 0) {
-                const prev = data[idx - 1].value;
-                return parseFloat((d.value - prev + 1.0).toFixed(4));
-            }
-            return d.value;
-        });
+        // Always use true PCR values for the line chart (never distort)
+        const values = data.map(d => d.value);
 
         const rawMin = Math.min(...values);
         const rawMax = Math.max(...values);
@@ -3246,19 +3263,51 @@ const App = {
         const spotMax = hasSpot ? Math.max(...spots) * 1.002 : 1;
 
         const isMobile = width < 600;
-        const paddingLeft = isMobile ? 42 : 52;
-        const paddingRight = isMobile ? (hasSpot ? 62 : 44) : (hasSpot ? 72 : 54);
-        const paddingTop = isMobile ? 22 : 28;
-        const paddingBottom = isMobile ? 42 : 42;
+        const paddingLeft = isMobile ? 44 : 54;
+        const paddingRight = isMobile ? (hasSpot ? 64 : 46) : (hasSpot ? 74 : 56);
+        const paddingTop = isMobile ? 20 : 24;
+        const paddingBottom = isMobile ? 42 : 44;
         const chartW = width - paddingLeft - paddingRight;
         const chartH = height - paddingTop - paddingBottom;
+
+        // Pane calculations: Split into Main Line Chart (top) & Volume-Style Bar Graph (bottom)
+        const mainH = showBars ? Math.round(chartH * 0.68) : chartH;
+        const dividerY = showBars ? (paddingTop + mainH + 8) : 0;
+        const barTop = showBars ? (dividerY + 12) : 0;
+        const barBottom = showBars ? (paddingTop + chartH) : 0;
+        const barH = showBars ? (barBottom - barTop) : 0;
+
+        // Calculate snapshot-to-snapshot change in PCR (Volume / Δ)
+        const changes = data.map((d, i) => (i > 0) ? (d.value - data[i - 1].value) : 0);
+        const allAbsChg = changes.map(c => Math.abs(c));
+        const maxAbsChg = Math.max(0.002, ...allAbsChg);
+        const barMaxScale = maxAbsChg * 1.15;
 
         const pts = data.map((d, i) => {
             const val = values[i];
             const x = (data.length === 1) ? (paddingLeft + chartW / 2) : (paddingLeft + (i / (data.length - 1)) * chartW);
-            const y = paddingTop + chartH * (1 - (val - minVal) / (maxVal - minVal || 1));
-            const spotY = hasSpot ? paddingTop + chartH * (1 - ((parseFloat(d.spot) || 0) - spotMin) / ((spotMax - spotMin) || 1)) : 0;
-            return { x, y, spotY, val, pcrRaw: d.value, spot: parseFloat(d.spot) || 0, timeStr: d.timeStr || '--' };
+            const y = paddingTop + mainH * (1 - (val - minVal) / (maxVal - minVal || 1));
+            const spotY = hasSpot ? paddingTop + mainH * (1 - ((parseFloat(d.spot) || 0) - spotMin) / ((spotMax - spotMin) || 1)) : 0;
+
+            const chg = changes[i];
+            const barMagnitude = Math.abs(chg);
+            const barHeight = showBars ? Math.max(barMagnitude > 0 ? 3 : 0, (barMagnitude / barMaxScale) * (barH - 4)) : 0;
+            const barY = barBottom - barHeight;
+            const slotW = (data.length > 1) ? (chartW / (data.length - 1)) : 20;
+            const barWidth = Math.max(3, Math.min(18, slotW * 0.68));
+            const barX = x - barWidth / 2;
+
+            return {
+                x, y, spotY, val,
+                pcrRaw: d.value,
+                spot: parseFloat(d.spot) || 0,
+                timeStr: d.timeStr || '--',
+                chg,
+                barHeight,
+                barY,
+                barX,
+                barWidth
+            };
         });
 
         let hoverIdx = null;
@@ -3266,7 +3315,7 @@ const App = {
         const drawChart = () => {
             ctx.clearRect(0, 0, width, height);
 
-            // 1. Gridlines & Y-Axes
+            // 1. Gridlines & Y-Axes for Main Pane
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
             ctx.lineWidth = 1;
             ctx.fillStyle = 'rgba(148, 163, 184, 0.8)';
@@ -3276,7 +3325,7 @@ const App = {
             const gridSteps = 5;
             for (let g = 0; g <= gridSteps; g++) {
                 const ratio = g / gridSteps;
-                const y = paddingTop + chartH * (1 - ratio);
+                const y = paddingTop + mainH * (1 - ratio);
                 const val = (minVal + ratio * (maxVal - minVal)).toFixed(3);
 
                 ctx.beginPath();
@@ -3298,24 +3347,7 @@ const App = {
                 }
             }
 
-            // 1.5 X-Axis Bottom Time Labels (Clean, widely-spaced 09:15, 11:30, 13:45, 15:30)
-            if (pts.length > 3) {
-                ctx.font = isMobile ? '600 10px JetBrains Mono, monospace' : '600 11px JetBrains Mono, monospace';
-                ctx.fillStyle = 'rgba(148, 163, 184, 0.85)';
-                ctx.textAlign = 'center';
-
-                const maxLabels = isMobile ? 3 : 5;
-                for (let k = 0; k <= maxLabels; k++) {
-                    const pIdx = Math.min(pts.length - 1, Math.round((k / maxLabels) * (pts.length - 1)));
-                    const pt = pts[pIdx];
-                    if (pt && pt.timeStr) {
-                        const cleanT = pt.timeStr.replace(/\s*(AM|PM)/i, '').trim();
-                        ctx.fillText(cleanT, pt.x, height - paddingBottom + 16);
-                    }
-                }
-            }
-
-            // 2. Draw Spot Price Curve (NiftyTrader Vibrant Red Curve)
+            // 2. Draw Spot Price Curve in Main Pane
             if (hasSpot && pts.length > 1) {
                 ctx.beginPath();
                 ctx.strokeStyle = '#ef4444';
@@ -3330,8 +3362,8 @@ const App = {
                 ctx.stroke();
             }
 
-            // 3. Draw PCR Translucent Soft Blue Gradient Fill (NiftyTrader Area Chart Style)
-            const grad = ctx.createLinearGradient(0, paddingTop, 0, height - paddingBottom);
+            // 3. Draw PCR Translucent Soft Blue Gradient Fill
+            const grad = ctx.createLinearGradient(0, paddingTop, 0, paddingTop + mainH);
             grad.addColorStop(0, 'rgba(56, 189, 248, 0.25)');
             grad.addColorStop(1, 'rgba(56, 189, 248, 0.01)');
 
@@ -3343,8 +3375,8 @@ const App = {
                 ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
             }
             ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
-            ctx.lineTo(pts[pts.length - 1].x, height - paddingBottom);
-            ctx.lineTo(pts[0].x, height - paddingBottom);
+            ctx.lineTo(pts[pts.length - 1].x, paddingTop + mainH);
+            ctx.lineTo(pts[0].x, paddingTop + mainH);
             ctx.closePath();
             ctx.fillStyle = grad;
             ctx.fill();
@@ -3362,27 +3394,115 @@ const App = {
             ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
             ctx.stroke();
 
-            // 5. Bottom Legend
-            ctx.font = isMobile ? 'bold 10px Inter, sans-serif' : 'bold 11px Inter, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillStyle = '#38bdf8';
-            ctx.fillText('— PCR Trend', width / 2 - (isMobile ? 45 : 65), height - 8);
-            if (hasSpot) {
-                ctx.fillStyle = '#ef4444';
-                ctx.fillText('— Spot Price', width / 2 + (isMobile ? 45 : 65), height - 8);
+            // 5. Draw Volume-Style Change in OI PCR Bar Graph Sub-Pane
+            if (showBars) {
+                // Divider line between Main Chart and Bar Graph
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+                ctx.lineWidth = 1;
+                ctx.moveTo(paddingLeft, dividerY);
+                ctx.lineTo(width - paddingRight, dividerY);
+                ctx.stroke();
+
+                // Pane Label
+                ctx.font = isMobile ? '700 9px Inter, sans-serif' : '700 10px Inter, sans-serif';
+                ctx.fillStyle = 'rgba(148, 163, 184, 0.85)';
+                ctx.textAlign = 'left';
+                ctx.fillText('CHG IN OI PCR (Δ)', paddingLeft, dividerY + 11);
+
+                // Baseline line at bottom of bar pane
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+                ctx.moveTo(paddingLeft, barBottom);
+                ctx.lineTo(width - paddingRight, barBottom);
+                ctx.stroke();
+
+                // Scale indicator on left of bar pane
+                ctx.textAlign = 'right';
+                ctx.font = '600 9px JetBrains Mono, monospace';
+                ctx.fillStyle = 'rgba(148, 163, 184, 0.6)';
+                ctx.fillText('+' + barMaxScale.toFixed(3), paddingLeft - 5, barTop + 10);
+                ctx.fillText('0.000', paddingLeft - 5, barBottom);
+
+                // Render Vertical Volume-Style Bars
+                pts.forEach((pt) => {
+                    if (pt.barHeight <= 0) return;
+                    const isBullish = pt.chg >= 0;
+                    const barGrad = ctx.createLinearGradient(0, pt.barY, 0, barBottom);
+                    if (isBullish) {
+                        barGrad.addColorStop(0, 'rgba(16, 185, 129, 0.95)');
+                        barGrad.addColorStop(1, 'rgba(16, 185, 129, 0.35)');
+                    } else {
+                        barGrad.addColorStop(0, 'rgba(239, 68, 68, 0.95)');
+                        barGrad.addColorStop(1, 'rgba(239, 68, 68, 0.35)');
+                    }
+                    ctx.fillStyle = barGrad;
+                    ctx.beginPath();
+                    if (typeof ctx.roundRect === 'function') {
+                        ctx.roundRect(pt.barX, pt.barY, pt.barWidth, pt.barHeight, [3, 3, 0, 0]);
+                    } else {
+                        ctx.rect(pt.barX, pt.barY, pt.barWidth, pt.barHeight);
+                    }
+                    ctx.fill();
+
+                    ctx.strokeStyle = isBullish ? 'rgba(16, 185, 129, 0.8)' : 'rgba(239, 68, 68, 0.8)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                });
             }
 
-            // 6. Interactive Crosshair & Floating Tooltip
+            // 6. X-Axis Bottom Time Labels
+            if (pts.length > 3) {
+                ctx.font = isMobile ? '600 10px JetBrains Mono, monospace' : '600 11px JetBrains Mono, monospace';
+                ctx.fillStyle = 'rgba(148, 163, 184, 0.85)';
+                ctx.textAlign = 'center';
+
+                const maxLabels = isMobile ? 3 : 5;
+                const timeAxisY = (showBars ? barBottom : (paddingTop + mainH)) + 16;
+                for (let k = 0; k <= maxLabels; k++) {
+                    const pIdx = Math.min(pts.length - 1, Math.round((k / maxLabels) * (pts.length - 1)));
+                    const pt = pts[pIdx];
+                    if (pt && pt.timeStr) {
+                        const cleanT = pt.timeStr.replace(/\s*(AM|PM)/i, '').trim();
+                        ctx.fillText(cleanT, pt.x, timeAxisY);
+                    }
+                }
+            }
+
+            // 7. Bottom Legend
+            ctx.font = isMobile ? 'bold 10px Inter, sans-serif' : 'bold 11px Inter, sans-serif';
+            ctx.textAlign = 'center';
+
+            if (showBars) {
+                const spacing = isMobile ? 80 : 115;
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillText('— PCR Trend', width / 2 - spacing, height - 8);
+                if (hasSpot) {
+                    ctx.fillStyle = '#ef4444';
+                    ctx.fillText('— Spot Price', width / 2, height - 8);
+                }
+                ctx.fillStyle = '#10b981';
+                ctx.fillText('▮ Chg OI PCR', width / 2 + spacing, height - 8);
+            } else {
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillText('— PCR Trend', width / 2 - (isMobile ? 45 : 65), height - 8);
+                if (hasSpot) {
+                    ctx.fillStyle = '#ef4444';
+                    ctx.fillText('— Spot Price', width / 2 + (isMobile ? 45 : 65), height - 8);
+                }
+            }
+
+            // 8. Interactive Crosshair & Floating Tooltip
             if (hoverIdx !== null && pts[hoverIdx]) {
                 const hp = pts[hoverIdx];
 
-                // Vertical Crosshair Line
+                // Vertical Crosshair Line spanning across both panes
                 ctx.beginPath();
                 ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
                 ctx.lineWidth = 1;
                 ctx.setLineDash([3, 3]);
                 ctx.moveTo(hp.x, paddingTop);
-                ctx.lineTo(hp.x, height - paddingBottom);
+                ctx.lineTo(hp.x, showBars ? barBottom : (paddingTop + mainH));
                 ctx.stroke();
                 ctx.setLineDash([]);
 
@@ -3406,8 +3526,23 @@ const App = {
                     ctx.stroke();
                 }
 
+                // Highlight hovered volume bar
+                if (showBars && hp.barHeight > 0) {
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 1.5;
+                    if (typeof ctx.roundRect === 'function') {
+                        ctx.roundRect(hp.barX, hp.barY, hp.barWidth, hp.barHeight, [3, 3, 0, 0]);
+                    } else {
+                        ctx.strokeRect(hp.barX, hp.barY, hp.barWidth, hp.barHeight);
+                    }
+                }
+
                 // Floating Tooltip Box
-                const tipText = `Time: ${hp.timeStr} | PCR: ${hp.pcrRaw.toFixed(4)}${hp.spot ? ` | Spot: ₹${hp.spot.toLocaleString()}` : ''}`;
+                const chgSign = hp.chg >= 0 ? '+' : '';
+                const chgLabel = hp.chg > 0.0002 ? 'Bullish' : (hp.chg < -0.0002 ? 'Bearish' : 'Neutral');
+                const chgText = showBars ? ` | Chg OI PCR: ${chgSign}${hp.chg.toFixed(4)} (${chgLabel})` : '';
+                const tipText = `Time: ${hp.timeStr} | PCR: ${hp.pcrRaw.toFixed(4)}${hp.spot ? ` | Spot: ₹${hp.spot.toLocaleString()}` : ''}${chgText}`;
+
                 ctx.font = '600 12px JetBrains Mono, monospace';
                 const textW = ctx.measureText(tipText).width + 20;
                 let tipX = hp.x - textW / 2;
@@ -3417,7 +3552,7 @@ const App = {
                 const tipY = paddingTop + 10;
 
                 ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
-                ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+                ctx.strokeStyle = hp.chg >= 0 ? 'rgba(56, 189, 248, 0.8)' : 'rgba(239, 68, 68, 0.8)';
                 ctx.lineWidth = 1.5;
                 ctx.beginPath();
                 if (typeof ctx.roundRect === 'function') ctx.roundRect(tipX, tipY, textW, 28, 6);

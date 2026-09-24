@@ -5625,27 +5625,76 @@ const App = {
     async generateAiCompanionResponse(userText, history) {
         const rules = this.getAiLearnedRules();
         const apiKey = (localStorage.getItem('destrade_gemini_api_key') || '').trim();
-
-        // Detect if user is teaching a rule or setting an accuracy requirement
         const lower = userText.toLowerCase();
         let ruleLearnedFeedback = '';
 
-        const isRuleTeaching = lower.includes('rule') || lower.includes('accuracy') || lower.includes('learn') || lower.includes('target') ||
-            lower.includes('only buy') || lower.includes('only sell') || lower.includes('always') || lower.includes('never') ||
-            lower.includes('risk reward') || lower.includes('stop loss') || lower.includes('criteria');
+        // 1. Detect if user is teaching a rule or setting an accuracy requirement
+        const isSyncRule = (lower.includes('sync') || lower.includes('same direction') || lower.includes('syncing') || lower.includes('both up') || lower.includes('both down') || lower.includes('both trend') || (lower.includes('uptrend') && lower.includes('pcr') && (lower.includes('price') || lower.includes('spot'))));
+        const isAccuracyRule = lower.includes('accuracy') || lower.includes('win rate') || lower.includes('conviction') || (lower.includes('target') && lower.match(/\b\d{2}%\b/));
+        const isGeneralRule = lower.includes('rule') || lower.includes('learn') || lower.includes('teach') || lower.includes('remember') ||
+            lower.includes('only buy') || lower.includes('only sell') || lower.includes('never') || lower.includes('always') ||
+            lower.includes('criteria') || lower.includes('strategy') || lower.includes('stop loss');
 
-        if (isRuleTeaching) {
-            // Clean up and store as a learned rule
-            let newRule = userText.replace(/^(learn this rule|learn rule|rule:|please learn:|teach:)\s*/i, '').trim();
-            if (newRule.length > 5 && !rules.includes(newRule)) {
-                rules.push(newRule);
+        if (isSyncRule) {
+            const syncRule = "PCR & Price Trend Sync: Buy Call only when both PCR and Price are in an uptrend; Buy Put only when both are in a downtrend. Discard divergences.";
+            if (!rules.includes(syncRule)) {
+                rules.push(syncRule);
                 this.saveAiLearnedRules(rules);
-                ruleLearnedFeedback = `🧠 <i>Memorized new rule: "${newRule}"</i><br><br>`;
+            }
+            ruleLearnedFeedback += `
+                <div style="background:rgba(168,85,247,0.12); border:1px solid rgba(168,85,247,0.35); border-radius:8px; padding:0.6rem 0.8rem; margin-bottom:0.75rem;">
+                    <div style="font-weight:800; color:#c084fc; font-size:0.85rem; display:flex; align-items:center; gap:0.4rem;">
+                        <i class="fas fa-brain"></i> Rule Memorized & Stored in Brain
+                    </div>
+                    <div style="font-size:0.8rem; color:#f1f5f9; margin-top:0.25rem;">
+                        <b>PCR & Price Trend Sync:</b> I will only accept setups where PCR trend and Spot Price trend move in the exact same direction (Bullish: PCR ↗ + Price ↗ | Bearish: PCR ↘ + Price ↘). Divergences will be rejected automatically!
+                    </div>
+                </div>
+            `;
+        }
+
+        if (isAccuracyRule) {
+            const accMatch = userText.match(/(\d{2})%/);
+            if (accMatch) {
+                const accVal = parseInt(accMatch[1], 10);
+                const accRule = `Accuracy Target: Minimum ${accVal}% conviction threshold required for all trade setups.`;
+                const filteredRules = rules.filter(r => !r.toLowerCase().includes('accuracy target'));
+                filteredRules.push(accRule);
+                this.saveAiLearnedRules(filteredRules);
+                rules.length = 0;
+                rules.push(...filteredRules);
+                ruleLearnedFeedback += `
+                    <div style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.35); border-radius:8px; padding:0.6rem 0.8rem; margin-bottom:0.75rem;">
+                        <div style="font-weight:800; color:#10b981; font-size:0.85rem; display:flex; align-items:center; gap:0.4rem;">
+                            <i class="fas fa-bullseye"></i> Accuracy Standard Updated
+                        </div>
+                        <div style="font-size:0.8rem; color:#f1f5f9; margin-top:0.25rem;">
+                            <b>${accVal}%+ Conviction Required:</b> I will silence any setup scoring below ${accVal}% conviction to protect capital.
+                        </div>
+                    </div>
+                `;
+            }
+        } else if (isGeneralRule && !isSyncRule) {
+            let clean = userText.replace(/^(learn this rule|learn rule|rule:|please learn:|teach:)\s*/i, '').trim();
+            if (clean.length > 5 && !rules.includes(clean)) {
+                rules.push(clean);
+                this.saveAiLearnedRules(rules);
+                ruleLearnedFeedback += `
+                    <div style="background:rgba(168,85,247,0.12); border:1px solid rgba(168,85,247,0.35); border-radius:8px; padding:0.6rem 0.8rem; margin-bottom:0.75rem;">
+                        <div style="font-weight:800; color:#c084fc; font-size:0.85rem; display:flex; align-items:center; gap:0.4rem;">
+                            <i class="fas fa-brain"></i> Rule Memorized
+                        </div>
+                        <div style="font-size:0.8rem; color:#f1f5f9; margin-top:0.25rem;">
+                            <i>"${clean}"</i>
+                        </div>
+                    </div>
+                `;
             }
         }
 
         // Live Market Snapshot Summary for AI context
         const liveSummary = this.buildLiveMarketSnapshotSummary();
+        const syncResults = this.scanStocksForPcrPriceSync();
 
         // If user has Gemini API Key: Call Gemini 1.5 Flash
         if (apiKey) {
@@ -5656,16 +5705,21 @@ You DO NOT use generic or rigid pre-decided rules. You follow the USER'S LEARNED
 User's Learned Trading Rules & Accuracy Preferences:
 ${rules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
 
+Live Synchronized PCR & Price Scan Results:
+- Bullish Sync Candidates (PCR ↗ & Price ↗): ${syncResults.bullishSync.slice(0, 5).map(s => `${s.symbol} (Spot ₹${s.spot}, PCR ${s.curPcr.toFixed(3)}, Δ15m ${s.pcrDelta15m >= 0 ? '+' : ''}${s.pcrDelta15m.toFixed(3)}, Conviction ${s.convictionScore}%)`).join('; ') || 'None'}
+- Bearish Sync Candidates (PCR ↘ & Price ↘): ${syncResults.bearishSync.slice(0, 5).map(s => `${s.symbol} (Spot ₹${s.spot}, PCR ${s.curPcr.toFixed(3)}, Δ15m ${s.pcrDelta15m.toFixed(3)}, Conviction ${s.convictionScore}%)`).join('; ') || 'None'}
+- Divergent Stocks Rejected: ${syncResults.divergent.slice(0, 5).map(s => `${s.symbol} (${s.reason})`).join('; ')}
+
 Current Live Market Data Context (IST):
 ${liveSummary}
 
 User says: "${userText}"
 
 Instructions:
-1. If the user is teaching you a rule, style, or accuracy threshold, acknowledge it warmly, confirm you have memorized it, and explain how it will shape future setups.
-2. If the user asks for trades or market analysis, evaluate the live market data STRICTLY against the user's custom learned rules. If no setup meets their exact accuracy/rule threshold, honestly say "No trades currently pass your strict rule" instead of forcing low-quality trades!
-3. Format response in crisp, readable HTML/markdown with bolding and bullet points (use <b>, <code>, <ul>, <li>, <p> tags, no markdown codeblocks).
-4. Be friendly, sharp, disciplined, and speak like an elite proprietary desk trader dedicated to protecting the user's capital.`;
+1. If the user asked you to find or scan stocks whose PCR and price sync (or asked for trades), directly present the qualified synchronized setups, explain why they pass their rule, and list which stocks were rejected due to divergence!
+2. If the user taught you a rule or set an accuracy target, acknowledge it warmly and confirm it is permanently saved in your memory.
+3. Format response in crisp, readable HTML (use <b>, <code>, <ul>, <li>, <p> tags, no markdown codeblocks).
+4. Be sharp, disciplined, and speak like an elite proprietary desk trader.`;
 
                 const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                     method: 'POST',
@@ -5695,11 +5749,87 @@ Instructions:
         const nowTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' });
         let reply = '';
 
-        if (lower.includes('review') || lower.includes('what have you learned') || lower.includes('learned rules') || lower.includes('what rules')) {
+        const wantsScan = isSyncRule || lower.includes('find') || lower.includes('scan') || lower.includes('stock') ||
+            lower.includes('trade') || lower.includes('setup') || lower.includes('which') ||
+            lower.includes('nifty') || lower.includes('banknifty') || lower.includes('market') ||
+            lower.includes('show') || lower.includes('look for') || lower.includes('give me');
+
+        if (isSyncRule || (wantsScan && lower.includes('sync'))) {
+            // User wants PCR & Price Synchronized Scan
+            const { bullishSync, bearishSync, divergent, totalChecked } = syncResults;
+
+            reply = `I evaluated <b>${totalChecked} active stocks & indices</b> strictly filtering for <b>PCR and Price Trend Synchronization</b>:<br><br>`;
+
+            if (bullishSync.length > 0) {
+                reply += `<div style="font-weight:800; color:#10b981; font-size:0.86rem; margin-bottom:0.4rem;">
+                    🟢 BULLISH SYNC (PCR Uptrend + Price Uptrend)
+                </div>`;
+                bullishSync.slice(0, 3).forEach(s => {
+                    reply += `
+                        <div style="background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.25); border-radius:8px; padding:0.7rem; margin-bottom:0.5rem;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <b style="color:#f8fafc; font-size:0.95rem;">${s.symbol} — ${s.action} (${s.strike})</b>
+                                <span style="color:#10b981; font-weight:800; font-family:var(--font-mono); font-size:0.85rem;">${s.convictionScore}% Match</span>
+                            </div>
+                            <div style="font-size:0.8rem; color:#94a3b8; margin-top:0.25rem;">
+                                Spot: <b>₹${s.spot.toFixed(1)}</b> (${s.spotPct15m >= 0 ? '+' : ''}${s.spotPct15m.toFixed(2)}%) | PCR: <b>${s.curPcr.toFixed(4)}</b> (${s.pcrDelta15m >= 0 ? '+' : ''}${s.pcrDelta15m.toFixed(4)})
+                            </div>
+                            <div style="font-size:0.78rem; color:#cbd5e1; margin-top:0.25rem;">
+                                Est. Entry: <b>₹${s.estPremium}</b> | Target 1: <b style="color:#10b981;">₹${s.target1}</b> | Stop Loss: <b style="color:#ef4444;">₹${s.stopLoss}</b>
+                            </div>
+                            <div style="font-size:0.74rem; color:#10b981; margin-top:0.25rem;">
+                                <i class="fas fa-check-circle"></i> <b>Both PCR & Spot trending UP in sync!</b>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            if (bearishSync.length > 0) {
+                reply += `<div style="font-weight:800; color:#ef4444; font-size:0.86rem; margin-top:0.7rem; margin-bottom:0.4rem;">
+                    🔴 BEARISH SYNC (PCR Downtrend + Price Downtrend)
+                </div>`;
+                bearishSync.slice(0, 3).forEach(s => {
+                    reply += `
+                        <div style="background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.25); border-radius:8px; padding:0.7rem; margin-bottom:0.5rem;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <b style="color:#f8fafc; font-size:0.95rem;">${s.symbol} — ${s.action} (${s.strike})</b>
+                                <span style="color:#ef4444; font-weight:800; font-family:var(--font-mono); font-size:0.85rem;">${s.convictionScore}% Match</span>
+                            </div>
+                            <div style="font-size:0.8rem; color:#94a3b8; margin-top:0.25rem;">
+                                Spot: <b>₹${s.spot.toFixed(1)}</b> (${s.spotPct15m >= 0 ? '+' : ''}${s.spotPct15m.toFixed(2)}%) | PCR: <b>${s.curPcr.toFixed(4)}</b> (${s.pcrDelta15m >= 0 ? '+' : ''}${s.pcrDelta15m.toFixed(4)})
+                            </div>
+                            <div style="font-size:0.78rem; color:#cbd5e1; margin-top:0.25rem;">
+                                Est. Entry: <b>₹${s.estPremium}</b> | Target 1: <b style="color:#10b981;">₹${s.target1}</b> | Stop Loss: <b style="color:#ef4444;">₹${s.stopLoss}</b>
+                            </div>
+                            <div style="font-size:0.74rem; color:#ef4444; margin-top:0.25rem;">
+                                <i class="fas fa-check-circle"></i> <b>Both PCR & Spot trending DOWN in sync!</b>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            if (bullishSync.length === 0 && bearishSync.length === 0) {
+                reply += `<div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:8px; padding:0.75rem; color:#f1f5f9; font-size:0.85rem;">
+                    <b>No Stocks in Sync Right Now:</b> Current live ticks show divergent or flat momentum across evaluated symbols. In accordance with your rule, I refuse to suggest low-probability or conflicting trades.
+                </div>`;
+            }
+
+            if (divergent.length > 0) {
+                reply += `
+                    <div style="margin-top:0.75rem; background:rgba(255,255,255,0.03); border:1px dashed rgba(255,255,255,0.12); border-radius:6px; padding:0.6rem; font-size:0.78rem; color:#94a3b8;">
+                        <b style="color:#f59e0b;"><i class="fas fa-filter"></i> ${divergent.length} Stocks Rejected Due to Divergence:</b><br>
+                        ${divergent.slice(0, 4).map(d => `• <b>${d.symbol}</b>: PCR ${d.pcrDelta15m >= 0 ? '+' : ''}${d.pcrDelta15m.toFixed(4)} vs Spot ${d.spotPct15m >= 0 ? '+' : ''}${d.spotPct15m.toFixed(2)}% (Opposing directions)`).join('<br>')}
+                        ${divergent.length > 4 ? `<br><i>...and ${divergent.length - 4} more rejected to honor your synchronization rule.</i>` : ''}
+                    </div>
+                `;
+            }
+        } else if (lower.includes('review') || lower.includes('what have you learned') || lower.includes('learned rules') || lower.includes('what rules') || lower.includes('memory')) {
             reply = `Here is what I have currently memorized from you:<br><br><ul>` +
                 rules.map(r => `<li><b>${r}</b></li>`).join('') +
                 `</ul><br>Whenever you ask me to scan or evaluate trades, I will filter all market data strictly through these criteria. You can teach me more rules anytime by just saying <i>"Learn this: ..."</i>!`;
-        } else if (lower.includes('scan') || lower.includes('trade') || lower.includes('nifty') || lower.includes('banknifty') || lower.includes('setup')) {
+        } else if (wantsScan) {
             // Find live setups matching user's custom criteria
             const matching = this.findTradesMatchingUserRules(rules);
             if (matching.length > 0) {
@@ -5724,10 +5854,10 @@ Instructions:
             } else {
                 reply = `I evaluated the live market against your rules, but <b>no setups currently pass your strict accuracy criteria</b>.<br><br>PCR shifts and spot velocity are either in conflicting directions or below your conviction threshold. I will not force low-quality trades on you — protecting capital comes first!`;
             }
-        } else if (isRuleTeaching) {
-            reply = `Understood! I've locked this rule into my strategy memory. Every single setup I evaluate from now on will strictly honor this rule.<br><br>Say <i>"Scan live market"</i> whenever you want me to inspect today's ticks!`;
+        } else if (ruleLearnedFeedback) {
+            reply = `Understood! I've locked this rule into my strategy memory. Every single setup I evaluate from now on will strictly honor this rule.<br><br>Say <i>"Find out stocks in sync"</i> or <i>"Scan live market"</i> whenever you want me to inspect today's ticks!`;
         } else {
-            reply = `Got it. I'm ready and continuously observing live ticks. Tell me what rules you'd like me to remember, what accuracy you want (e.g. 85%+), or ask me to <i>"Scan NIFTY and BANKNIFTY right now"</i>!`;
+            reply = `Got it. I'm ready and continuously observing live ticks. Tell me what rules you'd like me to remember, what accuracy you want (e.g. 85%+), or ask me to <i>"Find out stocks whose PCR and price sync"</i>!`;
         }
 
         if (!apiKey) {
@@ -5736,6 +5866,39 @@ Instructions:
 
         history.push({ role: 'assistant', content: ruleLearnedFeedback + reply, time: nowTime });
         this.saveAiChatHistory(history);
+    },
+
+    scanStocksForPcrPriceSync() {
+        let pool = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'RELIANCE', 'HDFCBANK', 'TCS', 'INFY', 'ICICIBANK', 'SBIN', 'BHARTIARTL', 'ITC', 'LT', 'AXISBANK', 'BAJFINANCE', 'TATAMOTORS', 'MARUTI', 'SUNPHARMA', 'TITAN', 'KOTAKBANK', 'PATANJALI', 'WIPRO', 'HINDUNILVR', 'ADANIENT', 'COALINDIA'];
+        if (this._liveSnapshot && typeof this._liveSnapshot === 'object') {
+            const keys = Object.keys(this._liveSnapshot);
+            if (keys.length > 0) pool = Array.from(new Set([...pool, ...keys]));
+        }
+        if (this.state.pcrHistory && typeof this.state.pcrHistory === 'object') {
+            const keys = Object.keys(this.state.pcrHistory);
+            if (keys.length > 0) pool = Array.from(new Set([...pool, ...keys]));
+        }
+
+        const bullishSync = [];
+        const bearishSync = [];
+        const divergent = [];
+
+        pool.forEach(sym => {
+            const s = this.generateQuantTradeSetup(sym);
+            if (!s || s.spot <= 0) return;
+
+            if (s.syncStatus === 'BULLISH_SYNC') {
+                bullishSync.push(s);
+            } else if (s.syncStatus === 'BEARISH_SYNC') {
+                bearishSync.push(s);
+            } else if (s.syncStatus === 'DIVERGENT') {
+                divergent.push(s);
+            }
+        });
+
+        bullishSync.sort((a, b) => b.convictionScore - a.convictionScore);
+        bearishSync.sort((a, b) => b.convictionScore - a.convictionScore);
+        return { bullishSync, bearishSync, divergent, totalChecked: pool.length };
     },
 
     buildLiveMarketSnapshotSummary() {
@@ -5754,7 +5917,7 @@ Instructions:
 
     findTradesMatchingUserRules(rules) {
         // Parse user target accuracy if specified
-        let minAccuracy = 80;
+        let minAccuracy = 75;
         rules.forEach(r => {
             const match = r.match(/(\d{2})%/);
             if (match) minAccuracy = parseInt(match[1], 10);
@@ -5794,6 +5957,7 @@ Instructions:
             const latest = data[data.length - 1];
             const prev1 = data[data.length - 2];
             const prev3 = data.length >= 4 ? data[data.length - 4] : data[0];
+            const first = data[0];
 
             curPcr = latest.value;
             curSpot = latest.spot || 0;
@@ -5801,6 +5965,13 @@ Instructions:
             pcrDelta15m = latest.value - prev3.value;
             spotDelta15m = (latest.spot && prev3.spot) ? (latest.spot - prev3.spot) : 0;
             spotPct15m = (prev3.spot && prev3.spot > 0) ? ((spotDelta15m / prev3.spot) * 100) : 0;
+
+            // Session delta fallback if 15m delta is flat
+            if (pcrDelta15m === 0 && first && first !== latest) {
+                pcrDelta15m = latest.value - first.value;
+                spotDelta15m = (latest.spot && first.spot) ? (latest.spot - first.spot) : 0;
+                spotPct15m = (first.spot && first.spot > 0) ? ((spotDelta15m / first.spot) * 100) : 0;
+            }
         } else if (this._liveSnapshot && this._liveSnapshot[cleanSym]) {
             const norm = this.normalizeSnapshotItem(this._liveSnapshot[cleanSym]);
             if (norm && norm.curVal > 0) {
@@ -5810,6 +5981,18 @@ Instructions:
                     pcrDelta15m = curPcr - norm.m15[1];
                     spotDelta15m = curSpot - (norm.m15[2] || curSpot);
                     spotPct15m = norm.m15[2] > 0 ? ((spotDelta15m / norm.m15[2]) * 100) : 0;
+                } else if (norm.m5 && norm.m5[1] > 0) {
+                    pcrDelta15m = curPcr - norm.m5[1];
+                    spotDelta15m = curSpot - (norm.m5[2] || curSpot);
+                    spotPct15m = norm.m5[2] > 0 ? ((spotDelta15m / norm.m5[2]) * 100) : 0;
+                } else if (norm.m30 && norm.m30[1] > 0) {
+                    pcrDelta15m = curPcr - norm.m30[1];
+                    spotDelta15m = curSpot - (norm.m30[2] || curSpot);
+                    spotPct15m = norm.m30[2] > 0 ? ((spotDelta15m / norm.m30[2]) * 100) : 0;
+                } else if (norm.h && norm.h[1] > 0) {
+                    pcrDelta15m = curPcr - norm.h[1];
+                    spotDelta15m = curSpot - (norm.h[2] || curSpot);
+                    spotPct15m = norm.h[2] > 0 ? ((spotDelta15m / norm.h[2]) * 100) : 0;
                 }
             } else {
                 return null;
@@ -5818,6 +6001,9 @@ Instructions:
             return null;
         }
 
+        if (curSpot <= 0 && this.state.spotPrices && this.state.spotPrices[cleanSym]) {
+            curSpot = this.state.spotPrices[cleanSym];
+        }
         if (curSpot <= 0) return null;
 
         let step = 100;
@@ -5855,6 +6041,21 @@ Instructions:
         if (!isBullish && curPcr < 1.0) rawScore += 6;
         const convictionScore = Math.min(97, Math.max(70, Math.round(rawScore)));
 
+        // Trend synchronization determination
+        let syncStatus = 'DIVERGENT';
+        const pcrUp = pcrDelta15m > 0.0005 || (pcrDelta15m >= 0 && curPcr > 1.08);
+        const pcrDown = pcrDelta15m < -0.0005 || (pcrDelta15m <= 0 && curPcr < 0.92);
+        const spotUp = spotDelta15m > 0 || spotPct15m > 0.01;
+        const spotDown = spotDelta15m < 0 || spotPct15m < -0.01;
+
+        if (pcrUp && spotUp) {
+            syncStatus = 'BULLISH_SYNC';
+        } else if (pcrDown && spotDown) {
+            syncStatus = 'BEARISH_SYNC';
+        } else if (Math.abs(spotDelta15m) < 0.001 && Math.abs(pcrDelta15m) < 0.0005) {
+            syncStatus = 'FLAT';
+        }
+
         const catalysts = [
             `PCR Momentum: ${pcrDelta15m >= 0 ? '+' : ''}${pcrDelta15m.toFixed(4)} (15m delta) | Total PCR: ${curPcr.toFixed(4)}`,
             `Spot Action: ${spotDelta15m >= 0 ? '+' : ''}${spotDelta15m.toFixed(1)} pts (${spotPct15m.toFixed(2)}%)`,
@@ -5879,6 +6080,9 @@ Instructions:
             convictionScore,
             curPcr,
             pcrDelta15m,
+            spotDelta15m,
+            spotPct15m,
+            syncStatus,
             catalysts
         };
     },

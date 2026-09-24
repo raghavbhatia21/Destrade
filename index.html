@@ -13,7 +13,7 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="stylesheet" href="css/styles.css?v=168">
+    <link rel="stylesheet" href="css/styles.css?v=169">
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📊</text></svg>">
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
@@ -287,44 +287,75 @@
                 <div id="pcr-snapshots-table-container"></div>
             </div>
 
-            <!-- ========== VIEW: AI TRADES COPILOT (100% FREE) ========== -->
+            <!-- ========== VIEW: AI TRADES & CONVERSATIONAL COMPANION ========== -->
             <div class="view-container" id="view-ai-trades">
-                <div class="ai-copilot-view">
-                    <div class="ai-status-strip glass">
-                        <div class="ai-status-left">
-                            <div class="ai-status-item">
-                                <span class="dot" style="background:#10b981; box-shadow:0 0 8px #10b981;"></span>
-                                <span>Quant Algo Engine: <b style="color:#10b981;">Active (Free)</b></span>
+                <div class="ai-companion-wrapper">
+                    <!-- Companion Header -->
+                    <div class="ai-companion-header">
+                        <div class="ai-profile">
+                            <div class="ai-avatar">
+                                <i class="fas fa-brain"></i>
+                                <span class="ai-avatar-online"></span>
                             </div>
-                            <div class="ai-status-item" id="gemini-status-indicator">
-                                <span class="dot" id="gemini-status-dot" style="background:#a855f7; box-shadow:0 0 8px #a855f7;"></span>
-                                <span>Deep Reasoning: <b id="gemini-status-text" style="color:#c084fc;">Free Gemini AI</b></span>
+                            <div class="ai-profile-info">
+                                <div class="ai-profile-name">
+                                    <span>Kuber AI</span>
+                                    <span style="font-size:0.62rem; padding:0.1rem 0.4rem; border-radius:4px; background:linear-gradient(135deg, #10b981, #06b6d4); color:#fff; font-weight:800;">PERSONAL AGENT</span>
+                                </div>
+                                <div class="ai-profile-status" id="ai-companion-status">
+                                    Listening & Learning YOUR rules • Live market attached
+                                </div>
                             </div>
                         </div>
-                        <div style="display:flex; gap:0.5rem; align-items:center;">
-                            <button class="btn" onclick="App.openAiSettingsModal()" style="font-size:0.75rem; padding:0.35rem 0.75rem; background:rgba(168,85,247,0.15); border:1px solid rgba(168,85,247,0.4); color:#c084fc; border-radius:6px; cursor:pointer;">
-                                <i class="fas fa-key"></i> <span id="gemini-btn-label">AI Key</span>
+
+                        <div class="ai-header-controls">
+                            <button class="ai-memory-pill" onclick="App.openAiMemoryModal()" title="View and manage learned trading rules">
+                                <i class="fas fa-microchip"></i>
+                                <span id="ai-learned-rules-badge">0 Learned Rules</span>
                             </button>
-                            <button class="btn btn-primary" onclick="App.refreshAiTrades()" style="font-size:0.75rem; padding:0.35rem 0.85rem; border-radius:6px; cursor:pointer;">
-                                <i class="fas fa-sync-alt"></i> Scan Trades
+                            <button class="btn" onclick="App.clearAiChat()" title="Clear chat history" style="font-size:0.75rem; padding:0.35rem 0.65rem; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:var(--text-muted); border-radius:6px; cursor:pointer;">
+                                <i class="fas fa-eraser"></i> Clear
+                            </button>
+                            <button class="btn" onclick="App.openAiSettingsModal()" title="Configure free Gemini AI key" style="font-size:0.75rem; padding:0.35rem 0.65rem; background:rgba(168,85,247,0.15); border:1px solid rgba(168,85,247,0.35); color:#c084fc; border-radius:6px; cursor:pointer;">
+                                <i class="fas fa-key"></i> Key
                             </button>
                         </div>
                     </div>
 
-                    <!-- Filter Bar -->
-                    <div class="ai-filter-bar">
-                        <button class="ai-filter-btn active" id="ai-filter-all" onclick="App.filterAiTrades('all')">🔥 All Setups</button>
-                        <button class="ai-filter-btn" id="ai-filter-bull" onclick="App.filterAiTrades('bull')">🟢 Bullish Calls (CE)</button>
-                        <button class="ai-filter-btn" id="ai-filter-bear" onclick="App.filterAiTrades('bear')">🔴 Bearish Puts (PE)</button>
-                        <button class="ai-filter-btn" id="ai-filter-high" onclick="App.filterAiTrades('high')">⚡ High Conviction (>80%)</button>
-                        <button class="ai-filter-btn" id="ai-filter-indices" onclick="App.filterAiTrades('indices')">🏛️ NIFTY & BANKNIFTY</button>
-                    </div>
+                    <!-- Companion Body -->
+                    <div class="ai-companion-body">
+                        <!-- Messages Scroll Area -->
+                        <div class="ai-messages-scroll" id="ai-chat-messages">
+                            <!-- Injected by JS -->
+                        </div>
 
-                    <!-- Trades Grid -->
-                    <div id="ai-trades-grid-container" class="ai-trades-grid">
-                        <div style="grid-column: 1 / -1; text-align: center; padding: 3rem; color: #94a3b8;">
-                            <i class="fas fa-spinner fa-spin" style="font-size: 1.5rem; color: #a855f7; margin-bottom: 0.75rem; display: block;"></i>
-                            Scanning market for high probability setups...
+                        <!-- Quick Teaching Chips -->
+                        <div class="ai-chips-bar" id="ai-quick-chips">
+                            <button type="button" class="ai-chip" onclick="App.sendQuickAiPrompt('I want only 85%+ accuracy intraday setups. Do not give any trade below 85% conviction.')">
+                                🎯 85%+ Accuracy Target
+                            </button>
+                            <button type="button" class="ai-chip" onclick="App.sendQuickAiPrompt('Learn this rule: For Call buys, PCR 15m delta must be > +0.03 and spot must hold above 15m VWAP')">
+                                💡 Rule: PCR + Spot Confirmation
+                            </button>
+                            <button type="button" class="ai-chip" onclick="App.sendQuickAiPrompt('Scan NIFTY and BANKNIFTY right now against my learned rules and tell me if there is any trade')">
+                                📊 Scan NIFTY & BANKNIFTY
+                            </button>
+                            <button type="button" class="ai-chip" onclick="App.sendQuickAiPrompt('Scan all active F&O stocks right now for my setups')">
+                                🔥 Scan All Stocks
+                            </button>
+                            <button type="button" class="ai-chip" onclick="App.sendQuickAiPrompt('What rules and accuracy preferences have you learned from me so far?')">
+                                🧠 Review Learned Rules
+                            </button>
+                        </div>
+
+                        <!-- Chat Input Area -->
+                        <div class="ai-chat-input-area">
+                            <form id="ai-chat-form" onsubmit="App.handleAiChatSubmit(event)" class="ai-input-row">
+                                <input type="text" id="ai-chat-input" class="ai-text-input" placeholder="Talk to him, teach him your rules, or ask for trades..." autocomplete="off">
+                                <button type="submit" class="ai-send-btn" id="ai-chat-send-btn" title="Send message">
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -465,28 +496,47 @@
         </div>
     </div>
 
-    <!-- AI Trade Explanation Modal -->
-    <div id="ai-explanation-modal" class="modal-overlay">
-        <div class="modal-card glass" style="max-width: 650px; width: 95%; max-height: 85vh; display: flex; flex-direction: column;">
+    <!-- AI Memory / Learned Rules Manager Modal -->
+    <div id="ai-memory-modal" class="modal-overlay">
+        <div class="modal-card glass" style="max-width: 600px; width: 95%; max-height: 85vh; display: flex; flex-direction: column;">
             <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.85rem;">
                 <div style="font-weight: 700; font-size: 1.1rem; color: #f8fafc; display: flex; align-items: center; gap: 0.5rem;">
-                    <i class="fas fa-wand-magic-sparkles" style="color: #c084fc;"></i> 
-                    <span id="ai-modal-title">AI Trade Thesis Breakdown</span>
+                    <i class="fas fa-microchip" style="color: #c084fc;"></i> 
+                    <span>Kuber's Memory — Your Custom Learned Rules</span>
                 </div>
-                <button class="close-btn" onclick="document.getElementById('ai-explanation-modal').classList.remove('active')">✕</button>
+                <button class="close-btn" onclick="document.getElementById('ai-memory-modal').classList.remove('active')">✕</button>
             </div>
-            <div id="ai-modal-body" style="flex: 1; overflow-y: auto; padding: 1rem 0; font-size: 0.9rem; line-height: 1.6; color: #cbd5e1;">
-                <!-- Populated by JS -->
+            
+            <div style="padding: 0.85rem 0; font-size: 0.84rem; color: var(--text-muted); border-bottom: 1px solid rgba(255,255,255,0.06); line-height: 1.5;">
+                These are the personalized trading criteria, accuracy targets, and setup rules you have taught Kuber. He applies these rules whenever analyzing ticks.
+            </div>
+
+            <div id="ai-memory-rules-list" style="flex: 1; overflow-y: auto; padding: 1rem 0;">
+                <!-- Populated dynamically -->
+            </div>
+
+            <div style="padding-top: 0.85rem; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                <button class="btn" onclick="App.clearAllLearnedRules()" style="background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); font-size: 0.8rem; padding: 0.45rem 0.9rem; border-radius: 6px; cursor: pointer;">
+                    <i class="fas fa-trash"></i> Reset Memory
+                </button>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-primary" onclick="App.openAddCustomRulePrompt()" style="font-size: 0.82rem; padding: 0.45rem 1rem; border-radius: 6px; cursor: pointer;">
+                        <i class="fas fa-plus"></i> Add Rule
+                    </button>
+                    <button class="btn" onclick="document.getElementById('ai-memory-modal').classList.remove('active')" style="font-size: 0.82rem; padding: 0.45rem 1rem; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.05); color: #fff;">
+                        Done
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- Firebase Config & App Initiation -->
-    <script src="js/lib/firebase-app.js?v=168"></script>
-    <script src="js/lib/firebase-database.js?v=168"></script>
-    <script src="js/firebase-config.js?v=168"></script>
-    <script src="js/nse-api.js?v=168"></script>
-    <script src="js/app.js?v=168"></script>
+    <script src="js/lib/firebase-app.js?v=169"></script>
+    <script src="js/lib/firebase-database.js?v=169"></script>
+    <script src="js/firebase-config.js?v=169"></script>
+    <script src="js/nse-api.js?v=169"></script>
+    <script src="js/app.js?v=169"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

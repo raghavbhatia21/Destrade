@@ -5388,13 +5388,14 @@ const App = {
         await db.ref().update(updates);
     },
 
-    // ===== AI TRADE COPILOT & QUANT SIGNALS (100% FREE) =====
-    stateAiTradeFilter: 'all',
-    _aiCachedSetups: [],
-    _aiLastScanTime: 0,
+    // ===== CONVERSATIONAL AI TRADING COMPANION & MEMORY ENGINE (100% FREE) =====
+    _aiChatHistory: [],
+    _aiIsThinking: false,
 
     initAiCopilot() {
         this.updateGeminiStatusUI();
+        this.updateAiMemoryBadge();
+        this.renderAiChatMessages();
     },
 
     updateGeminiStatusUI() {
@@ -5409,47 +5410,371 @@ const App = {
             if (btnLabel) btnLabel.textContent = 'Edit Key';
         } else {
             if (dot) { dot.style.background = '#c084fc'; dot.style.boxShadow = '0 0 8px #c084fc'; }
-            if (text) { text.textContent = 'Quant Engine (Free)'; text.style.color = '#c084fc'; }
+            if (text) { text.textContent = 'Quant Companion (Free)'; text.style.color = '#c084fc'; }
             if (btnLabel) btnLabel.textContent = 'Add Free Key';
         }
     },
 
-    openAiSettingsModal() {
-        const modal = document.getElementById('ai-settings-modal');
-        if (!modal) return;
-        const input = document.getElementById('gemini-api-key-input');
-        if (input) {
-            input.value = localStorage.getItem('destrade_gemini_api_key') || '';
+    // --- PERSISTENT MEMORY & LEARNED RULES SYSTEM ---
+    getAiLearnedRules() {
+        try {
+            const raw = localStorage.getItem('destrade_ai_learned_rules');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            }
+        } catch (e) { }
+
+        // Default initial baseline rules (can be customized or cleared by user anytime)
+        return [
+            "Target Minimum Accuracy: 85%+ (Do not suggest low conviction setups)",
+            "Strict 1:2.0+ Risk-to-Reward ratio minimum on all options setups",
+            "Require 15-minute PCR delta confirmation before taking directional positions"
+        ];
+    },
+
+    saveAiLearnedRules(rules) {
+        if (!Array.isArray(rules)) return;
+        try {
+            localStorage.setItem('destrade_ai_learned_rules', JSON.stringify(rules));
+        } catch (e) { }
+        this.updateAiMemoryBadge();
+    },
+
+    updateAiMemoryBadge() {
+        const rules = this.getAiLearnedRules();
+        const badge = document.getElementById('ai-learned-rules-badge');
+        if (badge) {
+            badge.textContent = `${rules.length} Learned Rules`;
         }
+    },
+
+    openAiMemoryModal() {
+        const modal = document.getElementById('ai-memory-modal');
+        const listContainer = document.getElementById('ai-memory-rules-list');
+        if (!modal || !listContainer) return;
+
+        const rules = this.getAiLearnedRules();
+        if (rules.length === 0) {
+            listContainer.innerHTML = `
+                <div style="text-align:center; padding:2rem 1rem; color:var(--text-muted);">
+                    <i class="fas fa-brain" style="font-size:1.8rem; color:#a855f7; margin-bottom:0.5rem; display:block; opacity:0.6;"></i>
+                    <b>Kuber has no custom rules stored yet.</b><br>
+                    <span style="font-size:0.8rem;">Tell him in the chat what accuracy you want or what setups you trade, and he'll learn them immediately!</span>
+                </div>
+            `;
+        } else {
+            let html = '';
+            rules.forEach((rule, idx) => {
+                html += `
+                    <div class="ai-rule-item">
+                        <div>
+                            <span style="color:#c084fc; font-weight:800; margin-right:0.4rem;">#${idx + 1}</span>
+                            <span>${rule}</span>
+                        </div>
+                        <i class="fas fa-trash-alt ai-rule-delete" onclick="App.deleteLearnedRule(${idx})" title="Delete rule"></i>
+                    </div>
+                `;
+            });
+            listContainer.innerHTML = html;
+        }
+
         modal.classList.add('active');
     },
 
-    saveGeminiApiKey() {
-        const input = document.getElementById('gemini-api-key-input');
-        if (!input) return;
-        const val = input.value.trim();
-        if (val) {
-            localStorage.setItem('destrade_gemini_api_key', val);
-            this.showToast('✅ Free Gemini AI Key saved successfully!');
-        } else {
-            localStorage.removeItem('destrade_gemini_api_key');
-            this.showToast('ℹ️ Gemini Key removed. Using local Quant Engine.');
+    deleteLearnedRule(idx) {
+        const rules = this.getAiLearnedRules();
+        if (idx >= 0 && idx < rules.length) {
+            const removed = rules.splice(idx, 1);
+            this.saveAiLearnedRules(rules);
+            this.openAiMemoryModal();
+            this.showToast(`🗑️ Removed rule: "${removed[0].substring(0, 30)}..."`);
         }
-        this.updateGeminiStatusUI();
-        const modal = document.getElementById('ai-settings-modal');
-        if (modal) modal.classList.remove('active');
     },
 
-    clearGeminiApiKey() {
-        localStorage.removeItem('destrade_gemini_api_key');
-        const input = document.getElementById('gemini-api-key-input');
-        if (input) input.value = '';
-        this.updateGeminiStatusUI();
-        this.showToast('ℹ️ Gemini Key removed. Using local Quant Engine.');
-        const modal = document.getElementById('ai-settings-modal');
-        if (modal) modal.classList.remove('active');
+    clearAllLearnedRules() {
+        if (!confirm('Are you sure you want to reset all custom rules Kuber has learned?')) return;
+        this.saveAiLearnedRules([]);
+        this.openAiMemoryModal();
+        this.showToast('🧠 Kuber memory reset. Ready to learn your fresh rules!');
     },
 
+    openAddCustomRulePrompt() {
+        const rule = prompt('Enter a new custom trading rule for Kuber to remember:');
+        if (rule && rule.trim()) {
+            const rules = this.getAiLearnedRules();
+            rules.push(rule.trim());
+            this.saveAiLearnedRules(rules);
+            this.openAiMemoryModal();
+            this.showToast('✅ New rule added to Kuber memory!');
+        }
+    },
+
+    // --- CONVERSATION & CHAT HISTORY ---
+    getAiChatHistory() {
+        try {
+            const raw = localStorage.getItem('destrade_ai_chat_history');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            }
+        } catch (e) { }
+
+        // Initial welcome message from Kuber
+        const rules = this.getAiLearnedRules();
+        return [
+            {
+                role: 'assistant',
+                content: `Hey! I am <b>Kuber</b>, your personal AI trading partner.<br><br>I don't use any rigid, pre-decided rules or black-box formulas. <b>I trade YOUR way.</b><br><br>Tell me:<br>• What kind of setups you look for (scalps, momentum, reversal, expiry day selling)<br>• What <b>accuracy & conviction</b> you demand (e.g. <i>"I only want 85%+ accuracy trades"</i>)<br>• Which indicators you trust (PCR shifts, OI buildup, VWAP, Support/Resistance)<br><br>I will learn and remember your strategy, and whenever you ask, I'll scan the live market strictly matching your exact setup. What shall we focus on today?`,
+                time: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })
+            }
+        ];
+    },
+
+    saveAiChatHistory(history) {
+        if (!Array.isArray(history)) return;
+        try {
+            // Keep last 40 messages to save localStorage
+            const trimmed = history.slice(-40);
+            localStorage.setItem('destrade_ai_chat_history', JSON.stringify(trimmed));
+        } catch (e) { }
+    },
+
+    clearAiChat() {
+        if (!confirm('Clear chat history? (Your learned rules will remain safe)')) return;
+        localStorage.removeItem('destrade_ai_chat_history');
+        this.renderAiChatMessages();
+        this.showToast('💬 Chat cleared.');
+    },
+
+    renderAiChatMessages() {
+        const container = document.getElementById('ai-chat-messages');
+        if (!container) return;
+
+        const history = this.getAiChatHistory();
+        let html = '';
+
+        history.forEach(msg => {
+            const isUser = msg.role === 'user';
+            const avatarIcon = isUser ? 'fa-user' : 'fa-brain';
+
+            html += `
+                <div class="ai-msg ${isUser ? 'user' : 'assistant'}">
+                    <div class="ai-msg-avatar">
+                        <i class="fas ${avatarIcon}"></i>
+                    </div>
+                    <div class="ai-msg-bubble">
+                        <div>${msg.content}</div>
+                        <div class="ai-msg-time">${msg.time || ''}</div>
+                    </div>
+                </div>
+            `;
+        });
+
+        if (this._aiIsThinking) {
+            html += `
+                <div class="ai-msg assistant">
+                    <div class="ai-msg-avatar">
+                        <i class="fas fa-brain fa-spin"></i>
+                    </div>
+                    <div class="ai-msg-bubble" style="color:var(--text-muted); font-style:italic;">
+                        <i class="fas fa-satellite-dish fa-spin" style="margin-right:0.4rem; color:#a855f7;"></i> Kuber is analyzing live ticks against your rules...
+                    </div>
+                </div>
+            `;
+        }
+
+        container.innerHTML = html;
+        container.scrollTop = container.scrollHeight;
+    },
+
+    sendQuickAiPrompt(text) {
+        const input = document.getElementById('ai-chat-input');
+        if (input) {
+            input.value = text;
+            this.handleAiChatSubmit(new Event('submit'));
+        }
+    },
+
+    async handleAiChatSubmit(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        const input = document.getElementById('ai-chat-input');
+        if (!input) return;
+
+        const text = input.value.trim();
+        if (!text || this._aiIsThinking) return;
+
+        input.value = '';
+
+        // Add user message to history
+        const history = this.getAiChatHistory();
+        const nowTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' });
+        history.push({ role: 'user', content: text, time: nowTime });
+        this.saveAiChatHistory(history);
+
+        this._aiIsThinking = true;
+        this.renderAiChatMessages();
+
+        // Process AI response
+        await this.generateAiCompanionResponse(text, history);
+
+        this._aiIsThinking = false;
+        this.renderAiChatMessages();
+    },
+
+    async generateAiCompanionResponse(userText, history) {
+        const rules = this.getAiLearnedRules();
+        const apiKey = (localStorage.getItem('destrade_gemini_api_key') || '').trim();
+
+        // Detect if user is teaching a rule or setting an accuracy requirement
+        const lower = userText.toLowerCase();
+        let ruleLearnedFeedback = '';
+
+        const isRuleTeaching = lower.includes('rule') || lower.includes('accuracy') || lower.includes('learn') || lower.includes('target') ||
+            lower.includes('only buy') || lower.includes('only sell') || lower.includes('always') || lower.includes('never') ||
+            lower.includes('risk reward') || lower.includes('stop loss') || lower.includes('criteria');
+
+        if (isRuleTeaching) {
+            // Clean up and store as a learned rule
+            let newRule = userText.replace(/^(learn this rule|learn rule|rule:|please learn:|teach:)\s*/i, '').trim();
+            if (newRule.length > 5 && !rules.includes(newRule)) {
+                rules.push(newRule);
+                this.saveAiLearnedRules(rules);
+                ruleLearnedFeedback = `🧠 <i>Memorized new rule: "${newRule}"</i><br><br>`;
+            }
+        }
+
+        // Live Market Snapshot Summary for AI context
+        const liveSummary = this.buildLiveMarketSnapshotSummary();
+
+        // If user has Gemini API Key: Call Gemini 1.5 Flash
+        if (apiKey) {
+            try {
+                const systemPrompt = `You are Kuber, the user's personal, highly adaptable AI Options Trading Companion for the Indian Stock Market (NSE/NIFTY/BANKNIFTY).
+You DO NOT use generic or rigid pre-decided rules. You follow the USER'S LEARNED RULES strictly.
+
+User's Learned Trading Rules & Accuracy Preferences:
+${rules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
+
+Current Live Market Data Context (IST):
+${liveSummary}
+
+User says: "${userText}"
+
+Instructions:
+1. If the user is teaching you a rule, style, or accuracy threshold, acknowledge it warmly, confirm you have memorized it, and explain how it will shape future setups.
+2. If the user asks for trades or market analysis, evaluate the live market data STRICTLY against the user's custom learned rules. If no setup meets their exact accuracy/rule threshold, honestly say "No trades currently pass your strict rule" instead of forcing low-quality trades!
+3. Format response in crisp, readable HTML/markdown with bolding and bullet points (use <b>, <code>, <ul>, <li>, <p> tags, no markdown codeblocks).
+4. Be friendly, sharp, disciplined, and speak like an elite proprietary desk trader dedicated to protecting the user's capital.`;
+
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: systemPrompt }] }],
+                        generationConfig: { temperature: 0.25, maxOutputTokens: 1000 }
+                    })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    let reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                    reply = reply.replace(/```html/gi, '').replace(/```/g, '').trim();
+
+                    const nowTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' });
+                    history.push({ role: 'assistant', content: ruleLearnedFeedback + reply, time: nowTime });
+                    this.saveAiChatHistory(history);
+                    return;
+                }
+            } catch (err) {
+                console.warn('Gemini chat failed, using local smart engine:', err.message);
+            }
+        }
+
+        // Smart Local Engine (Zero API Key needed)
+        const nowTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' });
+        let reply = '';
+
+        if (lower.includes('review') || lower.includes('what have you learned') || lower.includes('learned rules') || lower.includes('what rules')) {
+            reply = `Here is what I have currently memorized from you:<br><br><ul>` +
+                rules.map(r => `<li><b>${r}</b></li>`).join('') +
+                `</ul><br>Whenever you ask me to scan or evaluate trades, I will filter all market data strictly through these criteria. You can teach me more rules anytime by just saying <i>"Learn this: ..."</i>!`;
+        } else if (lower.includes('scan') || lower.includes('trade') || lower.includes('nifty') || lower.includes('banknifty') || lower.includes('setup')) {
+            // Find live setups matching user's custom criteria
+            const matching = this.findTradesMatchingUserRules(rules);
+            if (matching.length > 0) {
+                reply = `I scanned the live market against your <b>${rules.length} custom rules</b>. Here is what qualified:<br><br>`;
+                matching.slice(0, 3).forEach(s => {
+                    reply += `
+                        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:0.75rem; margin-bottom:0.6rem;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <b style="color:#f8fafc; font-size:0.95rem;">${s.symbol} — ${s.action} (${s.strike})</b>
+                                <span style="color:#10b981; font-weight:800; font-family:var(--font-mono);">${s.convictionScore}% Conviction</span>
+                            </div>
+                            <div style="font-size:0.8rem; color:#94a3b8; margin-top:0.3rem;">
+                                Spot: <b>₹${s.spot.toFixed(1)}</b> | Est. Entry: <b>₹${s.estPremium}</b> | Target 1: <b style="color:#10b981;">₹${s.target1}</b> | Stop Loss: <b style="color:#ef4444;">₹${s.stopLoss}</b>
+                            </div>
+                            <div style="font-size:0.75rem; color:#cbd5e1; margin-top:0.3rem;">
+                                <i>Catalyst: ${s.catalysts[0]}</i>
+                            </div>
+                        </div>
+                    `;
+                });
+                reply += `<p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.5rem;">All other tickers were rejected because they did not pass your strict criteria.</p>`;
+            } else {
+                reply = `I evaluated the live market against your rules, but <b>no setups currently pass your strict accuracy criteria</b>.<br><br>PCR shifts and spot velocity are either in conflicting directions or below your conviction threshold. I will not force low-quality trades on you — protecting capital comes first!`;
+            }
+        } else if (isRuleTeaching) {
+            reply = `Understood! I've locked this rule into my strategy memory. Every single setup I evaluate from now on will strictly honor this rule.<br><br>Say <i>"Scan live market"</i> whenever you want me to inspect today's ticks!`;
+        } else {
+            reply = `Got it. I'm ready and continuously observing live ticks. Tell me what rules you'd like me to remember, what accuracy you want (e.g. 85%+), or ask me to <i>"Scan NIFTY and BANKNIFTY right now"</i>!`;
+        }
+
+        if (!apiKey) {
+            reply += `<br><div style="font-size:0.75rem; color:#94a3b8; margin-top:0.8rem; padding-top:0.5rem; border-top:1px dashed rgba(255,255,255,0.1);">💡 <i>Tip: For fluent back-and-forth conversation, you can link a <a href="#" onclick="App.openAiSettingsModal(); return false;" style="color:#c084fc; text-decoration:underline;">Free Google Gemini Key</a> (1,500 free queries/day).</i></div>`;
+        }
+
+        history.push({ role: 'assistant', content: ruleLearnedFeedback + reply, time: nowTime });
+        this.saveAiChatHistory(history);
+    },
+
+    buildLiveMarketSnapshotSummary() {
+        const pool = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'RELIANCE', 'HDFCBANK', 'TCS', 'ICICIBANK', 'SBIN'];
+        const summaries = [];
+
+        pool.forEach(sym => {
+            const setup = this.generateQuantTradeSetup(sym);
+            if (setup) {
+                summaries.push(`${sym}: Spot ₹${setup.spot.toFixed(1)}, PCR ${setup.curPcr.toFixed(4)} (15m delta: ${setup.pcrDelta15m >= 0 ? '+' : ''}${setup.pcrDelta15m.toFixed(4)}), Potential Bias: ${setup.action} (${setup.strike}), Raw Score: ${setup.convictionScore}%`);
+            }
+        });
+
+        return summaries.length > 0 ? summaries.join('\n') : 'Market is currently closed or initializing snapshots.';
+    },
+
+    findTradesMatchingUserRules(rules) {
+        // Parse user target accuracy if specified
+        let minAccuracy = 80;
+        rules.forEach(r => {
+            const match = r.match(/(\d{2})%/);
+            if (match) minAccuracy = parseInt(match[1], 10);
+        });
+
+        const pool = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'RELIANCE', 'HDFCBANK', 'TCS', 'INFY', 'ICICIBANK', 'SBIN', 'BHARTIARTL', 'ITC', 'LT', 'AXISBANK', 'BAJFINANCE', 'TATAMOTORS', 'PATANJALI'];
+        const matches = [];
+
+        pool.forEach(sym => {
+            const setup = this.generateQuantTradeSetup(sym);
+            if (setup && setup.convictionScore >= minAccuracy) {
+                matches.push(setup);
+            }
+        });
+
+        matches.sort((a, b) => b.convictionScore - a.convictionScore);
+        return matches;
+    },
+
+    // --- RE-USABLE QUANT SETUP & PCR IN-VIEW BANNER ---
     generateQuantTradeSetup(symbol) {
         const cleanSym = (symbol || 'NIFTY').replace('NIFTY 50', 'NIFTY').replace('NIFTY BANK', 'BANKNIFTY').toUpperCase();
         let rawList = [];
@@ -5458,7 +5783,6 @@ const App = {
         }
         let data = this.sanitize5MinPcrList(rawList);
 
-        // Fallback to live snapshot if history empty
         let curPcr = 1.0;
         let curSpot = 0;
         let pcrDelta5m = 0;
@@ -5496,7 +5820,6 @@ const App = {
 
         if (curSpot <= 0) return null;
 
-        // Strike Step by Symbol
         let step = 100;
         if (cleanSym.includes('NIFTY') && !cleanSym.includes('BANK')) step = 50;
         if (cleanSym.includes('BANKNIFTY')) step = 100;
@@ -5510,14 +5833,11 @@ const App = {
         }
 
         const atmStrike = Math.round(curSpot / step) * step;
-
-        // Quantitative Trend Direction
         const isBullish = (pcrDelta15m > 0.002 || (pcrDelta5m > 0.003 && spotDelta15m >= 0) || (curPcr > 1.15 && spotDelta15m >= 0));
         const actionType = isBullish ? 'BUY CALL' : 'BUY PUT';
         const optType = isBullish ? 'CE' : 'PE';
         const recommendedStrike = `${atmStrike} ${optType}`;
 
-        // Options Premium & Multi-Target Modeling
         const premiumMult = cleanSym.includes('BANK') ? 0.0075 : (cleanSym.includes('NIFTY') ? 0.0055 : 0.011);
         const estPremium = Math.max(12, Math.round(curSpot * premiumMult));
         const target1 = Math.round(estPremium * 1.35);
@@ -5525,11 +5845,9 @@ const App = {
         const stopLoss = Math.round(estPremium * 0.78);
         const riskReward = '1 : 2.4';
 
-        // Invalidation level on spot
         const spotBuffer = cleanSym.includes('BANK') ? 130 : (cleanSym.includes('NIFTY') ? 45 : Math.round(curSpot * 0.008));
         const invalidationSpot = isBullish ? (curSpot - spotBuffer) : (curSpot + spotBuffer);
 
-        // Power & Conviction Score
         const absSpotPct = Math.abs(spotPct15m);
         const absPcrDiff = Math.abs(pcrDelta15m);
         let rawScore = 68 + (absPcrDiff * 260) + (absSpotPct * 20);
@@ -5573,8 +5891,8 @@ const App = {
         if (!setup) {
             container.innerHTML = `
                 <div style="display:flex; align-items:center; gap:0.6rem; color:var(--text-muted); font-size:0.82rem;">
-                    <i class="fas fa-wand-magic-sparkles" style="color:#c084fc;"></i>
-                    <span><b>AI Trade Copilot:</b> Analyzing intraday ticks to construct high probability setup for ${sym}...</span>
+                    <i class="fas fa-brain" style="color:#c084fc;"></i>
+                    <span><b>Kuber AI:</b> Analyzing ticks for ${sym} against your learned rules...</span>
                 </div>
             `;
             return;
@@ -5583,6 +5901,7 @@ const App = {
         const badgeCls = setup.isBullish ? 'bull' : 'bear';
         const actionIcon = setup.isBullish ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down';
         const scoreColor = setup.convictionScore >= 80 ? '#10b981' : '#f59e0b';
+        const rules = this.getAiLearnedRules();
 
         container.innerHTML = `
             <div class="pcr-ai-left">
@@ -5594,324 +5913,56 @@ const App = {
                     <span>Target 1: <b style="color:#10b981;">₹${setup.target1}</b></span>
                     <span>Target 2: <b style="color:#10b981;">₹${setup.target2}</b></span>
                     <span>Stop Loss: <b style="color:#ef4444;">₹${setup.stopLoss}</b></span>
-                    <span>R:R: <b>${setup.riskReward}</b></span>
                     <span style="font-size:0.75rem; padding:0.15rem 0.45rem; border-radius:4px; background:${scoreColor}25; color:${scoreColor}; font-weight:800;">
                         ${setup.convictionScore}% Conviction
+                    </span>
+                    <span style="font-size:0.72rem; color:var(--text-muted);">
+                        (Filtered by your ${rules.length} custom rules)
                     </span>
                 </div>
             </div>
             <div style="display:flex; align-items:center; gap:0.5rem;">
-                <button class="ai-action-btn-primary" onclick="App.explainTradeWithGemini('${setup.symbol}')" style="padding:0.4rem 0.85rem; font-size:0.78rem;">
-                    <i class="fas fa-wand-magic-sparkles"></i> AI Deep Thesis
-                </button>
-                <button class="ai-action-btn-secondary" onclick="App.switchView('ai-trades')" style="padding:0.4rem 0.75rem; font-size:0.78rem;">
-                    All Trades <i class="fas fa-arrow-right"></i>
+                <button class="ai-action-btn-primary" onclick="App.switchView('ai-trades'); App.sendQuickAiPrompt('Analyze ${setup.symbol} right now against my learned rules');" style="padding:0.4rem 0.85rem; font-size:0.78rem;">
+                    <i class="fas fa-comments"></i> Ask Kuber
                 </button>
             </div>
         `;
     },
 
-    filterAiTrades(filter) {
-        this.stateAiTradeFilter = filter || 'all';
-        const filterIds = ['all', 'bull', 'bear', 'high', 'indices'];
-        filterIds.forEach(id => {
-            const btn = document.getElementById(`ai-filter-${id}`);
-            if (btn) btn.classList.toggle('active', id === this.stateAiTradeFilter);
-        });
-        this.renderAiTradesView(false);
-    },
-
-    async refreshAiTrades() {
-        const btn = document.querySelector('#view-ai-trades .fa-sync-alt');
-        if (btn) btn.classList.add('fa-spin');
-        await this.fetchPcrSnapshotImmediate();
-        this._aiLastScanTime = 0;
-        this.renderAiTradesView(true);
-        setTimeout(() => {
-            if (btn) btn.classList.remove('fa-spin');
-        }, 600);
-    },
-
-    async renderAiTradesView(forceRefresh = false) {
-        const container = document.getElementById('ai-trades-grid-container');
-        if (!container) return;
-
-        this.updateGeminiStatusUI();
-
-        // Target symbols to scan
-        const defaultPool = [
-            'NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY',
-            'RELIANCE', 'HDFCBANK', 'TCS', 'INFY', 'ICICIBANK',
-            'SBIN', 'BHARTIARTL', 'ITC', 'LT', 'AXISBANK',
-            'BAJFINANCE', 'TATAMOTORS', 'PATANJALI', 'MARUTI'
-        ];
-
-        // Gather all symbols currently available in local pcrHistory or live snapshot
-        const availableSymbols = new Set(defaultPool);
-        if (this.state.pcrHistory && typeof this.state.pcrHistory === 'object') {
-            Object.keys(this.state.pcrHistory).forEach(s => availableSymbols.add(s));
+    openAiSettingsModal() {
+        const modal = document.getElementById('ai-settings-modal');
+        if (!modal) return;
+        const input = document.getElementById('gemini-api-key-input');
+        if (input) {
+            input.value = localStorage.getItem('destrade_gemini_api_key') || '';
         }
-        if (this._liveSnapshot && typeof this._liveSnapshot === 'object') {
-            Object.keys(this._liveSnapshot).forEach(s => availableSymbols.add(s));
-        }
-
-        const symList = Array.from(availableSymbols);
-        const setups = [];
-
-        symList.forEach(sym => {
-            const setup = this.generateQuantTradeSetup(sym);
-            if (setup) setups.push(setup);
-        });
-
-        // Sort by Conviction Score (highest first)
-        setups.sort((a, b) => b.convictionScore - a.convictionScore);
-        this._aiCachedSetups = setups;
-
-        // Apply Active Filter
-        const filter = this.stateAiTradeFilter || 'all';
-        let filtered = setups;
-        if (filter === 'bull') {
-            filtered = setups.filter(s => s.isBullish);
-        } else if (filter === 'bear') {
-            filtered = setups.filter(s => !s.isBullish);
-        } else if (filter === 'high') {
-            filtered = setups.filter(s => s.convictionScore >= 80);
-        } else if (filter === 'indices') {
-            filtered = setups.filter(s => ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'].includes(s.symbol));
-        }
-
-        if (filtered.length === 0) {
-            container.innerHTML = `
-                <div style="grid-column: 1 / -1; text-align: center; padding: 3.5rem 1rem; color: var(--text-muted); background: rgba(15, 23, 42, 0.4); border-radius: 12px; border: 1px dashed rgba(255,255,255,0.08);">
-                    <i class="fas fa-satellite-dish" style="font-size: 2rem; color: #a855f7; margin-bottom: 0.85rem; display: block; opacity: 0.7;"></i>
-                    <b style="color: #f8fafc; font-size: 1rem;">No trade setups matched this filter right now</b>
-                    <p style="font-size: 0.82rem; margin-top: 0.4rem; max-width: 420px; margin-left: auto; margin-right: auto;">
-                        Trade Copilot enforces strict trend alignment between spot momentum and PCR deltas to avoid false breakouts. Try selecting <b>"All Setups"</b> or refresh data.
-                    </p>
-                    <button class="btn btn-primary" onclick="App.filterAiTrades('all')" style="margin-top: 0.75rem; font-size: 0.8rem; padding: 0.4rem 1rem;">Show All Setups</button>
-                </div>
-            `;
-            return;
-        }
-
-        let html = '';
-        filtered.forEach(s => {
-            const cardCls = s.isBullish ? 'bull' : 'bear';
-            const actionIcon = s.isBullish ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down';
-            const scoreColor = s.convictionScore >= 80 ? '#10b981' : '#f59e0b';
-
-            html += `
-                <div class="ai-trade-card ${cardCls}">
-                    <div class="ai-card-header">
-                        <div style="display:flex; align-items:center; gap:0.6rem;">
-                            <span class="ai-card-sym">${s.symbol}</span>
-                            <span style="font-size:0.75rem; color:#94a3b8;">₹${s.spot.toFixed(1)}</span>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:0.5rem;">
-                            <span class="ai-card-action">
-                                <i class="fas ${actionIcon}"></i> ${s.action}
-                            </span>
-                            <span style="font-family:'JetBrains Mono',monospace; font-size:0.75rem; font-weight:800; padding:0.15rem 0.45rem; border-radius:6px; background:${scoreColor}20; color:${scoreColor}; border:1px solid ${scoreColor}40;">
-                                ${s.convictionScore}%
-                            </span>
-                        </div>
-                    </div>
-
-                    <div class="ai-strike-box">
-                        <div>
-                            <div class="ai-strike-label">RECOMMENDED STRIKE</div>
-                            <div class="ai-strike-val">${s.strike}</div>
-                        </div>
-                        <div style="text-align:right;">
-                            <div class="ai-strike-label">EST. ENTRY</div>
-                            <div style="font-size:1.05rem; font-weight:800; color:#f8fafc; font-family:var(--font-mono);">₹${s.estPremium}</div>
-                        </div>
-                    </div>
-
-                    <div class="ai-params-grid">
-                        <div class="ai-param-item">
-                            <span class="ai-param-title">Target 1 (+35%)</span>
-                            <span class="ai-param-val" style="color:#10b981;">₹${s.target1}</span>
-                        </div>
-                        <div class="ai-param-item">
-                            <span class="ai-param-title">Target 2 (+70%)</span>
-                            <span class="ai-param-val" style="color:#10b981;">₹${s.target2}</span>
-                        </div>
-                        <div class="ai-param-item">
-                            <span class="ai-param-title">Stop Loss (-22%)</span>
-                            <span class="ai-param-val" style="color:#ef4444;">₹${s.stopLoss}</span>
-                        </div>
-                        <div class="ai-param-item">
-                            <span class="ai-param-title">Risk / Reward</span>
-                            <span class="ai-param-val" style="color:#38bdf8;">${s.riskReward}</span>
-                        </div>
-                        <div class="ai-param-item" style="grid-column: span 2;">
-                            <span class="ai-param-title">Spot Invalidation (Exit)</span>
-                            <span class="ai-param-val" style="color:#fbbf24;">${s.invalidationSpot}</span>
-                        </div>
-                    </div>
-
-                    <div class="ai-catalyst-list">
-                        ${s.catalysts.map(c => `<div class="ai-catalyst-item"><span>${c}</span></div>`).join('')}
-                    </div>
-
-                    <div class="ai-card-actions">
-                        <button class="ai-action-btn-primary" onclick="App.explainTradeWithGemini('${s.symbol}')">
-                            <i class="fas fa-wand-magic-sparkles"></i> AI Deep Thesis
-                        </button>
-                        <button class="ai-action-btn-secondary" onclick="App.switchView('pcr-analytics'); App.changePcrSymbol('${s.symbol}');" title="Open PCR Chart">
-                            <i class="fas fa-chart-line"></i> Chart
-                        </button>
-                    </div>
-                </div>
-            `;
-        });
-
-        container.innerHTML = html;
-    },
-
-    async explainTradeWithGemini(symbol) {
-        const setup = this.generateQuantTradeSetup(symbol);
-        if (!setup) {
-            this.showToast('⚠️ No tick data available yet for ' + symbol);
-            return;
-        }
-
-        const modal = document.getElementById('ai-explanation-modal');
-        const modalTitle = document.getElementById('ai-modal-title');
-        const modalBody = document.getElementById('ai-modal-body');
-        if (!modal || !modalBody) return;
-
-        if (modalTitle) {
-            modalTitle.innerHTML = `<i class="fas fa-wand-magic-sparkles" style="color:#c084fc;"></i> ${setup.symbol} ${setup.action} ${setup.strike} — AI Breakdown`;
-        }
-
-        const apiKey = (localStorage.getItem('destrade_gemini_api_key') || '').trim();
-
-        // Instantly display loading state
-        modalBody.innerHTML = `
-            <div style="text-align:center; padding: 3rem 1rem; color: #cbd5e1;">
-                <i class="fas fa-brain fa-spin fa-2x" style="color: #c084fc; margin-bottom: 1rem;"></i>
-                <div style="font-weight: 700; font-size: 1rem; color: #f8fafc;">${apiKey ? 'Consulting Google Gemini 1.5 Flash Free Neural Engine...' : 'Analyzing Multi-Factor Quant Model...'}</div>
-                <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0.5rem; max-width: 420px; margin-left: auto; margin-right: auto;">
-                    Synthesizing real-time PCR deltas, institutional OI buildup, spot velocity, and options gamma profile for ${setup.symbol}.
-                </div>
-            </div>
-        `;
         modal.classList.add('active');
+    },
 
-        // Check if user has Gemini Key
-        if (apiKey) {
-            try {
-                const prompt = `You are Destrade's elite quantitative options trading copilot for the Indian Stock Market (NSE/NIFTY/BANKNIFTY).
-Analyze this exact real-time trade setup generated by the Destrade engine:
-- Symbol: ${setup.symbol}
-- Action: ${setup.action} (${setup.strike})
-- Current Spot Price: ₹${setup.spot}
-- Estimated Entry Premium: ₹${setup.estPremium}
-- Target 1: ₹${setup.target1} | Target 2: ₹${setup.target2}
-- Stop Loss: ₹${setup.stopLoss} (Risk/Reward: ${setup.riskReward})
-- Invalidation Spot Level: ${setup.invalidationSpot}
-- Quant Conviction Score: ${setup.convictionScore}/100
-- Quantitative Catalysts:
-${setup.catalysts.join('\n')}
-
-Provide an ultra-crisp, professional, institutional breakdown in clean HTML (use <h4>, <p>, <ul>, <li>, <b>, <code> tags, no markdown backticks).
-Include exactly these 4 sections:
-1. 🏛️ Institutional Market Structure (Why big money flow supports this ${setup.action})
-2. 🎯 Tactical Execution & Trailing Strategy (How to enter, when to move SL to cost at T1, and target 2 scaling)
-3. ⚠️ Critical Invalidation Trigger (Exact price / delta signal that invalidates this thesis immediately)
-4. ⏳ Theta Decay & Expiry Risk Assessment (Gamma profile and theta decay risk)`;
-
-                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: prompt }] }],
-                        generationConfig: { temperature: 0.2, maxOutputTokens: 1000 }
-                    })
-                });
-
-                if (!res.ok) {
-                    const err = await res.json();
-                    throw new Error(err.error?.message || 'Gemini API Error ' + res.status);
-                }
-
-                const data = await res.json();
-                let reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-                reply = reply.replace(/```html/gi, '').replace(/```/g, '').trim();
-
-                modalBody.innerHTML = `
-                    <div style="display:flex; align-items:center; justify-content:space-between; padding-bottom:0.75rem; margin-bottom:1rem; border-bottom:1px solid rgba(255,255,255,0.08);">
-                        <span style="font-size:0.78rem; color:#10b981; font-weight:700;"><i class="fas fa-check-circle"></i> Verified by Gemini 1.5 Flash Free AI</span>
-                        <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })} IST</span>
-                    </div>
-                    <div class="ai-content-rendered" style="font-size:0.88rem; line-height:1.65; color:#cbd5e1;">
-                        ${reply}
-                    </div>
-                `;
-                return;
-            } catch (err) {
-                console.warn('Gemini API call failed, falling back to local quant thesis:', err.message);
-            }
+    saveGeminiApiKey() {
+        const input = document.getElementById('gemini-api-key-input');
+        if (!input) return;
+        const val = input.value.trim();
+        if (val) {
+            localStorage.setItem('destrade_gemini_api_key', val);
+            this.showToast('✅ Free Gemini AI Key saved successfully!');
+        } else {
+            localStorage.removeItem('destrade_gemini_api_key');
+            this.showToast('ℹ️ Gemini Key removed. Using local companion engine.');
         }
+        this.updateGeminiStatusUI();
+        const modal = document.getElementById('ai-settings-modal');
+        if (modal) modal.classList.remove('active');
+    },
 
-        // Deterministic High-Conviction Quant Thesis (100% Free, Zero API Key needed)
-        setTimeout(() => {
-            const isBull = setup.isBullish;
-            modalBody.innerHTML = `
-                <div style="display:flex; align-items:center; justify-content:space-between; padding-bottom:0.75rem; margin-bottom:1rem; border-bottom:1px solid rgba(255,255,255,0.08);">
-                    <span style="font-size:0.78rem; color:#38bdf8; font-weight:700;"><i class="fas fa-bolt"></i> Destrade Pro Quant Engine</span>
-                    <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">${setup.convictionScore}% Probability</span>
-                </div>
-
-                <div style="display:flex; flex-direction:column; gap:1.1rem; font-size:0.88rem; line-height:1.6; color:#cbd5e1;">
-                    <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:0.9rem 1rem;">
-                        <h4 style="color:#f8fafc; font-size:0.95rem; margin-bottom:0.4rem; display:flex; align-items:center; gap:0.4rem;">
-                            🏛️ Institutional Market Structure
-                        </h4>
-                        <p style="margin:0; color:#94a3b8;">
-                            ${isBull 
-                                ? `PCR expanded by <b>${setup.pcrDelta15m >= 0 ? '+' : ''}${setup.pcrDelta15m.toFixed(4)}</b> alongside positive spot velocity. Options writers are actively selling Puts at <b>${setup.atmStrike}</b>, creating a solid support floor and forcing short covering.` 
-                                : `PCR contracted by <b>${setup.pcrDelta15m.toFixed(4)}</b> with declining spot momentum. Call writers have established massive overhead resistance at <b>${setup.atmStrike}</b>, signaling institutional long unwinding.`}
-                        </p>
-                    </div>
-
-                    <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:0.9rem 1rem;">
-                        <h4 style="color:#f8fafc; font-size:0.95rem; margin-bottom:0.4rem; display:flex; align-items:center; gap:0.4rem;">
-                            🎯 Tactical Execution Plan
-                        </h4>
-                        <ul style="margin:0; padding-left:1.2rem; color:#94a3b8;">
-                            <li><b>Optimal Entry:</b> Enter <code>${setup.strike}</code> near <b>₹${setup.estPremium}</b>.</li>
-                            <li><b>Target 1:</b> <b>₹${setup.target1} (+35%)</b> — Lock in 50% profits immediately and move Stop Loss to cost.</li>
-                            <li><b>Target 2:</b> <b>₹${setup.target2} (+70%)</b> — Trail remaining quantity with 15-minute candle low/high.</li>
-                            <li><b>Hard Stop Loss:</b> <b>₹${setup.stopLoss} (-22%)</b> strictly on option chart.</li>
-                        </ul>
-                    </div>
-
-                    <div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:10px; padding:0.9rem 1rem;">
-                        <h4 style="color:#ef4444; font-size:0.95rem; margin-bottom:0.4rem; display:flex; align-items:center; gap:0.4rem;">
-                            ⚠️ Invalidation & Risk Trigger
-                        </h4>
-                        <p style="margin:0; color:#fca5a5;">
-                            Cut the trade immediately if <b>${setup.symbol} Spot breaks ${setup.invalidationSpot}</b> or if 5-minute PCR reverses by more than 0.04 points. Do not hold through adverse momentum.
-                        </p>
-                    </div>
-
-                    ${!apiKey ? `
-                        <div style="background:linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15)); border:1px solid rgba(168, 85, 247, 0.35); border-radius:10px; padding:0.9rem 1rem; display:flex; align-items:center; justify-content:space-between; gap:0.85rem; flex-wrap:wrap;">
-                            <div>
-                                <b style="color:#f8fafc; font-size:0.85rem;">Want deep natural language reasoning from Google Gemini?</b>
-                                <div style="color:#94a3b8; font-size:0.78rem;">Google provides 1,500 free requests per day (no credit card required).</div>
-                            </div>
-                            <button onclick="App.openAiSettingsModal()" class="btn btn-primary" style="font-size:0.78rem; padding:0.4rem 0.85rem; border-radius:6px; cursor:pointer;">
-                                <i class="fas fa-key"></i> Connect Free Key (30s)
-                            </button>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
-        }, 350);
+    clearGeminiApiKey() {
+        localStorage.removeItem('destrade_gemini_api_key');
+        const input = document.getElementById('gemini-api-key-input');
+        if (input) input.value = '';
+        this.updateGeminiStatusUI();
+        this.showToast('ℹ️ Gemini Key removed. Using local companion engine.');
+        const modal = document.getElementById('ai-settings-modal');
+        if (modal) modal.classList.remove('active');
     }
 };
 

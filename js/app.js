@@ -31,6 +31,7 @@ const App = {
         marginModel: localStorage.getItem('destrade_margin_model') || 'zerodha_live',
         scannerCapitalMin: parseFloat(localStorage.getItem('destrade_scanner_capital_min')) || null,
         scannerCapitalMax: parseFloat(localStorage.getItem('destrade_scanner_capital_max')) || null,
+        scannerSortBy: (typeof localStorage !== 'undefined' && localStorage.getItem('destrade_scanner_sort_by')) || 'premium',
         scannerOtmMin: parseFloat(localStorage.getItem('destrade_scanner_otm_min')) || 4,
         scannerOtmMax: parseFloat(localStorage.getItem('destrade_scanner_otm_max')) || 10,
         sectorMapping: {
@@ -353,7 +354,7 @@ const App = {
             if (!document.hidden && this.state.activeView === 'pcr-analytics' && this.state.pcrAnalyticsSymbol) {
                 try {
                     await this.prefillIntradayPcrHistory(this.state.pcrAnalyticsSymbol);
-                } catch (e) {}
+                } catch (e) { }
             }
             setTimeout(chartRefreshLoop, SINGLE_CHART_REFRESH_INTERVAL);
         };
@@ -371,10 +372,10 @@ const App = {
 
         const tf = targetTf || (this.state && this.state.biasTimeframe) || '1h';
         const tfMap = {
-            '5m':  { pcrIdx: 4,  spotIdx: 12, timeIdx: 8,  label: '5-Min' },
-            '15m': { pcrIdx: 5,  spotIdx: 13, timeIdx: 9,  label: '15-Min' },
-            '30m': { pcrIdx: 6,  spotIdx: 14, timeIdx: 10, label: '30-Min' },
-            '1h':  { pcrIdx: 7,  spotIdx: 15, timeIdx: 11, label: '1-Hour' }
+            '5m': { pcrIdx: 4, spotIdx: 12, timeIdx: 8, label: '5-Min' },
+            '15m': { pcrIdx: 5, spotIdx: 13, timeIdx: 9, label: '15-Min' },
+            '30m': { pcrIdx: 6, spotIdx: 14, timeIdx: 10, label: '30-Min' },
+            '1h': { pcrIdx: 7, spotIdx: 15, timeIdx: 11, label: '1-Hour' }
         };
         const config = tfMap[tf] || tfMap['1h'];
 
@@ -2950,7 +2951,7 @@ const App = {
     // ===== PCR SYMBOL AUTO-SUGGEST SEARCH ENGINE =====
     statePcrSuggestIdx: -1,
 
-        getPcrSymbolList() {
+    getPcrSymbolList() {
         if (window.nseApi && Array.isArray(window.nseApi.fnoSymbols) && window.nseApi.fnoSymbols.length > 0) {
             return window.nseApi.fnoSymbols;
         }
@@ -2958,7 +2959,7 @@ const App = {
         if (growwMap && Object.keys(growwMap).length > 0) {
             return Object.keys(growwMap).sort();
         }
-        return ["360ONE","ABB","ABCAPITAL","ADANIENSOL","ADANIENT","ADANIGREEN","ADANIPORTS","ADANIPOWER","ALKEM","AMBER","AMBUJACEM","ANGELONE","APLAPOLLO","APOLLOHOSP","ASHOKLEY","ASIANPAINT","ASTRAL","ATHERENERG","AUBANK","AUROPHARMA","AXISBANK","BAJAJ-AUTO","BAJAJFINSV","BAJAJHLDNG","BAJFINANCE","BANDHANBNK","BANKBARODA","BANKINDIA","BANKNIFTY","BDL","BEL","BHARATFORG","BHARTIARTL","BHEL","BIOCON","BLUESTARCO","BOSCHLTD","BPCL","BRITANNIA","BSE","CAMS","CANBK","CDSL","CGPOWER","CHOLAFIN","CIPLA","COALINDIA","COCHINSHIP","COFORGE","COLPAL","CONCOR","CROMPTON","CUMMINSIND","DABUR","DELHIVERY","DIVISLAB","DIXON","DLF","DMART","DRREDDY","EICHERMOT","ETERNAL","FEDERALBNK","FINNIFTY","FORCEMOT","FORTIS","GAIL","GLENMARK","GMRAIRPORT","GODFRYPHLP","GODREJCP","GODREJPROP","GRASIM","GVT&D","HAL","HAVELLS","HCLTECH","HDFCAMC","HDFCBANK","HDFCLIFE","HEROMOTOCO","HINDALCO","HINDPETRO","HINDUNILVR","HINDZINC","HYUNDAI","ICICIBANK","ICICIGI","ICICIPRULI","IDEA","IDFCFIRSTB","IEX","INDHOTEL","INDIANB","INDIGO","INDUSINDBK","INDUSTOWER","INFY","INOXWIND","IOC","IREDA","IRFC","ITC","JINDALSTEL","JIOFIN","JSWENERGY","JSWSTEEL","JUBLFOOD","KALYANKJIL","KAYNES","KEI","KFINTECH","KOTAKBANK","KPITTECH","LAURUSLABS","LICHSGFIN","LICI","LODHA","LT","LTF","LTM","LUPIN","M&M","MAHABANK","MANAPPURAM","MANKIND","MARICO","MARUTI","MAXHEALTH","MAZDOCK","MCX","MFSL","MIDCPNIFTY","MOTHERSON","MOTILALOFS","MPHASIS","MUTHOOTFIN","NAM-INDIA","NATIONALUM","NAUKRI","NBCC","NESTLEIND","NHPC","NIFTY","NIFTYNXT50","NMDC","NTPC","NYKAA","OBEROIRLTY","OFSS","OIL","ONGC","PAGEIND","PATANJALI","PAYTM","PERSISTENT","PETRONET","PFC","PGEL","PHOENIXLTD","PIDILITIND","PIIND","PNB","PNBHOUSING","POLICYBZR","POLYCAB","POWERGRID","POWERINDIA","PREMIERENE","PRESTIGE","RADICO","RBLBANK","RECLTD","RELIANCE","RVNL","SAGILITY","SAIL","SBICARD","SBILIFE","SBIN","SHREECEM","SHRIRAMFIN","SIEMENS","SOLARINDS","SONACOMS","SRF","SUNPHARMA","SUPREMEIND","SUZLON","SWIGGY","TATACONSUM","TATAELXSI","TATAPOWER","TATASTEEL","TCS","TECHM","TIINDIA","TITAN","TMPV","TORNTPHARM","TRENT","TVSMOTOR","ULTRACEMCO","UNIONBANK","UNITDSPR","UNOMINDA","UPL","VBL","VEDL","VMM","VOLTAS","WAAREEENER","WIPRO","YESBANK","ZYDUSLIFE"];
+        return ["360ONE", "ABB", "ABCAPITAL", "ADANIENSOL", "ADANIENT", "ADANIGREEN", "ADANIPORTS", "ADANIPOWER", "ALKEM", "AMBER", "AMBUJACEM", "ANGELONE", "APLAPOLLO", "APOLLOHOSP", "ASHOKLEY", "ASIANPAINT", "ASTRAL", "ATHERENERG", "AUBANK", "AUROPHARMA", "AXISBANK", "BAJAJ-AUTO", "BAJAJFINSV", "BAJAJHLDNG", "BAJFINANCE", "BANDHANBNK", "BANKBARODA", "BANKINDIA", "BANKNIFTY", "BDL", "BEL", "BHARATFORG", "BHARTIARTL", "BHEL", "BIOCON", "BLUESTARCO", "BOSCHLTD", "BPCL", "BRITANNIA", "BSE", "CAMS", "CANBK", "CDSL", "CGPOWER", "CHOLAFIN", "CIPLA", "COALINDIA", "COCHINSHIP", "COFORGE", "COLPAL", "CONCOR", "CROMPTON", "CUMMINSIND", "DABUR", "DELHIVERY", "DIVISLAB", "DIXON", "DLF", "DMART", "DRREDDY", "EICHERMOT", "ETERNAL", "FEDERALBNK", "FINNIFTY", "FORCEMOT", "FORTIS", "GAIL", "GLENMARK", "GMRAIRPORT", "GODFRYPHLP", "GODREJCP", "GODREJPROP", "GRASIM", "GVT&D", "HAL", "HAVELLS", "HCLTECH", "HDFCAMC", "HDFCBANK", "HDFCLIFE", "HEROMOTOCO", "HINDALCO", "HINDPETRO", "HINDUNILVR", "HINDZINC", "HYUNDAI", "ICICIBANK", "ICICIGI", "ICICIPRULI", "IDEA", "IDFCFIRSTB", "IEX", "INDHOTEL", "INDIANB", "INDIGO", "INDUSINDBK", "INDUSTOWER", "INFY", "INOXWIND", "IOC", "IREDA", "IRFC", "ITC", "JINDALSTEL", "JIOFIN", "JSWENERGY", "JSWSTEEL", "JUBLFOOD", "KALYANKJIL", "KAYNES", "KEI", "KFINTECH", "KOTAKBANK", "KPITTECH", "LAURUSLABS", "LICHSGFIN", "LICI", "LODHA", "LT", "LTF", "LTM", "LUPIN", "M&M", "MAHABANK", "MANAPPURAM", "MANKIND", "MARICO", "MARUTI", "MAXHEALTH", "MAZDOCK", "MCX", "MFSL", "MIDCPNIFTY", "MOTHERSON", "MOTILALOFS", "MPHASIS", "MUTHOOTFIN", "NAM-INDIA", "NATIONALUM", "NAUKRI", "NBCC", "NESTLEIND", "NHPC", "NIFTY", "NIFTYNXT50", "NMDC", "NTPC", "NYKAA", "OBEROIRLTY", "OFSS", "OIL", "ONGC", "PAGEIND", "PATANJALI", "PAYTM", "PERSISTENT", "PETRONET", "PFC", "PGEL", "PHOENIXLTD", "PIDILITIND", "PIIND", "PNB", "PNBHOUSING", "POLICYBZR", "POLYCAB", "POWERGRID", "POWERINDIA", "PREMIERENE", "PRESTIGE", "RADICO", "RBLBANK", "RECLTD", "RELIANCE", "RVNL", "SAGILITY", "SAIL", "SBICARD", "SBILIFE", "SBIN", "SHREECEM", "SHRIRAMFIN", "SIEMENS", "SOLARINDS", "SONACOMS", "SRF", "SUNPHARMA", "SUPREMEIND", "SUZLON", "SWIGGY", "TATACONSUM", "TATAELXSI", "TATAPOWER", "TATASTEEL", "TCS", "TECHM", "TIINDIA", "TITAN", "TMPV", "TORNTPHARM", "TRENT", "TVSMOTOR", "ULTRACEMCO", "UNIONBANK", "UNITDSPR", "UNOMINDA", "UPL", "VBL", "VEDL", "VMM", "VOLTAS", "WAAREEENER", "WIPRO", "YESBANK", "ZYDUSLIFE"];
     },
 
     findClosestPcrSymbol(query) {
@@ -3123,7 +3124,8 @@ const App = {
             'RELIANCE': 250, 'TCS': 175, 'HDFCBANK': 550, 'INFY': 400,
             'ICICIBANK': 700, 'SBIN': 1500, 'BHARTIARTL': 475, 'ITC': 1600,
             'LT': 300, 'AXISBANK': 625, 'BAJFINANCE': 125, 'SWIGGY': 1700,
-            'POWERINDIA': 25, 'CONCOR': 1250, };
+            'POWERINDIA': 25, 'CONCOR': 1250,
+        };
 
         const lotSize = LOT_SIZES[cleanSym] || '--';
         // Force fresh load from Firebase if local cache has fewer than 20 ticks
@@ -3801,98 +3803,187 @@ const App = {
         }
     },
 
-    openBasketModal(symbol, type, strike, hedgeStrike, sellPremium, hedgePremium, lotSize, basketMargin, nakedMargin, netCredit, roi, expiry) {
+    // Global Trade Details & Hedging Modal
+    switchTradeModalTab(mode) {
+        const modal = document.getElementById('destrade-basket-modal');
+        if (!modal) return;
+        modal.querySelectorAll('.trade-modal-tab-btn').forEach(btn => {
+            if (btn.dataset.tab === mode) {
+                btn.style.background = 'var(--primary)';
+                btn.style.color = '#fff';
+                btn.style.borderColor = 'var(--primary)';
+            } else {
+                btn.style.background = 'rgba(255,255,255,0.06)';
+                btn.style.color = 'var(--text-muted)';
+                btn.style.borderColor = 'rgba(255,255,255,0.1)';
+            }
+        });
+        const nakedSec = document.getElementById('trade-modal-naked-sec');
+        const hedgeSec = document.getElementById('trade-modal-hedge-sec');
+        if (nakedSec) nakedSec.style.display = mode === 'naked' ? 'block' : 'none';
+        if (hedgeSec) hedgeSec.style.display = mode === 'hedge' ? 'block' : 'none';
+    },
+
+    openTradeDetailsModal(symbol, type, strike, hedgeStrike, sellPremium, hedgePremium, lotSize, nakedMargin, basketMargin, grossPremium, netCredit, nakedRoi, hedgedRoi, expiry) {
         let modal = document.getElementById('destrade-basket-modal');
         if (!modal) {
             modal = document.createElement('div');
             modal.id = 'destrade-basket-modal';
-            modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.82); z-index:10000; display:flex; align-items:center; justify-content:center; padding:1rem; backdrop-filter:blur(6px);';
+            modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:10000; display:flex; align-items:center; justify-content:center; padding:1rem; backdrop-filter:blur(8px);';
             document.body.appendChild(modal);
         }
 
+        const hasHedge = Boolean(hedgeStrike && hedgeStrike > 0);
         const strategy = type === 'CE' ? 'Bear Call Spread' : 'Bull Put Spread';
-        const netPremium = Math.max(0.05, sellPremium - hedgePremium);
+        const netPremium = Math.max(0.05, sellPremium - (hedgePremium || 0));
         const marginSaved = Math.max(0, nakedMargin - basketMargin);
         const marginSavedPercent = nakedMargin > 0 ? Math.round((marginSaved / nakedMargin) * 100) : 0;
 
         modal.innerHTML = `
-            <div class="glass card" style="max-width:520px; width:100%; border:1px solid rgba(255,255,255,0.15); border-radius:12px; padding:1.5rem; box-shadow:0 20px 40px rgba(0,0,0,0.6); position:relative; background:#121826">
+            <div class="glass card" style="max-width:540px; width:100%; border:1px solid rgba(255,255,255,0.15); border-radius:14px; padding:1.5rem; box-shadow:0 24px 48px rgba(0,0,0,0.7); position:relative; background:#111827; max-height:90vh; overflow-y:auto">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:0.75rem">
                     <div>
                         <h3 style="margin:0; font-size:1.15rem; color:var(--text-bright); display:flex; align-items:center; gap:0.5rem">
-                            <i class="fas fa-layer-group" style="color:var(--primary)"></i> 2-Leg Hedged Basket Order
+                            <i class="fas fa-chart-line" style="color:var(--primary)"></i> ${symbol} Trade Opportunity
                         </h3>
-                        <div style="font-size:0.8rem; color:var(--text-muted); margin-top:3px">${symbol} • ${strategy} • ${expiry || 'Current Expiry'}</div>
+                        <div style="font-size:0.8rem; color:var(--text-muted); margin-top:3px">${symbol} • ${expiry || 'Current Expiry'} • High Available Premium</div>
                     </div>
                     <button onclick="document.getElementById('destrade-basket-modal').style.display='none'" style="background:transparent; border:none; color:var(--text-muted); font-size:1.5rem; cursor:pointer; padding:0 0.5rem; line-height:1">&times;</button>
                 </div>
 
-                <div style="background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.3); border-radius:8px; padding:0.75rem 1rem; margin-bottom:1.25rem; font-size:0.75rem; color:#facc15; display:flex; gap:0.6rem; align-items:flex-start">
-                    <i class="fas fa-exclamation-triangle" style="margin-top:2px; font-size:0.9rem"></i>
-                    <div>
-                        <b>Execution Order:</b> ALWAYS execute <b>Leg 1 (BUY)</b> first to release margin on your broker (Zerodha / Groww / Angel One), then execute <b>Leg 2 (SELL)</b>.
-                    </div>
+                <!-- Navigation Tabs: Option Contract (Naked) vs Hedged Basket -->
+                <div style="display:flex; gap:0.5rem; margin-bottom:1.25rem; background:rgba(0,0,0,0.3); padding:4px; border-radius:8px; border:1px solid rgba(255,255,255,0.08)">
+                    <button class="trade-modal-tab-btn" data-tab="naked" onclick="App.switchTradeModalTab('naked')" style="flex:1; padding:0.5rem 0.75rem; border-radius:6px; font-size:0.8rem; font-weight:700; cursor:pointer; border:1px solid var(--primary); background:var(--primary); color:#fff; transition:all 0.2s">
+                        <i class="fas fa-coins"></i> High Premium (Naked)
+                    </button>
+                    <button class="trade-modal-tab-btn" data-tab="hedge" onclick="App.switchTradeModalTab('hedge')" style="flex:1; padding:0.5rem 0.75rem; border-radius:6px; font-size:0.8rem; font-weight:700; cursor:pointer; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.06); color:var(--text-muted); transition:all 0.2s">
+                        <i class="fas fa-shield-alt"></i> Hedged Basket ${hasHedge ? `<span style="font-size:0.68rem; color:#10b981; margin-left:4px">(-${marginSavedPercent}%)</span>` : '(Optional)'}
+                    </button>
                 </div>
 
-                <div style="display:flex; flex-direction:column; gap:0.75rem; margin-bottom:1.25rem">
-                    <div style="background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.25); border-radius:8px; padding:0.85rem 1rem; display:flex; justify-content:space-between; align-items:center">
+                <!-- TAB 1: NAKED HIGH-PREMIUM CONTRACT -->
+                <div id="trade-modal-naked-sec" style="display:block">
+                    <div style="background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.25); border-radius:8px; padding:0.9rem 1rem; display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem">
                         <div>
                             <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px">
-                                <span class="tag" style="background:#10b981; color:#000; font-weight:bold; font-size:0.65rem; padding:1px 6px">1. BUY FIRST (HEDGE)</span>
-                                <b style="color:var(--text-bright); font-size:0.95rem">${symbol} ${hedgeStrike} ${type}</b>
+                                <span class="tag ${type === 'CE' ? 'tag-bearish' : 'tag-bullish'}" style="font-weight:bold; font-size:0.7rem; padding:2px 8px">SELL ${type}</span>
+                                <b style="color:var(--text-bright); font-size:1.05rem">${symbol} ${strike} ${type}</b>
                             </div>
                             <div style="font-size:0.75rem; color:var(--text-muted)">Quantity: ${lotSize} • Product: Normal / MIS</div>
                         </div>
                         <div style="text-align:right">
-                            <div class="mono" style="font-weight:700; color:#10b981; font-size:1rem">₹${hedgePremium.toFixed(2)}</div>
-                            <div style="font-size:0.7rem; color:var(--text-muted)">Cost: ₹${Math.round(hedgePremium * lotSize).toLocaleString()}</div>
+                            <div class="mono" style="font-weight:700; color:#ef4444; font-size:1.15rem">₹${Number(sellPremium).toFixed(2)}</div>
+                            <div style="font-size:0.75rem; color:var(--text-muted)">LTP / share</div>
                         </div>
                     </div>
 
-                    <div style="background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.25); border-radius:8px; padding:0.85rem 1rem; display:flex; justify-content:space-between; align-items:center">
-                        <div>
-                            <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px">
-                                <span class="tag" style="background:#ef4444; color:#fff; font-weight:bold; font-size:0.65rem; padding:1px 6px">2. SELL SECOND (MAIN)</span>
-                                <b style="color:var(--text-bright); font-size:0.95rem">${symbol} ${strike} ${type}</b>
+                    <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:0.9rem 1rem; margin-bottom:1.25rem">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.4rem; font-size:0.85rem">
+                            <span style="color:var(--text-muted)">Total Cash Premium Received:</span>
+                            <b class="mono" style="color:var(--up); font-size:1rem">₹${Number(grossPremium).toLocaleString()}</b>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.2rem; font-size:0.85rem">
+                            <span style="color:var(--text-muted)">Required Capital (Naked Margin):</span>
+                            <b class="mono" id="trade-modal-naked-margin" style="color:var(--text-bright); font-size:0.95rem">₹${Number(nakedMargin).toLocaleString()}</b>
+                        </div>
+                        <div id="trade-modal-naked-badge" style="font-size:0.75rem; color:var(--text-muted); text-align:right; margin-bottom:0.4rem">
+                            <i class="fas fa-info-circle"></i> Standard SPAN margin
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; border-top:1px solid rgba(255,255,255,0.05); padding-top:0.4rem; margin-top:0.4rem">
+                            <span style="color:var(--text-muted)">Estimated Naked Yield / ROI:</span>
+                            <b class="mono" id="trade-modal-naked-roi" style="color:var(--primary); font-size:1rem">+${nakedRoi}%</b>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; gap:0.75rem; justify-content:flex-end">
+                        <button class="btn" id="btn-copy-naked" onclick="App.copyNakedOrderText('${symbol}', '${type}', ${strike}, ${sellPremium}, ${lotSize}, ${nakedMargin}, ${grossPremium}, '${nakedRoi}', '${expiry}')" style="background:var(--primary); color:#fff; padding:0.65rem 1.25rem; font-size:0.85rem; border-radius:6px; font-weight:600">
+                            <i class="fas fa-copy"></i> Copy Naked Sell Order
+                        </button>
+                        <button class="btn" onclick="document.getElementById('destrade-basket-modal').style.display='none'" style="background:rgba(255,255,255,0.1); color:var(--text-bright); padding:0.65rem 1rem; font-size:0.85rem; border-radius:6px">
+                            Close
+                        </button>
+                    </div>
+                </div>
+
+                <!-- TAB 2: HEDGED BASKET -->
+                <div id="trade-modal-hedge-sec" style="display:none">
+                    ${hasHedge ? `
+                        <div style="background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.3); border-radius:8px; padding:0.75rem 1rem; margin-bottom:1.25rem; font-size:0.75rem; color:#facc15; display:flex; gap:0.6rem; align-items:flex-start">
+                            <i class="fas fa-exclamation-triangle" style="margin-top:2px; font-size:0.9rem"></i>
+                            <div>
+                                <b>Execution Order:</b> ALWAYS execute <b>Leg 1 (BUY FIRST)</b> to release margin on your broker (Zerodha / Groww / Angel One), then execute <b>Leg 2 (SELL SECOND)</b>.
                             </div>
-                            <div style="font-size:0.75rem; color:var(--text-muted)">Quantity: ${lotSize} • Product: Normal / MIS</div>
                         </div>
-                        <div style="text-align:right">
-                            <div class="mono" style="font-weight:700; color:#ef4444; font-size:1rem">₹${sellPremium.toFixed(2)}</div>
-                            <div style="font-size:0.7rem; color:var(--text-muted)">Rec: ₹${Math.round(sellPremium * lotSize).toLocaleString()}</div>
+
+                        <div style="display:flex; flex-direction:column; gap:0.75rem; margin-bottom:1.25rem">
+                            <div style="background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.25); border-radius:8px; padding:0.85rem 1rem; display:flex; justify-content:space-between; align-items:center">
+                                <div>
+                                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px">
+                                        <span class="tag" style="background:#10b981; color:#000; font-weight:bold; font-size:0.65rem; padding:1px 6px">1. BUY FIRST (HEDGE)</span>
+                                        <b style="color:var(--text-bright); font-size:0.95rem">${symbol} ${hedgeStrike} ${type}</b>
+                                    </div>
+                                    <div style="font-size:0.75rem; color:var(--text-muted)">Quantity: ${lotSize} • Product: Normal / MIS</div>
+                                </div>
+                                <div style="text-align:right">
+                                    <div class="mono" style="font-weight:700; color:#10b981; font-size:1rem">₹${Number(hedgePremium).toFixed(2)}</div>
+                                    <div style="font-size:0.7rem; color:var(--text-muted)">Cost: ₹${Math.round(hedgePremium * lotSize).toLocaleString()}</div>
+                                </div>
+                            </div>
+
+                            <div style="background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.25); border-radius:8px; padding:0.85rem 1rem; display:flex; justify-content:space-between; align-items:center">
+                                <div>
+                                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px">
+                                        <span class="tag" style="background:#ef4444; color:#fff; font-weight:bold; font-size:0.65rem; padding:1px 6px">2. SELL SECOND (MAIN)</span>
+                                        <b style="color:var(--text-bright); font-size:0.95rem">${symbol} ${strike} ${type}</b>
+                                    </div>
+                                    <div style="font-size:0.75rem; color:var(--text-muted)">Quantity: ${lotSize} • Product: Normal / MIS</div>
+                                </div>
+                                <div style="text-align:right">
+                                    <div class="mono" style="font-weight:700; color:#ef4444; font-size:1rem">₹${Number(sellPremium).toFixed(2)}</div>
+                                    <div style="font-size:0.7rem; color:var(--text-muted)">Rec: ₹${Math.round(sellPremium * lotSize).toLocaleString()}</div>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </div>
 
-                <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:0.9rem 1rem; margin-bottom:1.25rem">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:0.4rem; font-size:0.85rem">
-                        <span style="color:var(--text-muted)">Net Premium Received:</span>
-                        <b class="mono" style="color:var(--up)">₹${netPremium.toFixed(2)} (₹${netCredit.toLocaleString()})</b>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:0.2rem; font-size:0.85rem">
-                        <span style="color:var(--text-muted)">Hedged Capital Required:</span>
-                        <b class="mono" id="basket-capital-val" style="color:var(--text-bright); font-size:0.95rem">₹${basketMargin.toLocaleString()}</b>
-                    </div>
-                    <div id="basket-live-badge" style="font-size:0.75rem; color:var(--text-muted); text-align:right; margin-bottom:0.4rem">
-                        <i class="fas fa-shield-alt" style="color:var(--primary)"></i> Zerodha SPAN Model
-                    </div>
-                    <div style="display:flex; justify-content:space-between; margin-bottom:0.4rem; font-size:0.8rem">
-                        <span style="color:var(--text-muted)">Capital Saved vs Naked:</span>
-                        <span id="basket-save-val" style="color:#10b981; font-weight:600">Save ${marginSavedPercent}% (₹${marginSaved.toLocaleString()})</span>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; font-size:0.85rem; border-top:1px solid rgba(255,255,255,0.05); padding-top:0.4rem; margin-top:0.4rem">
-                        <span style="color:var(--text-muted)">Est. Hedged ROI:</span>
-                        <b class="mono" id="basket-roi-val" style="color:var(--primary); font-size:1rem">+${roi}%</b>
-                    </div>
-                </div>
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:0.9rem 1rem; margin-bottom:1.25rem">
+                            <div style="display:flex; justify-content:space-between; margin-bottom:0.4rem; font-size:0.85rem">
+                                <span style="color:var(--text-muted)">Net Cash Premium Received:</span>
+                                <b class="mono" style="color:var(--up); font-size:0.95rem">₹${netPremium.toFixed(2)} (₹${Number(netCredit).toLocaleString()})</b>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; margin-bottom:0.2rem; font-size:0.85rem">
+                                <span style="color:var(--text-muted)">Hedged Capital Required:</span>
+                                <b class="mono" id="basket-capital-val" style="color:var(--text-bright); font-size:0.95rem">₹${Number(basketMargin).toLocaleString()}</b>
+                            </div>
+                            <div id="basket-live-badge" style="font-size:0.75rem; color:var(--text-muted); text-align:right; margin-bottom:0.4rem">
+                                <i class="fas fa-shield-alt" style="color:var(--primary)"></i> Zerodha SPAN Model
+                            </div>
+                            <div style="display:flex; justify-content:space-between; margin-bottom:0.4rem; font-size:0.8rem">
+                                <span style="color:var(--text-muted)">Capital Saved vs Naked:</span>
+                                <span id="basket-save-val" style="color:#10b981; font-weight:600">Save ${marginSavedPercent}% (₹${Number(marginSaved).toLocaleString()})</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; font-size:0.85rem; border-top:1px solid rgba(255,255,255,0.05); padding-top:0.4rem; margin-top:0.4rem">
+                                <span style="color:var(--text-muted)">Est. Hedged ROI:</span>
+                                <b class="mono" id="basket-roi-val" style="color:var(--primary); font-size:1rem">+${hedgedRoi}%</b>
+                            </div>
+                        </div>
 
-                <div style="display:flex; gap:0.75rem; justify-content:flex-end">
-                    <button class="btn" id="btn-copy-basket" onclick="App.copyBasketText('${symbol}', '${type}', ${strike}, ${hedgeStrike}, ${sellPremium}, ${hedgePremium}, ${lotSize}, ${basketMargin}, ${netCredit}, '${roi}', '${expiry}')" style="background:var(--primary); color:#fff; padding:0.6rem 1.2rem; font-size:0.85rem; border-radius:6px">
-                        <i class="fas fa-copy"></i> Copy Basket Order
-                    </button>
-                    <button class="btn" onclick="document.getElementById('destrade-basket-modal').style.display='none'" style="background:rgba(255,255,255,0.1); color:var(--text-bright); padding:0.6rem 1rem; font-size:0.85rem; border-radius:6px">
-                        Close
-                    </button>
+                        <div style="display:flex; gap:0.75rem; justify-content:flex-end">
+                            <button class="btn" id="btn-copy-basket" onclick="App.copyBasketText('${symbol}', '${type}', ${strike}, ${hedgeStrike}, ${sellPremium}, ${hedgePremium}, ${lotSize}, ${basketMargin}, ${netCredit}, '${hedgedRoi}', '${expiry}')" style="background:#10b981; color:#000; padding:0.65rem 1.25rem; font-size:0.85rem; border-radius:6px; font-weight:700">
+                                <i class="fas fa-copy"></i> Copy Hedged Basket Order
+                            </button>
+                            <button class="btn" onclick="document.getElementById('destrade-basket-modal').style.display='none'" style="background:rgba(255,255,255,0.1); color:var(--text-bright); padding:0.65rem 1rem; font-size:0.85rem; border-radius:6px">
+                                Close
+                            </button>
+                        </div>
+                    ` : `
+                        <div style="padding:2rem; text-align:center; color:var(--text-muted)">
+                            <i class="fas fa-info-circle" style="font-size:2rem; margin-bottom:0.75rem; color:var(--primary)"></i>
+                            <p style="font-size:0.9rem">No suitable OTM hedge leg found for this script. Execute as a Naked Sell or adjust OTM range.</p>
+                            <button class="btn" onclick="App.switchTradeModalTab('naked')" style="background:var(--primary); color:#fff; padding:0.5rem 1rem; border-radius:6px; font-size:0.85rem; margin-top:1rem">
+                                View High Premium Naked Order
+                            </button>
+                        </div>
+                    `}
                 </div>
             </div>
         `;
@@ -3900,51 +3991,101 @@ const App = {
 
         // Dynamically fetch and verify live Zerodha SPAN in real time (both hedge and naked legs)
         if (window.nseApi && window.nseApi.fetchZerodhaSpanMargin) {
-            const reqEl = document.getElementById('basket-capital-val');
-            const badgeEl = document.getElementById('basket-live-badge');
-            const saveEl = document.getElementById('basket-save-val');
-            const roiEl = document.getElementById('basket-roi-val');
-            const copyBtn = document.getElementById('btn-copy-basket');
+            const nakedReqEl = document.getElementById('trade-modal-naked-margin');
+            const nakedBadgeEl = document.getElementById('trade-modal-naked-badge');
+            const nakedRoiEl = document.getElementById('trade-modal-naked-roi');
+            const copyNakedBtn = document.getElementById('btn-copy-naked');
 
-            if (badgeEl) {
-                badgeEl.innerHTML = `<span style="color:var(--text-muted)"><i class="fas fa-sync fa-spin"></i> Fetching live Zerodha SPAN...</span>`;
+            const hedgedReqEl = document.getElementById('basket-capital-val');
+            const hedgeBadgeEl = document.getElementById('basket-live-badge');
+            const hedgeSaveEl = document.getElementById('basket-save-val');
+            const hedgeRoiEl = document.getElementById('basket-roi-val');
+            const copyBasketBtn = document.getElementById('btn-copy-basket');
+
+            if (nakedBadgeEl) {
+                nakedBadgeEl.innerHTML = `<span style="color:var(--text-muted)"><i class="fas fa-sync fa-spin"></i> Fetching live Zerodha SPAN...</span>`;
             }
 
-            const hedgePromise = window.nseApi.fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiry, hedgeStrike);
-            const nakedPromise = hedgeStrike ? window.nseApi.fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiry, null) : null;
+            const hedgePromise = hasHedge ? window.nseApi.fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiry, hedgeStrike) : Promise.resolve(null);
+            const nakedPromise = window.nseApi.fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiry, null);
 
             Promise.all([hedgePromise, nakedPromise]).then(([liveHedge, liveNaked]) => {
-                if (liveHedge && liveHedge.total > 0) {
-                    const hedgedTotal = liveHedge.total;
-                    const nakedTotal = (liveNaked && liveNaked.total > 0) ? liveNaked.total : (nakedMargin > 0 ? nakedMargin : hedgedTotal);
-                    const liveSaved = Math.max(0, nakedTotal - hedgedTotal);
-                    const liveSavedPct = nakedTotal > 0 ? Math.round((liveSaved / nakedTotal) * 100) : 0;
-                    const liveRoi = netCredit > 0 ? ((netCredit / hedgedTotal) * 100).toFixed(1) : roi;
-
-                    if (reqEl) reqEl.textContent = `₹${Math.round(hedgedTotal).toLocaleString()}`;
-                    if (badgeEl) {
-                        badgeEl.innerHTML = `<span style="color:#10b981; font-weight:600"><i class="fas fa-check-circle"></i> Official Zerodha SPAN (SPAN: ₹${Math.round(liveHedge.span).toLocaleString()} + Exp: ₹${Math.round(liveHedge.exposure).toLocaleString()})</span>`;
+                let actualNakedMargin = nakedMargin;
+                if (liveNaked && liveNaked.total > 0) {
+                    actualNakedMargin = liveNaked.total;
+                    const liveNakedRoi = grossPremium > 0 ? ((grossPremium / actualNakedMargin) * 100).toFixed(1) : nakedRoi;
+                    if (nakedReqEl) nakedReqEl.textContent = `₹${Math.round(actualNakedMargin).toLocaleString()}`;
+                    if (nakedRoiEl) nakedRoiEl.textContent = `+${liveNakedRoi}%`;
+                    if (nakedBadgeEl) {
+                        nakedBadgeEl.innerHTML = `<span style="color:#10b981; font-weight:600"><i class="fas fa-check-circle"></i> Official Zerodha SPAN (SPAN: ₹${Math.round(liveNaked.span).toLocaleString()} + Exp: ₹${Math.round(liveNaked.exposure).toLocaleString()})</span>`;
                     }
-                    if (saveEl) {
-                        saveEl.textContent = `Save ${liveSavedPct}% (₹${Math.round(liveSaved).toLocaleString()})`;
-                    }
-                    if (roiEl) {
-                        roiEl.textContent = `+${liveRoi}%`;
-                    }
-                    if (copyBtn) {
-                        copyBtn.onclick = () => App.copyBasketText(symbol, type, strike, hedgeStrike, sellPremium, hedgePremium, lotSize, Math.round(hedgedTotal), netCredit, liveRoi, expiry);
+                    if (copyNakedBtn) {
+                        copyNakedBtn.onclick = () => App.copyNakedOrderText(symbol, type, strike, sellPremium, lotSize, Math.round(actualNakedMargin), grossPremium, liveNakedRoi, expiry);
                     }
                 }
-            }).catch(() => {});
+
+                if (liveHedge && liveHedge.total > 0) {
+                    const hedgedTotal = liveHedge.total;
+                    const liveSaved = Math.max(0, actualNakedMargin - hedgedTotal);
+                    const liveSavedPct = actualNakedMargin > 0 ? Math.round((liveSaved / actualNakedMargin) * 100) : 0;
+                    const liveHedgedRoi = netCredit > 0 ? ((netCredit / hedgedTotal) * 100).toFixed(1) : hedgedRoi;
+
+                    if (hedgedReqEl) hedgedReqEl.textContent = `₹${Math.round(hedgedTotal).toLocaleString()}`;
+                    if (hedgeBadgeEl) {
+                        hedgeBadgeEl.innerHTML = `<span style="color:#10b981; font-weight:600"><i class="fas fa-check-circle"></i> Official Zerodha SPAN (SPAN: ₹${Math.round(liveHedge.span).toLocaleString()} + Exp: ₹${Math.round(liveHedge.exposure).toLocaleString()})</span>`;
+                    }
+                    if (hedgeSaveEl) {
+                        hedgeSaveEl.textContent = `Save ${liveSavedPct}% (₹${Math.round(liveSaved).toLocaleString()})`;
+                    }
+                    if (hedgeRoiEl) {
+                        hedgeRoiEl.textContent = `+${liveHedgedRoi}%`;
+                    }
+                    if (copyBasketBtn) {
+                        copyBasketBtn.onclick = () => App.copyBasketText(symbol, type, strike, hedgeStrike, sellPremium, hedgePremium, lotSize, Math.round(hedgedTotal), netCredit, liveHedgedRoi, expiry);
+                    }
+                }
+            }).catch(() => { });
+        }
+    },
+
+    openBasketModal(symbol, type, strike, hedgeStrike, sellPremium, hedgePremium, lotSize, basketMargin, nakedMargin, netCredit, roi, expiry) {
+        const grossPremium = Math.round(sellPremium * lotSize);
+        const nakedRoi = nakedMargin > 0 ? ((grossPremium / nakedMargin) * 100).toFixed(1) : roi;
+        return this.openTradeDetailsModal(symbol, type, strike, hedgeStrike, sellPremium, hedgePremium, lotSize, nakedMargin, basketMargin, grossPremium, netCredit, nakedRoi, roi, expiry);
+    },
+
+    async copyNakedOrderText(symbol, type, strike, sellPremium, lotSize, nakedMargin, grossPremium, nakedRoi, expiry) {
+        const text = `NAKED SELL ORDER: ${symbol} (${expiry || 'Current'})
+` +
+            `ACTION: SELL ${symbol} ${strike} ${type}
+` +
+            `QUANTITY: ${lotSize}
+` +
+            `LTP: ₹${sellPremium}
+` +
+            `Gross Premium Received: ₹${Number(grossPremium).toLocaleString()}
+` +
+            `Required Margin: ₹${Number(nakedMargin).toLocaleString()} (+${nakedRoi}% ROI)`;
+
+        try {
+            await navigator.clipboard.writeText(text);
+            alert('✅ Naked Sell Order copied to clipboard!\n\n' + text);
+        } catch (e) {
+            prompt('Copy Naked Order:', text);
         }
     },
 
     async copyBasketText(symbol, type, strike, hedgeStrike, sellPremium, hedgePremium, lotSize, basketMargin, netCredit, roi, expiry) {
-        const text = `BASKET ORDER: ${symbol} (${expiry || 'Current'})\n` +
-            `LEG 1: BUY ${symbol} ${hedgeStrike} ${type} | Qty: ${lotSize} | LTP: ₹${hedgePremium}\n` +
-            `LEG 2: SELL ${symbol} ${strike} ${type} | Qty: ${lotSize} | LTP: ₹${sellPremium}\n` +
-            `Net Credit: ₹${Number(netCredit).toLocaleString()} (+${roi}% ROI)\n` +
-            `Hedged Margin: ₹${Number(basketMargin).toLocaleString()}\n` +
+        const text = `BASKET ORDER: ${symbol} (${expiry || 'Current'})
+` +
+            `LEG 1: BUY ${symbol} ${hedgeStrike} ${type} | Qty: ${lotSize} | LTP: ₹${hedgePremium}
+` +
+            `LEG 2: SELL ${symbol} ${strike} ${type} | Qty: ${lotSize} | LTP: ₹${sellPremium}
+` +
+            `Net Credit: ₹${Number(netCredit).toLocaleString()} (+${roi}% ROI)
+` +
+            `Hedged Margin: ₹${Number(basketMargin).toLocaleString()}
+` +
             `*Tip: Execute Leg 1 (BUY) first to release margin on broker.*`;
 
         try {
@@ -3955,38 +4096,52 @@ const App = {
         }
     },
 
-    async shareHedgedBasketSignal(symbol, type, strike, hedgeStrike, sellPremium, hedgePremium, lotSize, basketMargin, nakedMargin, netCredit, roi, expiry) {
-        const strategy = type === 'CE' ? 'Bear Call Spread' : 'Bull Put Spread';
-        const netPremium = Math.max(0.05, sellPremium - hedgePremium);
-        const marginSaved = Math.max(0, nakedMargin - basketMargin);
-        const marginSavedPercent = nakedMargin > 0 ? Math.round((marginSaved / nakedMargin) * 100) : 0;
+    async shareTradeRecommendationSignal(symbol, type, strike, hedgeStrike, sellPremium, hedgePremium, lotSize, nakedMargin, basketMargin, grossPremium, netCredit, nakedRoi, hedgedRoi, expiry) {
+        let text = `🎯 HIGH PREMIUM OPTION TRADE: ${symbol} (${expiry || 'Current'})
 
-        const text = `📊 *DESTRADE 2-LEG HEDGED BASKET*\n` +
-            `🎯 *Strategy:* ${strategy} (${symbol})\n` +
-            `📅 *Expiry:* ${expiry || 'Current'}\n\n` +
-            `1️⃣ *LEG 1 (BUY FIRST):* ${symbol} ${hedgeStrike} ${type} @ ₹${Number(hedgePremium).toFixed(2)}\n` +
-            `2️⃣ *LEG 2 (SELL SECOND):* ${symbol} ${strike} ${type} @ ₹${Number(sellPremium).toFixed(2)}\n\n` +
-            `💵 *Net Credit Received:* ₹${netPremium.toFixed(2)} (₹${Number(netCredit).toLocaleString()} / lot)\n` +
-            `🛡️ *Hedged Margin Required:* ₹${Number(basketMargin).toLocaleString()} (Saved ${marginSavedPercent}% vs Naked ₹${Number(nakedMargin).toLocaleString()})\n` +
-            `📈 *Est. Hedged ROI:* +${roi}%\n\n` +
-            `⚡ *Tip: Always execute Leg 1 (BUY) first on Zerodha / Groww to unlock margin benefits immediately.*`;
+` +
+            `CONTRACT: SELL ${symbol} ${strike} ${type} @ ₹${sellPremium}
+` +
+            `• Gross Premium Available: ₹${Number(grossPremium).toLocaleString()} (Qty: ${lotSize})
+` +
+            `• Required Margin (Naked): ₹${Number(nakedMargin).toLocaleString()} (+${nakedRoi}% ROI)
+
+`;
+
+        if (hedgeStrike && hedgeStrike > 0) {
+            const savedPct = nakedMargin > 0 ? Math.round(((nakedMargin - basketMargin) / nakedMargin) * 100) : 0;
+            text += `🛡️ HEDGE OPTION (IF REQUIRED - SAVE MARGIN):
+` +
+                `• Leg 1 (Buy First): BUY ${symbol} ${hedgeStrike} ${type} @ ₹${hedgePremium}
+` +
+                `• Leg 2 (Sell Second): SELL ${symbol} ${strike} ${type} @ ₹${sellPremium}
+` +
+                `• Hedged Margin: ₹${Number(basketMargin).toLocaleString()} (Save ${savedPct}%)
+` +
+                `• Net Cash Credit: ₹${Number(netCredit).toLocaleString()} (+${hedgedRoi}% ROI)
+
+`;
+        }
+        text += `Scanned via Destrade Terminal`;
 
         if (navigator.share) {
             try {
-                await navigator.share({
-                    title: `Destrade Basket: ${symbol} ${strategy}`,
-                    text: text
-                });
+                await navigator.share({ title: `${symbol} Trade Recommendation`, text });
                 return;
-            } catch (err) {}
+            } catch (e) { }
         }
-
         try {
             await navigator.clipboard.writeText(text);
-            alert('Basket Trade Signal copied to clipboard!\n\n' + text);
+            alert('✅ Trade recommendation copied to clipboard!\n\n' + text);
         } catch (e) {
-            alert(text);
+            prompt('Copy Signal:', text);
         }
+    },
+
+    async shareHedgedBasketSignal(symbol, type, strike, hedgeStrike, sellPremium, hedgePremium, lotSize, basketMargin, nakedMargin, netCredit, roi, expiry) {
+        const grossPremium = Math.round(sellPremium * lotSize);
+        const nakedRoi = nakedMargin > 0 ? ((grossPremium / nakedMargin) * 100).toFixed(1) : roi;
+        return this.shareTradeRecommendationSignal(symbol, type, strike, hedgeStrike, sellPremium, hedgePremium, lotSize, nakedMargin, basketMargin, grossPremium, netCredit, nakedRoi, roi, expiry);
     },
 
     // ===== OI CLOCK & RECOMMENDATIONS =====
@@ -4488,6 +4643,11 @@ const App = {
     },
 
     applyScannerFilters() {
+        const sortEl = document.getElementById('scanner-sort-by');
+        if (sortEl) {
+            this.state.scannerSortBy = sortEl.value;
+            localStorage.setItem('destrade_scanner_sort_by', this.state.scannerSortBy);
+        }
         const minEl = document.getElementById('scanner-capital-min');
         const maxEl = document.getElementById('scanner-capital-max');
         if (minEl) {
@@ -4530,9 +4690,9 @@ const App = {
             <div class="card glass" style="padding: 1.5rem; margin-bottom: 1.5rem;">
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem">
                     <div>
-                        <h3 style="margin-bottom:0.5rem"><i class="fas fa-robot"></i> AI Options Scanner</h3>
+                        <h3 style="margin-bottom:0.5rem"><i class="fas fa-chart-line"></i> Global Trade Recommendations (High Available Premium)</h3>
                         <p style="color:var(--text-muted); font-size:0.9rem">
-                            Scans active F&O scripts to find the best Selling and Buying opportunities based on premium yields and momentum.
+                            Scans all F&O scripts to identify option contracts where the most cash premium is available, with optional margin-saving hedges.
                         </p>
                     </div>
                 </div>
@@ -4540,6 +4700,11 @@ const App = {
                 <div class="scanner-controls-container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-top:1.25rem; padding-top:1.25rem; border-top:1px solid rgba(255,255,255,0.05)">
                     <!-- Scanner Controls -->
                     <div class="scanner-controls-row" style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap">
+                        <select id="scanner-sort-by" onchange="App.applyScannerFilters()" style="background:var(--bg-glass); color:var(--text-bright); border:1px solid rgba(255,255,255,0.2); padding:0.75rem 1rem; border-radius:8px; font-size:0.85rem; cursor:pointer; outline:none">
+                            <option value="premium" ${(this.state.scannerSortBy || 'premium') === 'premium' ? 'selected' : ''}>Sort: Most Premium Available (₹)</option>
+                            <option value="roi" ${this.state.scannerSortBy === 'roi' ? 'selected' : ''}>Sort: Highest ROI %</option>
+                            <option value="margin" ${this.state.scannerSortBy === 'margin' ? 'selected' : ''}>Sort: Lowest Margin Required</option>
+                        </select>
                         <select id="scanner-margin-model" onchange="App.changeMarginModel(this.value)" style="background:var(--bg-glass); color:var(--text-bright); border:1px solid rgba(255,255,255,0.2); padding:0.75rem 1rem; border-radius:8px; font-size:0.85rem; cursor:pointer; outline:none">
                             <option value="zerodha_live" ${(this.state.marginModel || 'zerodha_live') === 'zerodha_live' ? 'selected' : ''}>Model: Zerodha Live SPAN API</option>
                             <option value="zerodha" ${this.state.marginModel === 'zerodha' ? 'selected' : ''}>Model: Zerodha Formula</option>
@@ -4705,54 +4870,67 @@ const App = {
                     for (const row of oi.data) {
                         const strike = row.strikePrice;
 
-                        // CE Sell (Near OTM with user selected parameters & Daily OI Change > 0)
-                        if (strike >= spot * ceMinDist && strike <= spot * ceMaxDist && row.CE && row.CE.lastPrice > 0 && (row.CE.openInterest || 0) > 0 && (row.CE.changeinOpenInterest || 0) > 0) {
+                        // CE Sell: Near OTM, select contract where most premium is available
+                        if (strike >= spot * ceMinDist && strike <= spot * ceMaxDist && row.CE && row.CE.lastPrice > 0 && (row.CE.openInterest || 0) > 0) {
+                            const grossPremium = row.CE.lastPrice * lotSize;
                             const bestHedge = this._findOptimalHedgeLeg(oi.data, spot, strike, 'CE', isIndex, row.CE.lastPrice, lotSize);
                             const hedgeStrike = bestHedge ? bestHedge.strike : null;
                             const hedgePremium = bestHedge ? bestHedge.premium : 0;
 
                             const estMargin = await this.calculateMargin(spot, strike, row.CE.lastPrice, 'CE', isIndex, lotSize, oi.currentExpiry || '', sym, 'zerodha', hedgeStrike, hedgePremium);
-                            const roi = (estMargin.premiumReceivable / estMargin.total) * 100;
-                            if (roi > 0.5) {
-                                const cand = {
-                                    symbol: sym, type: 'CE', strike, spot, premium: row.CE.lastPrice, lotSize,
-                                    margin: estMargin, value: estMargin.premiumReceivable, roi, iv: row.CE.impliedVolatility || 0,
-                                    oiChg: row.CE.changeinOpenInterest, expiry: oi.currentExpiry || '',
-                                    hedgeStrike: hedgeStrike, hedgePremium: hedgePremium,
-                                    netPremium: row.CE.lastPrice - hedgePremium,
-                                    strategyName: 'Bear Call Spread',
-                                    nakedMargin: estMargin.nakedMargin || estMargin.total,
-                                    marginSaved: estMargin.marginSaved || 0,
-                                    marginSavedPercent: estMargin.marginSavedPercent || 0
-                                };
-                                if (!bestCEForSym || roi > bestCEForSym.roi) {
-                                    bestCEForSym = cand;
-                                }
+                            const nakedMargin = estMargin.nakedMargin || estMargin.total;
+                            const nakedRoi = nakedMargin > 0 ? (grossPremium / nakedMargin) * 100 : 0;
+                            const hedgedMargin = estMargin.total;
+                            const netPremium = Math.max(0.05, row.CE.lastPrice - hedgePremium);
+                            const netCredit = netPremium * lotSize;
+                            const hedgedRoi = hedgedMargin > 0 ? (netCredit / hedgedMargin) * 100 : 0;
+                            const marginSaved = estMargin.marginSaved || Math.max(0, nakedMargin - hedgedMargin);
+                            const marginSavedPercent = estMargin.marginSavedPercent || (nakedMargin > 0 ? Math.round((marginSaved / nakedMargin) * 100) : 0);
+
+                            const cand = {
+                                symbol: sym, type: 'CE', strike, spot, premium: row.CE.lastPrice, lotSize,
+                                grossPremium,
+                                otmPercent: ((strike - spot) / spot) * 100,
+                                margin: estMargin, nakedMargin, nakedRoi, roi: nakedRoi,
+                                hedgedMargin, hedgedRoi, hedgeStrike, hedgePremium, netPremium, netCredit,
+                                value: grossPremium, marginSaved, marginSavedPercent,
+                                strategyName: 'Bear Call Spread', iv: row.CE.impliedVolatility || 0,
+                                oiChg: row.CE.changeinOpenInterest || 0, expiry: oi.currentExpiry || ''
+                            };
+                            if (!bestCEForSym || cand.grossPremium > bestCEForSym.grossPremium) {
+                                bestCEForSym = cand;
                             }
                         }
-                        // PE Sell (Near OTM with user selected parameters & Daily OI Change > 0)
-                        if (strike <= spot * peMaxDist && strike >= spot * peMinDist && row.PE && row.PE.lastPrice > 0 && (row.PE.openInterest || 0) > 0 && (row.PE.changeinOpenInterest || 0) > 0) {
+
+                        // PE Sell: Near OTM, select contract where most premium is available
+                        if (strike <= spot * peMaxDist && strike >= spot * peMinDist && row.PE && row.PE.lastPrice > 0 && (row.PE.openInterest || 0) > 0) {
+                            const grossPremium = row.PE.lastPrice * lotSize;
                             const bestHedge = this._findOptimalHedgeLeg(oi.data, spot, strike, 'PE', isIndex, row.PE.lastPrice, lotSize);
                             const hedgeStrike = bestHedge ? bestHedge.strike : null;
                             const hedgePremium = bestHedge ? bestHedge.premium : 0;
 
                             const estMargin = await this.calculateMargin(spot, strike, row.PE.lastPrice, 'PE', isIndex, lotSize, oi.currentExpiry || '', sym, 'zerodha', hedgeStrike, hedgePremium);
-                            const roi = (estMargin.premiumReceivable / estMargin.total) * 100;
-                            if (roi > 0.5) {
-                                const cand = {
-                                    symbol: sym, type: 'PE', strike, spot, premium: row.PE.lastPrice, lotSize,
-                                    margin: estMargin, value: estMargin.premiumReceivable, roi, iv: row.PE.impliedVolatility || 0,
-                                    oiChg: row.PE.changeinOpenInterest, expiry: oi.currentExpiry || '',
-                                    hedgeStrike: hedgeStrike, hedgePremium: hedgePremium,
-                                    netPremium: row.PE.lastPrice - hedgePremium,
-                                    strategyName: 'Bull Put Spread',
-                                    nakedMargin: estMargin.nakedMargin || estMargin.total,
-                                    marginSaved: estMargin.marginSaved || 0,
-                                    marginSavedPercent: estMargin.marginSavedPercent || 0
-                                };
-                                if (!bestPEForSym || roi > bestPEForSym.roi) {
-                                    bestPEForSym = cand;
-                                }
+                            const nakedMargin = estMargin.nakedMargin || estMargin.total;
+                            const nakedRoi = nakedMargin > 0 ? (grossPremium / nakedMargin) * 100 : 0;
+                            const hedgedMargin = estMargin.total;
+                            const netPremium = Math.max(0.05, row.PE.lastPrice - hedgePremium);
+                            const netCredit = netPremium * lotSize;
+                            const hedgedRoi = hedgedMargin > 0 ? (netCredit / hedgedMargin) * 100 : 0;
+                            const marginSaved = estMargin.marginSaved || Math.max(0, nakedMargin - hedgedMargin);
+                            const marginSavedPercent = estMargin.marginSavedPercent || (nakedMargin > 0 ? Math.round((marginSaved / nakedMargin) * 100) : 0);
+
+                            const cand = {
+                                symbol: sym, type: 'PE', strike, spot, premium: row.PE.lastPrice, lotSize,
+                                grossPremium,
+                                otmPercent: ((spot - strike) / spot) * 100,
+                                margin: estMargin, nakedMargin, nakedRoi, roi: nakedRoi,
+                                hedgedMargin, hedgedRoi, hedgeStrike, hedgePremium, netPremium, netCredit,
+                                value: grossPremium, marginSaved, marginSavedPercent,
+                                strategyName: 'Bull Put Spread', iv: row.PE.impliedVolatility || 0,
+                                oiChg: row.PE.changeinOpenInterest || 0, expiry: oi.currentExpiry || ''
+                            };
+                            if (!bestPEForSym || cand.grossPremium > bestPEForSym.grossPremium) {
+                                bestPEForSym = cand;
                             }
                         }
 
@@ -4801,8 +4979,8 @@ const App = {
         // Precision enrichment: If Zerodha Live SPAN model is active, fetch official Zerodha SPAN for top setups
         if ((this.state.marginModel || 'zerodha_live') === 'zerodha_live' && sellCandidates.length > 0) {
             if (sStatus) sStatus.textContent = "Fetching official Zerodha SPAN for top setups...";
-            const topCE = sellCandidates.filter(d => d.type === 'CE').sort((a, b) => b.roi - a.roi).slice(0, 25);
-            const topPE = sellCandidates.filter(d => d.type === 'PE').sort((a, b) => b.roi - a.roi).slice(0, 25);
+            const topCE = sellCandidates.filter(d => d.type === 'CE').sort((a, b) => b.grossPremium - a.grossPremium).slice(0, 25);
+            const topPE = sellCandidates.filter(d => d.type === 'PE').sort((a, b) => b.grossPremium - a.grossPremium).slice(0, 25);
             const toEnrich = [...topCE, ...topPE];
 
             for (let j = 0; j < toEnrich.length; j++) {
@@ -4817,19 +4995,22 @@ const App = {
                     if (liveMargin && liveMargin.total > 0 && liveMargin.modelName === 'Zerodha Live SPAN') {
                         item.margin = liveMargin;
                         item.nakedMargin = liveMargin.nakedMargin || liveMargin.total;
+                        item.hedgedMargin = liveMargin.total;
                         item.marginSaved = liveMargin.marginSaved || 0;
                         item.marginSavedPercent = liveMargin.marginSavedPercent || 0;
-                        item.value = liveMargin.premiumReceivable;
-                        item.roi = (liveMargin.premiumReceivable / liveMargin.total) * 100;
+                        item.grossPremium = item.premium * item.lotSize;
+                        item.netCredit = liveMargin.premiumReceivable;
+                        item.nakedRoi = item.nakedMargin > 0 ? (item.grossPremium / item.nakedMargin) * 100 : 0;
+                        item.hedgedRoi = item.hedgedMargin > 0 ? (item.netCredit / item.hedgedMargin) * 100 : 0;
+                        item.roi = item.nakedRoi;
                         item.isLiveZerodha = true;
                     }
-                } catch (e) {}
+                } catch (e) { }
             }
 
-            // In Zerodha Live mode, retain and sort only setups with official Zerodha fetched margins
             const verified = toEnrich.filter(item => item.isLiveZerodha);
             if (verified.length > 0) {
-                sellCandidates = verified.sort((a, b) => b.roi - a.roi);
+                sellCandidates = [...verified, ...sellCandidates.filter(sc => !sc.isLiveZerodha)].sort((a, b) => b.grossPremium - a.grossPremium);
             }
         }
 
@@ -4857,13 +5038,14 @@ const App = {
     _renderScannerResults(sell, buy) {
         const minCap = this.state.scannerCapitalMin || 0;
         const maxCap = this.state.scannerCapitalMax || Infinity;
+        const sortBy = this.state.scannerSortBy || 'premium';
 
         let filteredSell = sell;
         let filteredBuy = buy;
 
         if (minCap > 0 || maxCap !== Infinity) {
             filteredSell = sell.filter(d => {
-                const margin = d.margin?.total || 0;
+                const margin = d.nakedMargin || d.margin?.total || 0;
                 return margin >= minCap && margin <= maxCap;
             });
             filteredBuy = buy.filter(d => {
@@ -4872,8 +5054,18 @@ const App = {
             });
         }
 
-        const ceSell = filteredSell.filter(d => d.type === 'CE').sort((a, b) => b.roi - a.roi).slice(0, 30);
-        const peSell = filteredSell.filter(d => d.type === 'PE').sort((a, b) => b.roi - a.roi).slice(0, 30);
+        const sortFn = (a, b) => {
+            if (sortBy === 'roi') {
+                return (b.nakedRoi || b.roi || 0) - (a.nakedRoi || a.roi || 0);
+            } else if (sortBy === 'margin') {
+                return (a.nakedMargin || a.margin?.total || 0) - (b.nakedMargin || b.margin?.total || 0);
+            } else {
+                return (b.grossPremium || (b.premium * b.lotSize)) - (a.grossPremium || (a.premium * a.lotSize));
+            }
+        };
+
+        const ceSell = filteredSell.filter(d => d.type === 'CE').sort(sortFn).slice(0, 30);
+        const peSell = filteredSell.filter(d => d.type === 'PE').sort(sortFn).slice(0, 30);
         const topBuy = filteredBuy.sort((a, b) => b.score - a.score).slice(0, 50);
 
         const renderTable = (data, isSell, title) => {
@@ -4884,110 +5076,126 @@ const App = {
                 ${title ? `<div style="padding: 1rem 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.05); display:flex; align-items:center; gap:0.75rem">
                     <i class="fas ${isSell ? (title.includes('Call') ? 'fa-arrow-down' : 'fa-arrow-up') : 'fa-bolt'}" style="color:${isSell ? (title.includes('Call') ? 'var(--down)' : 'var(--up)') : 'var(--primary)'}"></i>
                     <b style="font-size:0.9rem; letter-spacing:0.05em; text-transform:uppercase">${title}</b>
-                    <span style="margin-left:auto; font-size:0.7rem; color:var(--text-muted)">Showing Top ${data.length} ${isSell ? 'Hedged Baskets' : 'Opportunities'}</span>
+                    <span style="margin-left:auto; font-size:0.75rem; color:var(--text-muted)">Showing Top ${data.length} High-Yield Contracts</span>
                 </div>` : ''}
-                <table class="pro-table" style="width:100%; text-align:left; font-size:0.85rem">
-                    <thead>
-                        <tr>
-                            <th>Symbol</th>
-                            <th>Expiry</th>
-                            <th>${isSell ? 'Strategy Legs (Execution Order)' : 'Action'}</th>
-                            ${isSell ? '' : '<th>Strike</th>'}
-                            <th>Lot</th>
-                            <th>${isSell ? 'Net Premium' : 'Premium'}</th>
-                            <th>${isSell ? 'Required Capital (Hedged)' : 'Est. Margin'}</th>
-                            <th>${isSell ? 'Est. ROI' : 'Price Chg %'}</th>
-                            ${isSell ? '' : '<th>Score</th>'}
-                            <th style="text-align:center">${isSell ? 'Basket' : 'Share'}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${data.map(d => `
-                            <tr style="cursor:pointer" onclick="App.showOptionChain('${d.symbol}', '${d.expiry || ''}')">
-                                <td>
-                                    <b>${d.symbol}</b> <span style="color:var(--text-muted);font-size:0.7rem">(Spot: ${d.spot.toFixed(1)})</span>
-                                    ${isSell ? `<div style="font-size:0.7rem; color:var(--primary); font-weight:600; margin-top:2px"><i class="fas fa-layer-group"></i> ${d.strategyName || (d.type === 'CE' ? 'Bear Call Spread' : 'Bull Put Spread')}</div>` : ''}
-                                </td>
-                                <td class="mono" style="color:var(--primary); font-size:0.75rem">${d.expiry || '---'}</td>
-                                ${isSell ? `
-                                    <td>
-                                        ${d.hedgeStrike ? `
-                                            <div style="display:flex; align-items:center; gap:5px; margin-bottom:3px">
-                                                <span class="tag" style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); font-size:0.65rem; padding:1px 5px; font-weight:700">1. BUY FIRST</span>
-                                                <b class="mono" style="color:var(--text-bright)">${d.hedgeStrike} ${d.type}</b>
-                                                <span class="mono" style="color:var(--text-muted); font-size:0.75rem">@ ₹${Number(d.hedgePremium).toFixed(2)}</span>
-                                            </div>
-                                            <div style="display:flex; align-items:center; gap:5px">
-                                                <span class="tag" style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); font-size:0.65rem; padding:1px 5px; font-weight:700">2. SELL SECOND</span>
-                                                <b class="mono" style="color:var(--text-bright)">${d.strike} ${d.type}</b>
-                                                <span class="mono" style="color:var(--text-muted); font-size:0.75rem">@ ₹${Number(d.premium).toFixed(2)}</span>
-                                            </div>
-                                        ` : `
-                                            <span class="tag ${d.type === 'CE' ? 'tag-bearish' : 'tag-bullish'}">SELL ${d.type} ${d.strike}</span>
-                                            <span class="mono" style="color:var(--text-muted); font-size:0.75rem">@ ₹${Number(d.premium).toFixed(2)}</span>
-                                        `}
-                                    </td>
-                                ` : `
-                                    <td class="${d.type === 'CE' ? 'up' : 'down'}">
-                                        <span class="tag ${d.type === 'CE' ? 'tag-bullish' : 'tag-bearish'}">BUY ${d.type}</span>
-                                    </td>
-                                    <td class="mono" style="color:var(--primary)">${d.strike}</td>
-                                `}
-                                <td class="mono" style="color:var(--text-muted)">${d.lotSize}</td>
-                                ${isSell ? `
-                                    <td class="mono">
-                                        <div style="font-weight:700; color:var(--up); font-size:0.85rem">₹${(d.netPremium !== undefined ? d.netPremium : d.premium).toFixed(2)}</div>
-                                        <div style="font-size:0.65rem; color:var(--text-muted)">Rec: ₹${Math.round(d.value).toLocaleString()}</div>
-                                    </td>
-                                    <td class="mono">
-                                        <div style="font-weight:700; color:var(--text-bright); font-size:0.9rem">₹${Math.round(d.margin.total).toLocaleString()}</div>
-                                        ${d.margin.modelName === 'Zerodha Live SPAN' ? `
-                                            <div style="font-size:0.65rem; color:#10b981; font-weight:600; margin-top:2px">
-                                                <i class="fas fa-check-circle"></i> Official Zerodha SPAN
-                                            </div>
-                                            <div style="font-size:0.65rem; color:var(--text-muted)">SPAN: ₹${Math.round(d.margin.span || 0).toLocaleString()} + Exp: ₹${Math.round(d.margin.exposure || 0).toLocaleString()}</div>
-                                        ` : ''}
-                                        ${d.marginSavedPercent > 0 ? `
-                                            <div style="font-size:0.65rem; color:#10b981; font-weight:600; margin-top:2px">
-                                                <i class="fas fa-shield-alt"></i> Save ${d.marginSavedPercent}% (₹${Math.round(d.marginSaved).toLocaleString()})
-                                            </div>
-                                            <div style="font-size:0.65rem; color:var(--text-muted); text-decoration:line-through">Naked: ₹${Math.round(d.nakedMargin).toLocaleString()}</div>
-                                        ` : `
-                                            <div style="font-size:0.65rem; color:var(--text-muted)">Span: ₹${Math.round(d.margin.span || 0).toLocaleString()}</div>
-                                        `}
-                                    </td>
-                                    <td>
-                                        <span class="tag" style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); font-weight:700; font-size:0.85rem">+${d.roi.toFixed(1)}%</span>
-                                    </td>
-                                    <td style="text-align:center; white-space:nowrap">
-                                        <button class="chart-action-btn" onclick="event.stopPropagation(); App.openBasketModal('${d.symbol}', '${d.type}', ${d.strike}, ${d.hedgeStrike || 0}, ${parseFloat(d.premium).toFixed(2)}, ${parseFloat(d.hedgePremium || 0).toFixed(2)}, ${d.lotSize}, ${Math.round(d.margin.total)}, ${Math.round(d.nakedMargin || d.margin.total)}, ${Math.round(d.value)}, ${(d.roi || 0).toFixed(1)}, '${d.expiry || ''}')" style="padding:0.35rem 0.65rem; background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3); margin-right:4px" title="View & Copy Basket Order">
-                                            <i class="fas fa-shopping-basket"></i> Basket
-                                        </button>
-                                        <button class="chart-action-btn" onclick="event.stopPropagation(); App.shareHedgedBasketSignal('${d.symbol}', '${d.type}', ${d.strike}, ${d.hedgeStrike || 0}, ${parseFloat(d.premium).toFixed(2)}, ${parseFloat(d.hedgePremium || 0).toFixed(2)}, ${d.lotSize}, ${Math.round(d.margin.total)}, ${Math.round(d.nakedMargin || d.margin.total)}, ${Math.round(d.value)}, ${(d.roi || 0).toFixed(1)}, '${d.expiry || ''}')" style="padding:0.35rem 0.65rem; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3)" title="Share Basket Signal">
-                                            <i class="fas fa-share-alt"></i>
-                                        </button>
-                                    </td>
-                                ` : `
-                                    <td class="mono">₹${parseFloat(d.premium).toFixed(2)}</td>
-                                    <td class="mono" style="color:var(--text-muted)">₹${Math.round(d.margin).toLocaleString()}</td>
-                                    <td class="up mono">+${d.pChange.toFixed(1)}%</td>
-                                    <td class="mono" style="color:var(--primary); font-weight:bold">${d.score.toFixed(1)}</td>
-                                    <td style="text-align:center">
-                                        <button class="chart-action-btn" onclick="event.stopPropagation(); App.shareTradeSignal('${d.symbol}', '${d.type}', ${d.strike}, ${parseFloat(d.premium).toFixed(2)}, ${Math.round(d.margin?.total || d.margin || 0)}, ${(d.score || 0).toFixed(1)})" style="padding:0.3rem 0.6rem; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3)" title="Share Trade Signal">
-                                            <i class="fas fa-share-alt"></i>
-                                        </button>
-                                    </td>
-                                `}
+                <div style="overflow-x:auto">
+                    <table class="pro-table" style="width:100%; text-align:left; font-size:0.85rem">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Expiry</th>
+                                <th>${isSell ? 'Option Contract (Most Premium)' : 'Action'}</th>
+                                ${isSell ? '' : '<th>Strike</th>'}
+                                <th>Lot</th>
+                                <th>${isSell ? 'Available Premium' : 'Premium'}</th>
+                                <th>${isSell ? 'Required Margin (Naked)' : 'Est. Margin'}</th>
+                                <th>${isSell ? 'Est. ROI' : 'Price Chg %'}</th>
+                                ${isSell ? '<th>Hedge Option (If Required)</th>' : '<th>Score</th>'}
+                                <th style="text-align:center">${isSell ? 'Action' : 'Share'}</th>
                             </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            ${data.map(d => `
+                                <tr style="cursor:pointer" onclick="App.showOptionChain('${d.symbol}', '${d.expiry || ''}')">
+                                    <td>
+                                        <b>${d.symbol}</b> <span style="color:var(--text-muted);font-size:0.75rem">(Spot: ${d.spot.toFixed(1)})</span>
+                                        ${isSell ? `<div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px">${d.otmPercent ? `${d.otmPercent > 0 ? '+' : ''}${d.otmPercent.toFixed(1)}% OTM` : ''}</div>` : ''}
+                                    </td>
+                                    <td class="mono" style="color:var(--primary); font-size:0.75rem">${d.expiry || '---'}</td>
+                                    ${isSell ? `
+                                        <td>
+                                            <div style="display:flex; align-items:center; gap:6px">
+                                                <span class="tag ${d.type === 'CE' ? 'tag-bearish' : 'tag-bullish'}" style="font-size:0.75rem; font-weight:700">SELL ${d.type}</span>
+                                                <b class="mono" style="color:var(--text-bright); font-size:0.95rem">${d.strike}</b>
+                                            </div>
+                                            <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px">
+                                                LTP: <span class="mono" style="color:var(--text-bright); font-weight:600">₹${Number(d.premium).toFixed(2)}</span>
+                                            </div>
+                                        </td>
+                                    ` : `
+                                        <td class="${d.type === 'CE' ? 'up' : 'down'}">
+                                            <span class="tag ${d.type === 'CE' ? 'tag-bullish' : 'tag-bearish'}">BUY ${d.type}</span>
+                                        </td>
+                                        <td class="mono" style="color:var(--primary)">${d.strike}</td>
+                                    `}
+                                    <td class="mono" style="color:var(--text-muted)">${d.lotSize}</td>
+                                    ${isSell ? `
+                                        <td class="mono">
+                                            <div style="font-weight:700; color:var(--up); font-size:0.95rem">₹${Math.round(d.grossPremium || (d.premium * d.lotSize)).toLocaleString()}</div>
+                                            <div style="font-size:0.7rem; color:var(--text-muted)">₹${Number(d.premium).toFixed(2)} / share</div>
+                                        </td>
+                                        <td class="mono">
+                                            <div style="font-weight:700; color:var(--text-bright); font-size:0.9rem">₹${Math.round(d.nakedMargin || d.margin.total).toLocaleString()}</div>
+                                            ${d.margin?.modelName === 'Zerodha Live SPAN' ? `
+                                                <div style="font-size:0.65rem; color:#10b981; font-weight:600; margin-top:2px">
+                                                    <i class="fas fa-check-circle"></i> Official Zerodha SPAN
+                                                </div>
+                                            ` : `
+                                                <div style="font-size:0.65rem; color:var(--text-muted)">Standard SPAN</div>
+                                            `}
+                                        </td>
+                                        <td>
+                                            <span class="tag" style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); font-weight:700; font-size:0.85rem">+${(d.nakedRoi || d.roi || 0).toFixed(1)}%</span>
+                                            <div style="font-size:0.65rem; color:var(--text-muted); margin-top:2px">Naked Yield</div>
+                                        </td>
+                                        <td>
+                                            ${d.hedgeStrike ? `
+                                                <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:0.45rem 0.65rem; font-size:0.75rem; min-width:185px">
+                                                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:3px">
+                                                        <span style="display:inline-flex; align-items:center; gap:4px">
+                                                            <span class="tag" style="background:rgba(16,185,129,0.2); color:#10b981; font-weight:700; font-size:0.6rem; padding:1px 5px">BUY HEDGE</span>
+                                                            <b class="mono" style="color:var(--text-bright)">${d.hedgeStrike} ${d.type}</b>
+                                                        </span>
+                                                        <span class="mono" style="color:var(--text-muted)">@ ₹${Number(d.hedgePremium).toFixed(2)}</span>
+                                                    </div>
+                                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:3px">
+                                                        <span style="color:var(--text-muted); font-size:0.7rem">Hedged Margin:</span>
+                                                        <span class="mono" style="color:var(--text-bright); font-weight:600">₹${Math.round(d.hedgedMargin || d.margin.total).toLocaleString()}</span>
+                                                    </div>
+                                                    ${d.marginSavedPercent > 0 ? `
+                                                        <div style="color:#10b981; font-size:0.68rem; font-weight:600; text-align:right">
+                                                            Save ${d.marginSavedPercent}% (₹${Math.round(d.marginSaved || 0).toLocaleString()})
+                                                        </div>
+                                                    ` : ''}
+                                                    <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px dashed rgba(255,255,255,0.08); margin-top:3px; padding-top:3px">
+                                                        <span style="color:var(--text-muted); font-size:0.7rem">Net Credit:</span>
+                                                        <span class="mono" style="color:var(--up); font-weight:700">₹${Math.round(d.netCredit || (d.grossPremium - (d.hedgePremium * d.lotSize))).toLocaleString()} <span style="font-size:0.65rem; color:var(--primary)">(+${(d.hedgedRoi || 0).toFixed(1)}%)</span></span>
+                                                    </div>
+                                                </div>
+                                            ` : `
+                                                <span style="color:var(--text-muted); font-size:0.75rem"><i class="fas fa-minus-circle"></i> Naked Only</span>
+                                            `}
+                                        </td>
+                                        <td style="text-align:center; white-space:nowrap">
+                                            <button class="chart-action-btn" onclick="event.stopPropagation(); App.openTradeDetailsModal('${d.symbol}', '${d.type}', ${d.strike}, ${d.hedgeStrike || 0}, ${parseFloat(d.premium).toFixed(2)}, ${parseFloat(d.hedgePremium || 0).toFixed(2)}, ${d.lotSize}, ${Math.round(d.nakedMargin || d.margin.total)}, ${Math.round(d.hedgedMargin || d.margin.total)}, ${Math.round(d.grossPremium || (d.premium * d.lotSize))}, ${Math.round(d.netCredit || (d.grossPremium - (d.hedgePremium * d.lotSize)))}, ${(d.nakedRoi || 0).toFixed(1)}, ${(d.hedgedRoi || 0).toFixed(1)}, '${d.expiry || ''}')" style="padding:0.4rem 0.75rem; background:rgba(59,130,246,0.2); color:#60a5fa; border:1px solid rgba(59,130,246,0.4); border-radius:6px; font-weight:600; margin-right:4px" title="Trade / Hedge Details">
+                                                <i class="fas fa-bolt"></i> Trade / Hedge
+                                            </button>
+                                            <button class="chart-action-btn" onclick="event.stopPropagation(); App.shareTradeRecommendationSignal('${d.symbol}', '${d.type}', ${d.strike}, ${d.hedgeStrike || 0}, ${parseFloat(d.premium).toFixed(2)}, ${parseFloat(d.hedgePremium || 0).toFixed(2)}, ${d.lotSize}, ${Math.round(d.nakedMargin || d.margin.total)}, ${Math.round(d.hedgedMargin || d.margin.total)}, ${Math.round(d.grossPremium || (d.premium * d.lotSize))}, ${Math.round(d.netCredit || (d.grossPremium - (d.hedgePremium * d.lotSize)))}, ${(d.nakedRoi || 0).toFixed(1)}, ${(d.hedgedRoi || 0).toFixed(1)}, '${d.expiry || ''}')" style="padding:0.4rem 0.65rem; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); border-radius:6px" title="Share Signal">
+                                                <i class="fas fa-share-alt"></i>
+                                            </button>
+                                        </td>
+                                    ` : `
+                                        <td class="mono">₹${parseFloat(d.premium).toFixed(2)}</td>
+                                        <td class="mono" style="color:var(--text-muted)">₹${Math.round(d.margin).toLocaleString()}</td>
+                                        <td class="up mono">+${d.pChange.toFixed(1)}%</td>
+                                        <td class="mono" style="color:var(--primary); font-weight:bold">${d.score.toFixed(1)}</td>
+                                        <td style="text-align:center">
+                                            <button class="chart-action-btn" onclick="event.stopPropagation(); App.shareTradeSignal('${d.symbol}', '${d.type}', ${d.strike}, ${parseFloat(d.premium).toFixed(2)}, ${Math.round(d.margin?.total || d.margin || 0)}, ${(d.score || 0).toFixed(1)})" style="padding:0.3rem 0.6rem; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3)" title="Share Trade Signal">
+                                                <i class="fas fa-share-alt"></i>
+                                            </button>
+                                        </td>
+                                    `}
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
             `;
         };
 
         document.getElementById('scanner-sell-results').innerHTML = `
-            <div class="card glass" style="padding:0; overflow:hidden; margin-bottom: 2rem;">${renderTable(ceSell, true, 'Call Options (CE) Yields')}</div>
-            <div class="card glass" style="padding:0; overflow:hidden">${renderTable(peSell, true, 'Put Options (PE) Yields')}</div>
+            <div class="card glass" style="padding:0; overflow:hidden; margin-bottom: 2rem;">${renderTable(ceSell, true, 'Call Options (CE) - High Available Premium')}</div>
+            <div class="card glass" style="padding:0; overflow:hidden">${renderTable(peSell, true, 'Put Options (PE) - High Available Premium')}</div>
         `;
         document.getElementById('scanner-buy-results').innerHTML = `<div class="card glass" style="padding:0; overflow:hidden">${renderTable(topBuy, false, 'Momentum Buying Opportunities')}</div>`;
     },

@@ -1,0 +1,1794 @@
+{
+  "360ONE": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.72,
+    "lotSize": 500,
+    "nrmlMargin": 102380,
+    "misMargin": 46071,
+    "futurePrice": 988.3
+  },
+  "ABB": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.79,
+    "lotSize": 125,
+    "nrmlMargin": 168108,
+    "misMargin": 75648,
+    "futurePrice": 6470
+  },
+  "ABCAPITAL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.96,
+    "lotSize": 1550,
+    "nrmlMargin": 121837,
+    "misMargin": 54826,
+    "futurePrice": 375
+  },
+  "ADANIENSOL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 41.41,
+    "lotSize": 675,
+    "nrmlMargin": 383931,
+    "misMargin": 172769,
+    "futurePrice": 1373.5
+  },
+  "ADANIENT": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 24.06,
+    "lotSize": 309,
+    "nrmlMargin": 194097,
+    "misMargin": 87343,
+    "futurePrice": 2610.8
+  },
+  "ADANIGREEN": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 27.29,
+    "lotSize": 600,
+    "nrmlMargin": 215319,
+    "misMargin": 96893,
+    "futurePrice": 1315
+  },
+  "ADANIPORTS": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.41,
+    "lotSize": 475,
+    "nrmlMargin": 181396,
+    "misMargin": 81628,
+    "futurePrice": 1870.8
+  },
+  "ADANIPOWER": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 24.67,
+    "lotSize": 3550,
+    "nrmlMargin": 168450,
+    "misMargin": 75802,
+    "futurePrice": 192.31
+  },
+  "ALKEM": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.67,
+    "lotSize": 125,
+    "nrmlMargin": 115313,
+    "misMargin": 51890,
+    "futurePrice": 5221
+  },
+  "AMBER": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 26.03,
+    "lotSize": 100,
+    "nrmlMargin": 156095,
+    "misMargin": 70242,
+    "futurePrice": 5996
+  },
+  "AMBUJACEM": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 34.33,
+    "lotSize": 1350,
+    "nrmlMargin": 163703,
+    "misMargin": 73666,
+    "futurePrice": 353.2
+  },
+  "ANANDRATHI": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.75,
+    "lotSize": 250,
+    "nrmlMargin": 101449,
+    "misMargin": 45652,
+    "futurePrice": 2285.9
+  },
+  "ANGELONE": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 26.08,
+    "lotSize": 2500,
+    "nrmlMargin": 186332,
+    "misMargin": 83849,
+    "futurePrice": 285.8
+  },
+  "APLAPOLLO": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.63,
+    "lotSize": 350,
+    "nrmlMargin": 151390,
+    "misMargin": 68125,
+    "futurePrice": 2203
+  },
+  "APOLLOHOSP": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.09,
+    "lotSize": 75,
+    "nrmlMargin": 113643,
+    "misMargin": 51139,
+    "futurePrice": 8375.5
+  },
+  "ASHOKLEY": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.9,
+    "lotSize": 5000,
+    "nrmlMargin": 159967,
+    "misMargin": 71985,
+    "futurePrice": 146.1
+  },
+  "ASIANPAINT": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.72,
+    "lotSize": 250,
+    "nrmlMargin": 104566,
+    "misMargin": 47054,
+    "futurePrice": 2361
+  },
+  "ASTRAL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.45,
+    "lotSize": 425,
+    "nrmlMargin": 111582,
+    "misMargin": 50211,
+    "futurePrice": 1349.6
+  },
+  "ATHERENERG": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 29.01,
+    "lotSize": 375,
+    "nrmlMargin": 188338,
+    "misMargin": 84752,
+    "futurePrice": 1731
+  },
+  "AUBANK": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.08,
+    "lotSize": 500,
+    "nrmlMargin": 88309,
+    "misMargin": 39739,
+    "futurePrice": 879.7
+  },
+  "AUROPHARMA": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.98,
+    "lotSize": 550,
+    "nrmlMargin": 167613,
+    "misMargin": 75426,
+    "futurePrice": 1695.2
+  },
+  "AXISBANK": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.77,
+    "lotSize": 625,
+    "nrmlMargin": 137026,
+    "misMargin": 61662,
+    "futurePrice": 1233.8
+  },
+  "BAJAJ-AUTO": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.82,
+    "lotSize": 75,
+    "nrmlMargin": 139746,
+    "misMargin": 62885,
+    "futurePrice": 10456
+  },
+  "BAJAJFINSV": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.71,
+    "lotSize": 300,
+    "nrmlMargin": 90199,
+    "misMargin": 40589,
+    "futurePrice": 1697.6
+  },
+  "BAJFINANCE": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.33,
+    "lotSize": 750,
+    "nrmlMargin": 138426,
+    "misMargin": 62291,
+    "futurePrice": 954.8
+  },
+  "BANDHANBNK": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 41.51,
+    "lotSize": 3600,
+    "nrmlMargin": 233983,
+    "misMargin": 105292,
+    "futurePrice": 156.57
+  },
+  "BANKBARODA": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.46,
+    "lotSize": 2925,
+    "nrmlMargin": 130881,
+    "misMargin": 58896,
+    "futurePrice": 242.45
+  },
+  "BANKINDIA": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 36.1,
+    "lotSize": 5200,
+    "nrmlMargin": 253121,
+    "misMargin": 113904,
+    "futurePrice": 134.85
+  },
+  "BANKNIFTY": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 11.35,
+    "lotSize": 30,
+    "nrmlMargin": 188971,
+    "misMargin": 66139,
+    "futurePrice": 55511.6
+  },
+  "BDL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 25.19,
+    "lotSize": 425,
+    "nrmlMargin": 104751,
+    "misMargin": 47138,
+    "futurePrice": 978.4
+  },
+  "BEL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.86,
+    "lotSize": 1425,
+    "nrmlMargin": 95161,
+    "misMargin": 42822,
+    "futurePrice": 374
+  },
+  "BHARATFORG": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.84,
+    "lotSize": 500,
+    "nrmlMargin": 172625,
+    "misMargin": 77681,
+    "futurePrice": 1740
+  },
+  "BHARTIARTL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.79,
+    "lotSize": 475,
+    "nrmlMargin": 168855,
+    "misMargin": 75984,
+    "futurePrice": 1998.7
+  },
+  "BHEL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 24.04,
+    "lotSize": 1250,
+    "nrmlMargin": 118400,
+    "misMargin": 53280,
+    "futurePrice": 394
+  },
+  "BIOCON": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.43,
+    "lotSize": 2500,
+    "nrmlMargin": 165345,
+    "misMargin": 74405,
+    "futurePrice": 358.8
+  },
+  "BLUESTARCO": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.88,
+    "lotSize": 350,
+    "nrmlMargin": 128780,
+    "misMargin": 57951,
+    "futurePrice": 1608.4
+  },
+  "BOSCHLTD": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.32,
+    "lotSize": 15,
+    "nrmlMargin": 131973,
+    "misMargin": 59388,
+    "futurePrice": 48015
+  },
+  "BPCL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.97,
+    "lotSize": 1975,
+    "nrmlMargin": 107791,
+    "misMargin": 48505,
+    "futurePrice": 287.65
+  },
+  "BRITANNIA": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.05,
+    "lotSize": 125,
+    "nrmlMargin": 104098,
+    "misMargin": 46844,
+    "futurePrice": 4615
+  },
+  "BSE": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 26.07,
+    "lotSize": 200,
+    "nrmlMargin": 184950,
+    "misMargin": 83227,
+    "futurePrice": 3547.5
+  },
+  "CAMS": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.09,
+    "lotSize": 825,
+    "nrmlMargin": 115531,
+    "misMargin": 51989,
+    "futurePrice": 663.95
+  },
+  "CANBK": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 34.57,
+    "lotSize": 6750,
+    "nrmlMargin": 279537,
+    "misMargin": 125791,
+    "futurePrice": 119.8
+  },
+  "CDSL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.8,
+    "lotSize": 475,
+    "nrmlMargin": 133551,
+    "misMargin": 60097,
+    "futurePrice": 1290
+  },
+  "CGPOWER": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.4,
+    "lotSize": 850,
+    "nrmlMargin": 155287,
+    "misMargin": 69879,
+    "futurePrice": 815.75
+  },
+  "CHOLAFIN": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.48,
+    "lotSize": 300,
+    "nrmlMargin": 103749,
+    "misMargin": 46687,
+    "futurePrice": 1610
+  },
+  "CIPLA": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.8,
+    "lotSize": 425,
+    "nrmlMargin": 105528,
+    "misMargin": 47487,
+    "futurePrice": 1394.9
+  },
+  "COALINDIA": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.72,
+    "lotSize": 1350,
+    "nrmlMargin": 94674,
+    "misMargin": 42603,
+    "futurePrice": 395.7
+  },
+  "COCHINSHIP": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 25.91,
+    "lotSize": 400,
+    "nrmlMargin": 115464,
+    "misMargin": 51958,
+    "futurePrice": 1114
+  },
+  "COFORGE": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 24.1,
+    "lotSize": 475,
+    "nrmlMargin": 236623,
+    "misMargin": 106480,
+    "futurePrice": 2067
+  },
+  "COLPAL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18,
+    "lotSize": 275,
+    "nrmlMargin": 78841,
+    "misMargin": 35478,
+    "futurePrice": 1592.5
+  },
+  "CONCOR": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.27,
+    "lotSize": 1250,
+    "nrmlMargin": 100805,
+    "misMargin": 45362,
+    "futurePrice": 418.4
+  },
+  "COROMANDEL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.66,
+    "lotSize": 300,
+    "nrmlMargin": 104117,
+    "misMargin": 46853,
+    "futurePrice": 1765.7
+  },
+  "CROMPTON": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 34.96,
+    "lotSize": 2325,
+    "nrmlMargin": 158907,
+    "misMargin": 71508,
+    "futurePrice": 195.5
+  },
+  "CUB": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 24.06,
+    "lotSize": 2325,
+    "nrmlMargin": 119662,
+    "misMargin": 53848,
+    "futurePrice": 213.94
+  },
+  "CUMMINSIND": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.09,
+    "lotSize": 100,
+    "nrmlMargin": 85930,
+    "misMargin": 38668,
+    "futurePrice": 4500.4
+  },
+  "DABUR": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.83,
+    "lotSize": 1375,
+    "nrmlMargin": 90491,
+    "misMargin": 40721,
+    "futurePrice": 369.2
+  },
+  "DATAPATTNS": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 30.87,
+    "lotSize": 125,
+    "nrmlMargin": 147465,
+    "misMargin": 66359,
+    "futurePrice": 3821.2
+  },
+  "DELHIVERY": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.02,
+    "lotSize": 2075,
+    "nrmlMargin": 166971,
+    "misMargin": 75137,
+    "futurePrice": 401.95
+  },
+  "DIVISLAB": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.71,
+    "lotSize": 100,
+    "nrmlMargin": 176331,
+    "misMargin": 79349,
+    "futurePrice": 9956.5
+  },
+  "DIXON": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 24,
+    "lotSize": 50,
+    "nrmlMargin": 132088,
+    "misMargin": 59439,
+    "futurePrice": 11009
+  },
+  "DLF": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.07,
+    "lotSize": 950,
+    "nrmlMargin": 132890,
+    "misMargin": 59800,
+    "futurePrice": 697
+  },
+  "DMART": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.9,
+    "lotSize": 150,
+    "nrmlMargin": 86284,
+    "misMargin": 38828,
+    "futurePrice": 3213.2
+  },
+  "DRREDDY": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.2,
+    "lotSize": 625,
+    "nrmlMargin": 151348,
+    "misMargin": 68106,
+    "futurePrice": 1330.5
+  },
+  "EICHERMOT": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.73,
+    "lotSize": 100,
+    "nrmlMargin": 130140,
+    "misMargin": 58563,
+    "futurePrice": 7340
+  },
+  "ENRIN": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.23,
+    "lotSize": 175,
+    "nrmlMargin": 112353,
+    "misMargin": 50558,
+    "futurePrice": 2888.5
+  },
+  "ETERNAL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.95,
+    "lotSize": 2425,
+    "nrmlMargin": 185050,
+    "misMargin": 83272,
+    "futurePrice": 347.7
+  },
+  "FEDERALBNK": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.77,
+    "lotSize": 2500,
+    "nrmlMargin": 153005,
+    "misMargin": 68852,
+    "futurePrice": 344.35
+  },
+  "FINNIFTY": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 11.5,
+    "lotSize": 60,
+    "nrmlMargin": 170306,
+    "misMargin": 59607,
+    "futurePrice": 24684.8
+  },
+  "FORCEMOT": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 28.78,
+    "lotSize": 30,
+    "nrmlMargin": 151070,
+    "misMargin": 67981,
+    "futurePrice": 17499
+  },
+  "FORTIS": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.83,
+    "lotSize": 775,
+    "nrmlMargin": 112575,
+    "misMargin": 50659,
+    "futurePrice": 771.4
+  },
+  "GAIL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.68,
+    "lotSize": 3550,
+    "nrmlMargin": 107514,
+    "misMargin": 48381,
+    "futurePrice": 171.31
+  },
+  "GLENMARK": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 34.01,
+    "lotSize": 375,
+    "nrmlMargin": 299878,
+    "misMargin": 134945,
+    "futurePrice": 2351
+  },
+  "GMRAIRPORT": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.32,
+    "lotSize": 6975,
+    "nrmlMargin": 126142,
+    "misMargin": 56764,
+    "futurePrice": 89
+  },
+  "GODFRYPHLP": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 30.29,
+    "lotSize": 275,
+    "nrmlMargin": 139936,
+    "misMargin": 62971,
+    "futurePrice": 1680
+  },
+  "GODREJCP": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.2,
+    "lotSize": 600,
+    "nrmlMargin": 88551,
+    "misMargin": 39847,
+    "futurePrice": 811
+  },
+  "GODREJPROP": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.78,
+    "lotSize": 325,
+    "nrmlMargin": 118181,
+    "misMargin": 53181,
+    "futurePrice": 1596.4
+  },
+  "GRASIM": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.87,
+    "lotSize": 250,
+    "nrmlMargin": 134084,
+    "misMargin": 60338,
+    "futurePrice": 3000.8
+  },
+  "GVT&D": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 27.33,
+    "lotSize": 125,
+    "nrmlMargin": 137449,
+    "misMargin": 61852,
+    "futurePrice": 4023.3
+  },
+  "HAL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.44,
+    "lotSize": 150,
+    "nrmlMargin": 142242,
+    "misMargin": 64009,
+    "futurePrice": 4878.4
+  },
+  "HAVELLS": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.82,
+    "lotSize": 500,
+    "nrmlMargin": 91255,
+    "misMargin": 41064,
+    "futurePrice": 1024.3
+  },
+  "HCLTECH": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.54,
+    "lotSize": 400,
+    "nrmlMargin": 112514,
+    "misMargin": 50631,
+    "futurePrice": 1439.9
+  },
+  "HDFCAMC": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.22,
+    "lotSize": 300,
+    "nrmlMargin": 141948,
+    "misMargin": 63876,
+    "futurePrice": 2340
+  },
+  "HDFCBANK": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.78,
+    "lotSize": 750,
+    "nrmlMargin": 93592,
+    "misMargin": 42116,
+    "futurePrice": 701.7
+  },
+  "HDFCLIFE": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.77,
+    "lotSize": 1100,
+    "nrmlMargin": 104005,
+    "misMargin": 46802,
+    "futurePrice": 532
+  },
+  "HEROMOTOCO": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.88,
+    "lotSize": 150,
+    "nrmlMargin": 139768,
+    "misMargin": 62895,
+    "futurePrice": 5210.5
+  },
+  "HINDALCO": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.64,
+    "lotSize": 700,
+    "nrmlMargin": 117460,
+    "misMargin": 52857,
+    "futurePrice": 900.3
+  },
+  "HINDPETRO": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.81,
+    "lotSize": 2025,
+    "nrmlMargin": 152272,
+    "misMargin": 68522,
+    "futurePrice": 344.75
+  },
+  "HINDUNILVR": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.91,
+    "lotSize": 300,
+    "nrmlMargin": 100574,
+    "misMargin": 45258,
+    "futurePrice": 1871.4
+  },
+  "HINDZINC": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 23.7,
+    "lotSize": 1225,
+    "nrmlMargin": 149531,
+    "misMargin": 67289,
+    "futurePrice": 515.05
+  },
+  "HYUNDAI": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.73,
+    "lotSize": 275,
+    "nrmlMargin": 97192,
+    "misMargin": 43736,
+    "futurePrice": 1887.4
+  },
+  "ICICIBANK": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.79,
+    "lotSize": 700,
+    "nrmlMargin": 176245,
+    "misMargin": 79310,
+    "futurePrice": 1415.4
+  },
+  "ICICIGI": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.79,
+    "lotSize": 350,
+    "nrmlMargin": 99641,
+    "misMargin": 44838,
+    "futurePrice": 1600
+  },
+  "ICICILIFE": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.94,
+    "lotSize": 1100,
+    "nrmlMargin": 81051,
+    "misMargin": 36472,
+    "futurePrice": 410.65
+  },
+  "IDEA": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 43.92,
+    "lotSize": 36125,
+    "nrmlMargin": 190378,
+    "misMargin": 85670,
+    "futurePrice": 12
+  },
+  "IDFCFIRSTB": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 34.8,
+    "lotSize": 9275,
+    "nrmlMargin": 236022,
+    "misMargin": 106210,
+    "futurePrice": 73.12
+  },
+  "IEX": {
+    "expiry": "23-NOV-2026",
+    "marginPercent": 37.83,
+    "lotSize": 4350,
+    "nrmlMargin": 167806,
+    "misMargin": 75513,
+    "futurePrice": 101.98
+  },
+  "INDHOTEL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.7,
+    "lotSize": 1000,
+    "nrmlMargin": 146681,
+    "misMargin": 66006,
+    "futurePrice": 828.9
+  },
+  "INDIANB": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.74,
+    "lotSize": 1000,
+    "nrmlMargin": 176912,
+    "misMargin": 79610,
+    "futurePrice": 853.2
+  },
+  "INDIGO": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.62,
+    "lotSize": 150,
+    "nrmlMargin": 152269,
+    "misMargin": 68521,
+    "futurePrice": 4924.2
+  },
+  "INDUSINDBK": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.89,
+    "lotSize": 700,
+    "nrmlMargin": 125016,
+    "misMargin": 56257,
+    "futurePrice": 855
+  },
+  "INDUSTOWER": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 33.6,
+    "lotSize": 1700,
+    "nrmlMargin": 221595,
+    "misMargin": 99717,
+    "futurePrice": 388
+  },
+  "INFY": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.03,
+    "lotSize": 500,
+    "nrmlMargin": 119513,
+    "misMargin": 53781,
+    "futurePrice": 1193.05
+  },
+  "INOXWIND": {
+    "expiry": "29-DEC-2026",
+    "marginPercent": 42.17,
+    "lotSize": 6400,
+    "nrmlMargin": 151191,
+    "misMargin": 68036,
+    "futurePrice": 56.02
+  },
+  "IOC": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.89,
+    "lotSize": 4875,
+    "nrmlMargin": 114119,
+    "misMargin": 51353,
+    "futurePrice": 130.83
+  },
+  "IREDA": {
+    "expiry": "23-NOV-2026",
+    "marginPercent": 22.86,
+    "lotSize": 4525,
+    "nrmlMargin": 102642,
+    "misMargin": 46189,
+    "futurePrice": 99.24
+  },
+  "IRFC": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.3,
+    "lotSize": 6450,
+    "nrmlMargin": 100572,
+    "misMargin": 45257,
+    "futurePrice": 73.22
+  },
+  "ITC": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.67,
+    "lotSize": 1975,
+    "nrmlMargin": 94622,
+    "misMargin": 42580,
+    "futurePrice": 271.15
+  },
+  "JINDALSTEL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.73,
+    "lotSize": 625,
+    "nrmlMargin": 125985,
+    "misMargin": 56693,
+    "futurePrice": 1076.5
+  },
+  "JIOFIN": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.16,
+    "lotSize": 2350,
+    "nrmlMargin": 93699,
+    "misMargin": 42164,
+    "futurePrice": 208.06
+  },
+  "JSWENERGY": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.46,
+    "lotSize": 1075,
+    "nrmlMargin": 118362,
+    "misMargin": 53263,
+    "futurePrice": 513
+  },
+  "JSWSTEEL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.65,
+    "lotSize": 675,
+    "nrmlMargin": 151761,
+    "misMargin": 68292,
+    "futurePrice": 1273.5
+  },
+  "JUBLFOOD": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.37,
+    "lotSize": 1250,
+    "nrmlMargin": 112187,
+    "misMargin": 50484,
+    "futurePrice": 420
+  },
+  "KALYANKJIL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 28.41,
+    "lotSize": 1350,
+    "nrmlMargin": 195062,
+    "misMargin": 87778,
+    "futurePrice": 508.6
+  },
+  "KARURVYSYA": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.73,
+    "lotSize": 1550,
+    "nrmlMargin": 123669,
+    "misMargin": 55651,
+    "futurePrice": 351.05
+  },
+  "KAYNES": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 49.8,
+    "lotSize": 150,
+    "nrmlMargin": 220858,
+    "misMargin": 99386,
+    "futurePrice": 2956.6
+  },
+  "KEI": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 24.43,
+    "lotSize": 175,
+    "nrmlMargin": 163018,
+    "misMargin": 73358,
+    "futurePrice": 3813.8
+  },
+  "KFINTECH": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 24.97,
+    "lotSize": 575,
+    "nrmlMargin": 121231,
+    "misMargin": 54554,
+    "futurePrice": 844.2
+  },
+  "KOTAKBANK": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.8,
+    "lotSize": 2000,
+    "nrmlMargin": 166239,
+    "misMargin": 74807,
+    "futurePrice": 466.85
+  },
+  "KPITTECH": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 24.9,
+    "lotSize": 975,
+    "nrmlMargin": 132331,
+    "misMargin": 59549,
+    "futurePrice": 545
+  },
+  "LAURUSLABS": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.03,
+    "lotSize": 425,
+    "nrmlMargin": 215985,
+    "misMargin": 97193,
+    "futurePrice": 2416.9
+  },
+  "LICHSGFIN": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 34.16,
+    "lotSize": 1000,
+    "nrmlMargin": 172170,
+    "misMargin": 77476,
+    "futurePrice": 503.95
+  },
+  "LICI": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 32.87,
+    "lotSize": 1400,
+    "nrmlMargin": 178809,
+    "misMargin": 80464,
+    "futurePrice": 388.6
+  },
+  "LODHA": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 25.23,
+    "lotSize": 625,
+    "nrmlMargin": 161835,
+    "misMargin": 72826,
+    "futurePrice": 1026.2
+  },
+  "LT": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.87,
+    "lotSize": 175,
+    "nrmlMargin": 121888,
+    "misMargin": 54849,
+    "futurePrice": 3897.6
+  },
+  "LTF": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.49,
+    "lotSize": 2250,
+    "nrmlMargin": 124258,
+    "misMargin": 55916,
+    "futurePrice": 245.6
+  },
+  "LTM": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.15,
+    "lotSize": 150,
+    "nrmlMargin": 134601,
+    "misMargin": 60570,
+    "futurePrice": 4242.7
+  },
+  "LUPIN": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.93,
+    "lotSize": 425,
+    "nrmlMargin": 153633,
+    "misMargin": 69134,
+    "futurePrice": 2016
+  },
+  "M&M": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.94,
+    "lotSize": 200,
+    "nrmlMargin": 103715,
+    "misMargin": 46671,
+    "futurePrice": 2891.3
+  },
+  "MAHABANK": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.87,
+    "lotSize": 6500,
+    "nrmlMargin": 121875,
+    "misMargin": 54843,
+    "futurePrice": 82
+  },
+  "MANAPPURAM": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 37.67,
+    "lotSize": 3000,
+    "nrmlMargin": 332508,
+    "misMargin": 149628,
+    "futurePrice": 294.25
+  },
+  "MANKIND": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.42,
+    "lotSize": 250,
+    "nrmlMargin": 121824,
+    "misMargin": 54821,
+    "futurePrice": 2509.7
+  },
+  "MARICO": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.18,
+    "lotSize": 1200,
+    "nrmlMargin": 171986,
+    "misMargin": 77394,
+    "futurePrice": 788.35
+  },
+  "MARUTI": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.61,
+    "lotSize": 50,
+    "nrmlMargin": 102890,
+    "misMargin": 46300,
+    "futurePrice": 11686
+  },
+  "MAXHEALTH": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.1,
+    "lotSize": 525,
+    "nrmlMargin": 87659,
+    "misMargin": 39446,
+    "futurePrice": 874
+  },
+  "MAZDOCK": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 25.46,
+    "lotSize": 225,
+    "nrmlMargin": 97660,
+    "misMargin": 43947,
+    "futurePrice": 1705
+  },
+  "MCX": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 24.36,
+    "lotSize": 225,
+    "nrmlMargin": 176527,
+    "misMargin": 79437,
+    "futurePrice": 3221
+  },
+  "MFSL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.34,
+    "lotSize": 400,
+    "nrmlMargin": 93573,
+    "misMargin": 42107,
+    "futurePrice": 1209.8
+  },
+  "MIDCPNIFTY": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 12.13,
+    "lotSize": 120,
+    "nrmlMargin": 193117,
+    "misMargin": 67590,
+    "futurePrice": 13271.45
+  },
+  "MOTHERSON": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.55,
+    "lotSize": 6150,
+    "nrmlMargin": 210812,
+    "misMargin": 94865,
+    "futurePrice": 159.1
+  },
+  "MOTILALOFS": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 26.09,
+    "lotSize": 775,
+    "nrmlMargin": 192218,
+    "misMargin": 86498,
+    "futurePrice": 950.7
+  },
+  "MPHASIS": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.02,
+    "lotSize": 275,
+    "nrmlMargin": 141928,
+    "misMargin": 63867,
+    "futurePrice": 2577.5
+  },
+  "MUTHOOTFIN": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.56,
+    "lotSize": 275,
+    "nrmlMargin": 151182,
+    "misMargin": 68032,
+    "futurePrice": 2437
+  },
+  "NAM-INDIA": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 24.48,
+    "lotSize": 625,
+    "nrmlMargin": 136959,
+    "misMargin": 61631,
+    "futurePrice": 895
+  },
+  "NATIONALUM": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 25.83,
+    "lotSize": 1875,
+    "nrmlMargin": 153207,
+    "misMargin": 68943,
+    "futurePrice": 316.3
+  },
+  "NAUKRI": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.81,
+    "lotSize": 550,
+    "nrmlMargin": 137495,
+    "misMargin": 61873,
+    "futurePrice": 1201.5
+  },
+  "NAVINFLUOR": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.49,
+    "lotSize": 75,
+    "nrmlMargin": 146427,
+    "misMargin": 65892,
+    "futurePrice": 8680
+  },
+  "NBCC": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 38.53,
+    "lotSize": 6500,
+    "nrmlMargin": 178182,
+    "misMargin": 80182,
+    "futurePrice": 71.15
+  },
+  "NESTLEIND": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.68,
+    "lotSize": 500,
+    "nrmlMargin": 105252,
+    "misMargin": 47363,
+    "futurePrice": 1190.7
+  },
+  "NHPC": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.13,
+    "lotSize": 6950,
+    "nrmlMargin": 97410,
+    "misMargin": 43834,
+    "futurePrice": 77.31
+  },
+  "NIFTY": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 11.37,
+    "lotSize": 65,
+    "nrmlMargin": 172534,
+    "misMargin": 60386,
+    "futurePrice": 23352.6
+  },
+  "NIFTYFPI": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 9.44,
+    "lotSize": 1100,
+    "nrmlMargin": 154385,
+    "misMargin": 54034,
+    "futurePrice": 1487
+  },
+  "NIFTYNXT50": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 11.39,
+    "lotSize": 25,
+    "nrmlMargin": 194809,
+    "misMargin": 68183,
+    "futurePrice": 68400
+  },
+  "NMDC": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 34.27,
+    "lotSize": 6750,
+    "nrmlMargin": 158439,
+    "misMargin": 71297,
+    "futurePrice": 68.5
+  },
+  "NTPC": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.89,
+    "lotSize": 1600,
+    "nrmlMargin": 91008,
+    "misMargin": 40953,
+    "futurePrice": 318
+  },
+  "NYKAA": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.3,
+    "lotSize": 1575,
+    "nrmlMargin": 106412,
+    "misMargin": 47885,
+    "futurePrice": 350.1
+  },
+  "OBEROIRLTY": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.16,
+    "lotSize": 350,
+    "nrmlMargin": 111525,
+    "misMargin": 50186,
+    "futurePrice": 1663
+  },
+  "OFSS": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.98,
+    "lotSize": 50,
+    "nrmlMargin": 109300,
+    "misMargin": 49185,
+    "futurePrice": 9947
+  },
+  "OIL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.56,
+    "lotSize": 1400,
+    "nrmlMargin": 133684,
+    "misMargin": 60158,
+    "futurePrice": 464.55
+  },
+  "ONGC": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.69,
+    "lotSize": 2250,
+    "nrmlMargin": 91476,
+    "misMargin": 41164,
+    "futurePrice": 229.89
+  },
+  "PAGEIND": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.04,
+    "lotSize": 20,
+    "nrmlMargin": 123855,
+    "misMargin": 55734,
+    "futurePrice": 34335
+  },
+  "PATANJALI": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 35.63,
+    "lotSize": 1450,
+    "nrmlMargin": 193756,
+    "misMargin": 87190,
+    "futurePrice": 375
+  },
+  "PAYTM": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 26.03,
+    "lotSize": 325,
+    "nrmlMargin": 140937,
+    "misMargin": 63421,
+    "futurePrice": 1665.8
+  },
+  "PERSISTENT": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.72,
+    "lotSize": 125,
+    "nrmlMargin": 170863,
+    "misMargin": 76888,
+    "futurePrice": 6015
+  },
+  "PETRONET": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.06,
+    "lotSize": 1900,
+    "nrmlMargin": 104310,
+    "misMargin": 46939,
+    "futurePrice": 288
+  },
+  "PFC": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.19,
+    "lotSize": 1525,
+    "nrmlMargin": 97318,
+    "misMargin": 43793,
+    "futurePrice": 316.15
+  },
+  "PGEL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 29.06,
+    "lotSize": 950,
+    "nrmlMargin": 151007,
+    "misMargin": 67953,
+    "futurePrice": 547
+  },
+  "PHOENIXLTD": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.53,
+    "lotSize": 350,
+    "nrmlMargin": 137151,
+    "misMargin": 61718,
+    "futurePrice": 2006.6
+  },
+  "PIDILITIND": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.94,
+    "lotSize": 500,
+    "nrmlMargin": 131350,
+    "misMargin": 59107,
+    "futurePrice": 1464.3
+  },
+  "PIIND": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.72,
+    "lotSize": 225,
+    "nrmlMargin": 92527,
+    "misMargin": 41637,
+    "futurePrice": 2085.2
+  },
+  "PNB": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 33.69,
+    "lotSize": 8000,
+    "nrmlMargin": 336185,
+    "misMargin": 151283,
+    "futurePrice": 124.72
+  },
+  "PNBHOUSING": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.29,
+    "lotSize": 650,
+    "nrmlMargin": 155671,
+    "misMargin": 70051,
+    "futurePrice": 1074.4
+  },
+  "POLICYBZR": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 35.75,
+    "lotSize": 350,
+    "nrmlMargin": 127517,
+    "misMargin": 57382,
+    "futurePrice": 1019
+  },
+  "POLYCAB": {
+    "expiry": "29-DEC-2026",
+    "marginPercent": 20.6,
+    "lotSize": 125,
+    "nrmlMargin": 200712,
+    "misMargin": 90320,
+    "futurePrice": 7793.5
+  },
+  "POWERGRID": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.07,
+    "lotSize": 1900,
+    "nrmlMargin": 90348,
+    "misMargin": 40656,
+    "futurePrice": 263.2
+  },
+  "POWERINDIA": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 27.41,
+    "lotSize": 25,
+    "nrmlMargin": 189527,
+    "misMargin": 85287,
+    "futurePrice": 27660
+  },
+  "PREMIERENE": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 23.08,
+    "lotSize": 650,
+    "nrmlMargin": 128554,
+    "misMargin": 57849,
+    "futurePrice": 856.75
+  },
+  "PRESTIGE": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 23.01,
+    "lotSize": 450,
+    "nrmlMargin": 149566,
+    "misMargin": 67305,
+    "futurePrice": 1444.6
+  },
+  "RADICO": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.61,
+    "lotSize": 150,
+    "nrmlMargin": 129382,
+    "misMargin": 58222,
+    "futurePrice": 4184.9
+  },
+  "RBLBANK": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.19,
+    "lotSize": 1275,
+    "nrmlMargin": 100480,
+    "misMargin": 45216,
+    "futurePrice": 355.1
+  },
+  "RECLTD": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.55,
+    "lotSize": 1675,
+    "nrmlMargin": 98273,
+    "misMargin": 44223,
+    "futurePrice": 285.45
+  },
+  "RELIANCE": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.73,
+    "lotSize": 500,
+    "nrmlMargin": 104981,
+    "misMargin": 47241,
+    "futurePrice": 1184.1
+  },
+  "RVNL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 25.04,
+    "lotSize": 2525,
+    "nrmlMargin": 115031,
+    "misMargin": 51764,
+    "futurePrice": 181.92
+  },
+  "SAGILITY": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.53,
+    "lotSize": 12000,
+    "nrmlMargin": 114220,
+    "misMargin": 51399,
+    "futurePrice": 42.24
+  },
+  "SAIL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 37.06,
+    "lotSize": 4700,
+    "nrmlMargin": 302857,
+    "misMargin": 136285,
+    "futurePrice": 173.88
+  },
+  "SBICARD": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.52,
+    "lotSize": 800,
+    "nrmlMargin": 79079,
+    "misMargin": 35585,
+    "futurePrice": 533.7
+  },
+  "SBILIFE": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.89,
+    "lotSize": 375,
+    "nrmlMargin": 111869,
+    "misMargin": 50341,
+    "futurePrice": 1667.7
+  },
+  "SBIN": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.74,
+    "lotSize": 750,
+    "nrmlMargin": 130010,
+    "misMargin": 58504,
+    "futurePrice": 977.05
+  },
+  "SHREECEM": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.03,
+    "lotSize": 25,
+    "nrmlMargin": 103204,
+    "misMargin": 46441,
+    "futurePrice": 22900
+  },
+  "SHRIRAMFIN": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.61,
+    "lotSize": 825,
+    "nrmlMargin": 156309,
+    "misMargin": 70339,
+    "futurePrice": 837.9
+  },
+  "SIEMENS": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.24,
+    "lotSize": 175,
+    "nrmlMargin": 122659,
+    "misMargin": 55196,
+    "futurePrice": 3300
+  },
+  "SOLARINDS": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 23.25,
+    "lotSize": 25,
+    "nrmlMargin": 111025,
+    "misMargin": 49961,
+    "futurePrice": 19101
+  },
+  "SONACOMS": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.75,
+    "lotSize": 1225,
+    "nrmlMargin": 237828,
+    "misMargin": 107022,
+    "futurePrice": 892.45
+  },
+  "SRF": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.79,
+    "lotSize": 200,
+    "nrmlMargin": 89105,
+    "misMargin": 40097,
+    "futurePrice": 2371.6
+  },
+  "SUNPHARMA": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.61,
+    "lotSize": 350,
+    "nrmlMargin": 112334,
+    "misMargin": 50550,
+    "futurePrice": 1822.2
+  },
+  "SUPREMEIND": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.97,
+    "lotSize": 175,
+    "nrmlMargin": 110984,
+    "misMargin": 49942,
+    "futurePrice": 3175
+  },
+  "SUZLON": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 24.23,
+    "lotSize": 12700,
+    "nrmlMargin": 104209,
+    "misMargin": 46894,
+    "futurePrice": 33.87
+  },
+  "SWIGGY": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 27.06,
+    "lotSize": 1925,
+    "nrmlMargin": 93146,
+    "misMargin": 41916,
+    "futurePrice": 178.8
+  },
+  "SYRMA": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 28.4,
+    "lotSize": 325,
+    "nrmlMargin": 152433,
+    "misMargin": 68595,
+    "futurePrice": 1651.6
+  },
+  "TATACONSUM": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.01,
+    "lotSize": 550,
+    "nrmlMargin": 101323,
+    "misMargin": 45595,
+    "futurePrice": 1023
+  },
+  "TATAELXSI": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.22,
+    "lotSize": 175,
+    "nrmlMargin": 141667,
+    "misMargin": 63750,
+    "futurePrice": 3814.2
+  },
+  "TATAPOWER": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.75,
+    "lotSize": 1450,
+    "nrmlMargin": 90161,
+    "misMargin": 40572,
+    "futurePrice": 350.3
+  },
+  "TATASTEEL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.71,
+    "lotSize": 2750,
+    "nrmlMargin": 83107,
+    "misMargin": 37398,
+    "futurePrice": 170.6
+  },
+  "TCS": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.9,
+    "lotSize": 250,
+    "nrmlMargin": 119571,
+    "misMargin": 53807,
+    "futurePrice": 2530.7
+  },
+  "TECHM": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 19.12,
+    "lotSize": 600,
+    "nrmlMargin": 208265,
+    "misMargin": 93719,
+    "futurePrice": 1815.4
+  },
+  "TIINDIA": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.3,
+    "lotSize": 200,
+    "nrmlMargin": 96104,
+    "misMargin": 43246,
+    "futurePrice": 2154.6
+  },
+  "TITAN": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.68,
+    "lotSize": 175,
+    "nrmlMargin": 140034,
+    "misMargin": 63015,
+    "futurePrice": 4525
+  },
+  "TMPV": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.12,
+    "lotSize": 1750,
+    "nrmlMargin": 95354,
+    "misMargin": 42909,
+    "futurePrice": 270.8
+  },
+  "TORNTPHARM": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.71,
+    "lotSize": 125,
+    "nrmlMargin": 103977,
+    "misMargin": 46790,
+    "futurePrice": 4697.5
+  },
+  "TRENT": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 23.11,
+    "lotSize": 225,
+    "nrmlMargin": 159718,
+    "misMargin": 71873,
+    "futurePrice": 3071.2
+  },
+  "TVSMOTOR": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.03,
+    "lotSize": 175,
+    "nrmlMargin": 134754,
+    "misMargin": 60639,
+    "futurePrice": 4271.8
+  },
+  "UJJIVANSFB": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 24.62,
+    "lotSize": 8000,
+    "nrmlMargin": 107246,
+    "misMargin": 48260,
+    "futurePrice": 54.45
+  },
+  "ULTRACEMCO": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.72,
+    "lotSize": 50,
+    "nrmlMargin": 99559,
+    "misMargin": 44801,
+    "futurePrice": 11238
+  },
+  "UNIONBANK": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.34,
+    "lotSize": 4425,
+    "nrmlMargin": 177844,
+    "misMargin": 80030,
+    "futurePrice": 188.31
+  },
+  "UNITDSPR": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.68,
+    "lotSize": 400,
+    "nrmlMargin": 96230,
+    "misMargin": 43303,
+    "futurePrice": 1361
+  },
+  "UNOMINDA": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.19,
+    "lotSize": 550,
+    "nrmlMargin": 127927,
+    "misMargin": 57567,
+    "futurePrice": 1097.6
+  },
+  "UPL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 21.35,
+    "lotSize": 1355,
+    "nrmlMargin": 150834,
+    "misMargin": 67875,
+    "futurePrice": 521.35
+  },
+  "VBL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.36,
+    "lotSize": 1275,
+    "nrmlMargin": 102233,
+    "misMargin": 46004,
+    "futurePrice": 393.8
+  },
+  "VEDL": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.67,
+    "lotSize": 1975,
+    "nrmlMargin": 107715,
+    "misMargin": 48471,
+    "futurePrice": 240.55
+  },
+  "VMM": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.09,
+    "lotSize": 4850,
+    "nrmlMargin": 83162,
+    "misMargin": 37423,
+    "futurePrice": 85.34
+  },
+  "VOLTAS": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 20.83,
+    "lotSize": 475,
+    "nrmlMargin": 103250,
+    "misMargin": 46462,
+    "futurePrice": 1043.4
+  },
+  "WAAREEENER": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 24.09,
+    "lotSize": 225,
+    "nrmlMargin": 124101,
+    "misMargin": 55845,
+    "futurePrice": 2289.5
+  },
+  "WIPRO": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 18.15,
+    "lotSize": 3000,
+    "nrmlMargin": 108671,
+    "misMargin": 48902,
+    "futurePrice": 199.54
+  },
+  "YESBANK": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 22.63,
+    "lotSize": 31100,
+    "nrmlMargin": 108529,
+    "misMargin": 48838,
+    "futurePrice": 15.42
+  },
+  "ZYDUSLIFE": {
+    "expiry": "25-JAN-2027",
+    "marginPercent": 17.81,
+    "lotSize": 450,
+    "nrmlMargin": 100911,
+    "misMargin": 45410,
+    "futurePrice": 1259.1
+  }
+}

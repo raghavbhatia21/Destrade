@@ -3824,12 +3824,12 @@ const App = {
         if (hedgeSec) hedgeSec.style.display = mode === 'hedge' ? 'block' : 'none';
     },
 
-    async fetchLiveMarginForCard(symbol, strike, type, lotSize, expiry, hedgeStrike, sellPremium, hedgePremium, btnEl) {
+    async fetchLiveMarginForCard(symbol, strike, type, lotSize, expiry, hedgeStrike, sellPremium, hedgePremium, btnEl, spot = 0) {
         if (btnEl) {
             btnEl.disabled = true;
             btnEl.innerHTML = '<i class="fas fa-sync fa-spin"></i> Fetching...';
         }
-        const liveMargin = await this.calculateMargin(0, strike, sellPremium, type, false, lotSize, expiry, symbol, 'zerodha_live', hedgeStrike, hedgePremium);
+        const liveMargin = await this.calculateMargin(spot || 0, strike, sellPremium, type, false, lotSize, expiry, symbol, 'zerodha_live', hedgeStrike, hedgePremium);
         if (liveMargin && liveMargin.total > 0) {
             if (this.state.scannerCache && this.state.scannerCache.sell) {
                 const target = this.state.scannerCache.sell.find(s => s.symbol === symbol && s.strike === strike && s.type === type);
@@ -4469,18 +4469,18 @@ const App = {
     async calculateMargin(spot, strike, premium, type, isIndex, lotSize, expiryDate = '', symbol = '', model = 'zerodha_live', hedgeStrike = null, hedgePremium = 0) {
         if (!symbol || !window.nseApi || !window.nseApi.fetchZerodhaSpanMargin) return null;
 
-        const liveMargin = await window.nseApi.fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiryDate, hedgeStrike);
+        const liveMargin = await window.nseApi.fetchZerodhaSpanMargin(symbol, strike, type, lotSize, expiryDate, hedgeStrike, spot, hedgePremium);
         if (!liveMargin || typeof liveMargin.total !== 'number' || liveMargin.total <= 0) {
             return null;
         }
 
         const actualLot = liveMargin.lotSize || lotSize;
-        let actualNakedMargin = liveMargin.total;
+        let actualNakedMargin = liveMargin.nakedMargin || liveMargin.total;
         let nakedSpanVal = liveMargin.span;
         let nakedExpVal = liveMargin.exposure;
 
-        if (hedgeStrike) {
-            const liveNaked = await window.nseApi.fetchZerodhaSpanMargin(symbol, strike, type, actualLot, expiryDate, null);
+        if (hedgeStrike && !liveMargin.nakedMargin) {
+            const liveNaked = await window.nseApi.fetchZerodhaSpanMargin(symbol, strike, type, actualLot, expiryDate, null, spot, 0);
             if (liveNaked && liveNaked.total > 0) {
                 actualNakedMargin = liveNaked.total;
                 nakedSpanVal = liveNaked.span;
@@ -4490,7 +4490,7 @@ const App = {
 
         const netPremium = Math.max(0.05, premium - (hedgePremium || 0));
         const netCredit = netPremium * actualLot;
-        const marginSaved = hedgeStrike ? Math.max(0, actualNakedMargin - liveMargin.total) : 0;
+        const marginSaved = hedgeStrike ? Math.max(0, actualNakedMargin - (liveMargin.hedgedMargin || liveMargin.total)) : 0;
         const marginSavedPercent = (hedgeStrike && actualNakedMargin > 0) ? Math.round((marginSaved / actualNakedMargin) * 100) : 0;
 
         return {
@@ -4500,7 +4500,7 @@ const App = {
             nakedMargin: actualNakedMargin,
             nakedSpan: nakedSpanVal,
             nakedExposure: nakedExpVal,
-            hedgedMargin: liveMargin.total,
+            hedgedMargin: liveMargin.hedgedMargin || liveMargin.total,
             hedgedSpan: liveMargin.span,
             hedgedExposure: liveMargin.exposure,
             marginSaved: marginSaved,
@@ -4511,7 +4511,7 @@ const App = {
             lotSize: actualLot,
             scrip: liveMargin.scrip,
             exchange: liveMargin.exchange,
-            modelName: 'Zerodha Live SPAN',
+            modelName: (liveMargin && liveMargin.modelName) ? liveMargin.modelName : 'Official Zerodha SPAN',
             isLiveZerodha: true
         };
     },
@@ -5535,7 +5535,7 @@ const App = {
                         item.spot, item.strike, item.premium, item.type, isIdx, item.lotSize,
                         item.expiry, item.symbol, 'zerodha_live', item.hedgeStrike, item.hedgePremium
                     );
-                    if (liveMargin && liveMargin.total > 0 && liveMargin.modelName === 'Zerodha Live SPAN') {
+                    if (liveMargin && liveMargin.total > 0) {
                         item.margin = liveMargin;
                         item.nakedMargin = liveMargin.nakedMargin || liveMargin.total;
                         item.hedgedMargin = liveMargin.total;
@@ -5674,23 +5674,23 @@ const App = {
                                             <div style="font-size:0.7rem; color:var(--text-muted)">₹${Number(d.premium).toFixed(2)} / share</div>
                                         </td>
                                         <td class="mono">
-                                            ${d.isLiveZerodha && d.nakedMargin ? `
-                                                <div style="font-weight:700; color:var(--text-bright); font-size:0.95rem">₹${Math.round(d.nakedMargin).toLocaleString()}</div>
+                                            ${(d.nakedMargin || d.margin?.total) ? `
+                                                <div style="font-weight:700; color:var(--text-bright); font-size:0.95rem">₹${Math.round(d.nakedMargin || d.margin?.total || 0).toLocaleString()}</div>
                                                 <div style="font-size:0.68rem; color:#10b981; font-weight:700; margin-top:2px; display:flex; align-items:center; gap:3px">
-                                                    <i class="fas fa-check-circle"></i> Official Zerodha SPAN
+                                                    <i class="fas fa-check-circle"></i> ${d.margin?.modelName || 'Official Zerodha SPAN'}
                                                 </div>
                                                 <div style="font-size:0.65rem; color:var(--text-muted); margin-top:1px">
                                                     SPAN: ₹${Math.round(d.margin?.nakedSpan || d.margin?.span || 0).toLocaleString()} + Exp: ₹${Math.round(d.margin?.nakedExposure || d.margin?.exposure || 0).toLocaleString()}
                                                 </div>
                                             ` : `
                                                 <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:2px"><i class="fas fa-clock"></i> Not Fetched</div>
-                                                <button class="chart-action-btn" onclick="event.stopPropagation(); App.fetchLiveMarginForCard('${d.symbol}', ${d.strike}, '${d.type}', ${d.lotSize}, '${d.expiry || ''}', ${d.hedgeStrike || 0}, ${d.premium}, ${d.hedgePremium || 0}, this)" style="padding:2px 8px; font-size:0.68rem; background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3); border-radius:4px">
+                                                <button class="chart-action-btn" onclick="event.stopPropagation(); App.fetchLiveMarginForCard('${d.symbol}', ${d.strike}, '${d.type}', ${d.lotSize}, '${d.expiry || ''}', ${d.hedgeStrike || 0}, ${d.premium}, ${d.hedgePremium || 0}, this, ${d.spot || 0})" style="padding:2px 8px; font-size:0.68rem; background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3); border-radius:4px">
                                                     <i class="fas fa-bolt"></i> Fetch Zerodha
                                                 </button>
                                             `}
                                         </td>
                                         <td>
-                                            ${d.isLiveZerodha && d.nakedMargin ? `
+                                            ${(d.nakedMargin || d.margin?.total) ? `
                                                 <span class="tag" style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); font-weight:700; font-size:0.85rem">+${(d.nakedRoi || 0).toFixed(1)}%</span>
                                                 <div style="font-size:0.65rem; color:var(--text-muted); margin-top:2px">Naked Yield</div>
                                             ` : `

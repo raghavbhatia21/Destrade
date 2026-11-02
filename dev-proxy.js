@@ -122,6 +122,26 @@ const server = http.createServer(async (req, res) => {
             return;
         }
 
+        // Zerodha SPAN Contracts Endpoint
+        if (targetPath.startsWith('/api/zerodha-contracts')) {
+            res.writeHead(200, {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                'Access-Control-Allow-Headers': '*'
+            });
+            if (req.method === 'OPTIONS') { res.end(); return; }
+            const contractsFile = path.join(__dirname, 'zerodha_contracts_live.json');
+            if (fs.existsSync(contractsFile)) {
+                try {
+                    res.end(fs.readFileSync(contractsFile, 'utf8'));
+                    return;
+                } catch (e) {}
+            }
+            res.end(JSON.stringify({}));
+            return;
+        }
+
         // Zerodha SPAN Calculator Proxy with In-Memory Response Caching
         if (targetPath.startsWith('/api/zerodha-margin')) {
             if (req.method === 'POST') {
@@ -148,9 +168,13 @@ const server = http.createServer(async (req, res) => {
                         path: '/margin-calculator/SPAN/',
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
                             'Content-Length': Buffer.byteLength(body),
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Referer': 'https://zerodha.com/margin-calculator/SPAN/',
+                            'Origin': 'https://zerodha.com',
+                            'Accept': 'application/json, text/javascript, */*; q=0.01'
                         }
                     }, (postRes) => {
                         let resBody = '';

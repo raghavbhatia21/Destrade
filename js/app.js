@@ -3883,14 +3883,16 @@ const App = {
                             <b class="mono" style="color:var(--up); font-size:1rem">₹${Number(grossPremium).toLocaleString()}</b>
                         </div>
                         <div style="display:flex; justify-content:space-between; margin-bottom:0.2rem; font-size:0.85rem">
-                            <span style="color:var(--text-muted)">Required Capital (Naked Margin):</span>
-                            <b class="mono" id="trade-modal-naked-margin" style="color:var(--text-bright); font-size:0.95rem">₹${Number(nakedMargin).toLocaleString()}</b>
+                            <span style="color:var(--text-muted)">Total Margin Required:</span>
+                            <b class="mono" id="trade-modal-naked-margin" style="color:var(--text-bright); font-size:1.05rem">₹${Number(nakedMargin).toLocaleString()}</b>
+                        </div>
+                        <div id="trade-modal-naked-breakdown" style="font-size:0.75rem; color:var(--text-muted); text-align:right; margin-bottom:0.2rem">
                         </div>
                         <div id="trade-modal-naked-badge" style="font-size:0.75rem; color:var(--text-muted); text-align:right; margin-bottom:0.4rem">
-                            <i class="fas fa-info-circle"></i> Standard SPAN margin
+                            <i class="fas fa-info-circle"></i> Total Margin (SPAN + Exposure)
                         </div>
                         <div style="display:flex; justify-content:space-between; font-size:0.85rem; border-top:1px solid rgba(255,255,255,0.05); padding-top:0.4rem; margin-top:0.4rem">
-                            <span style="color:var(--text-muted)">Estimated Naked Yield / ROI:</span>
+                            <span style="color:var(--text-muted)">Naked Yield / ROI (on Total Margin):</span>
                             <b class="mono" id="trade-modal-naked-roi" style="color:var(--primary); font-size:1rem">+${nakedRoi}%</b>
                         </div>
                     </div>
@@ -3951,11 +3953,13 @@ const App = {
                                 <b class="mono" style="color:var(--up); font-size:0.95rem">₹${netPremium.toFixed(2)} (₹${Number(netCredit).toLocaleString()})</b>
                             </div>
                             <div style="display:flex; justify-content:space-between; margin-bottom:0.2rem; font-size:0.85rem">
-                                <span style="color:var(--text-muted)">Hedged Capital Required:</span>
-                                <b class="mono" id="basket-capital-val" style="color:var(--text-bright); font-size:0.95rem">₹${Number(basketMargin).toLocaleString()}</b>
+                                <span style="color:var(--text-muted)">Hedged Total Margin Required:</span>
+                                <b class="mono" id="basket-capital-val" style="color:var(--text-bright); font-size:1.05rem">₹${Number(basketMargin).toLocaleString()}</b>
+                            </div>
+                            <div id="basket-breakdown" style="font-size:0.75rem; color:var(--text-muted); text-align:right; margin-bottom:0.2rem">
                             </div>
                             <div id="basket-live-badge" style="font-size:0.75rem; color:var(--text-muted); text-align:right; margin-bottom:0.4rem">
-                                <i class="fas fa-shield-alt" style="color:var(--primary)"></i> Zerodha SPAN Model
+                                <i class="fas fa-shield-alt" style="color:var(--primary)"></i> Zerodha SPAN Model (Total Margin)
                             </div>
                             <div style="display:flex; justify-content:space-between; margin-bottom:0.4rem; font-size:0.8rem">
                                 <span style="color:var(--text-muted)">Capital Saved vs Naked:</span>
@@ -4016,8 +4020,10 @@ const App = {
                     const liveNakedRoi = grossPremium > 0 ? ((grossPremium / actualNakedMargin) * 100).toFixed(1) : nakedRoi;
                     if (nakedReqEl) nakedReqEl.textContent = `₹${Math.round(actualNakedMargin).toLocaleString()}`;
                     if (nakedRoiEl) nakedRoiEl.textContent = `+${liveNakedRoi}%`;
+                    const breakdownEl = document.getElementById('trade-modal-naked-breakdown');
+                    if (breakdownEl) breakdownEl.innerHTML = `SPAN: <b>₹${Math.round(liveNaked.span).toLocaleString()}</b> + Exp: <b>₹${Math.round(liveNaked.exposure).toLocaleString()}</b>`;
                     if (nakedBadgeEl) {
-                        nakedBadgeEl.innerHTML = `<span style="color:#10b981; font-weight:600"><i class="fas fa-check-circle"></i> Official Zerodha SPAN (SPAN: ₹${Math.round(liveNaked.span).toLocaleString()} + Exp: ₹${Math.round(liveNaked.exposure).toLocaleString()})</span>`;
+                        nakedBadgeEl.innerHTML = `<span style="color:#10b981; font-weight:600"><i class="fas fa-check-circle"></i> Official Zerodha SPAN (Total Margin)</span>`;
                     }
                     if (copyNakedBtn) {
                         copyNakedBtn.onclick = () => App.copyNakedOrderText(symbol, type, strike, sellPremium, lotSize, Math.round(actualNakedMargin), grossPremium, liveNakedRoi, expiry);
@@ -4031,8 +4037,10 @@ const App = {
                     const liveHedgedRoi = netCredit > 0 ? ((netCredit / hedgedTotal) * 100).toFixed(1) : hedgedRoi;
 
                     if (hedgedReqEl) hedgedReqEl.textContent = `₹${Math.round(hedgedTotal).toLocaleString()}`;
+                    const hBreakdownEl = document.getElementById('basket-breakdown');
+                    if (hBreakdownEl) hBreakdownEl.innerHTML = `SPAN: <b>₹${Math.round(liveHedge.span).toLocaleString()}</b> + Exp: <b>₹${Math.round(liveHedge.exposure).toLocaleString()}</b>`;
                     if (hedgeBadgeEl) {
-                        hedgeBadgeEl.innerHTML = `<span style="color:#10b981; font-weight:600"><i class="fas fa-check-circle"></i> Official Zerodha SPAN (SPAN: ₹${Math.round(liveHedge.span).toLocaleString()} + Exp: ₹${Math.round(liveHedge.exposure).toLocaleString()})</span>`;
+                        hedgeBadgeEl.innerHTML = `<span style="color:#10b981; font-weight:600"><i class="fas fa-check-circle"></i> Official Zerodha SPAN (Hedged Total Margin)</span>`;
                     }
                     if (hedgeSaveEl) {
                         hedgeSaveEl.textContent = `Save ${liveSavedPct}% (₹${Math.round(liveSaved).toLocaleString()})`;
@@ -4450,9 +4458,15 @@ const App = {
             if (liveMargin) {
                 const actualLot = liveMargin.lotSize || lotSize;
                 let actualNakedMargin = nakedTotalMargin;
+                let nakedSpanVal = liveMargin.span;
+                let nakedExpVal = liveMargin.exposure;
                 if (hedgeStrike) {
                     const liveNaked = await window.nseApi.fetchZerodhaSpanMargin(symbol, strike, type, actualLot, expiryDate, null);
-                    if (liveNaked && liveNaked.total > 0) actualNakedMargin = liveNaked.total;
+                    if (liveNaked && liveNaked.total > 0) {
+                        actualNakedMargin = liveNaked.total;
+                        nakedSpanVal = liveNaked.span;
+                        nakedExpVal = liveNaked.exposure;
+                    }
                 } else {
                     actualNakedMargin = liveMargin.total;
                 }
@@ -4463,10 +4477,15 @@ const App = {
                 const marginSavedPercent = (hedgeStrike && actualNakedMargin > 0) ? Math.round((marginSaved / actualNakedMargin) * 100) : 0;
 
                 return {
-                    span: liveMargin.span,
-                    exposure: liveMargin.exposure,
-                    total: liveMargin.total,
+                    span: nakedSpanVal,
+                    exposure: nakedExpVal,
+                    total: actualNakedMargin,
                     nakedMargin: actualNakedMargin,
+                    nakedSpan: nakedSpanVal,
+                    nakedExposure: nakedExpVal,
+                    hedgedMargin: liveMargin.total,
+                    hedgedSpan: liveMargin.span,
+                    hedgedExposure: liveMargin.exposure,
                     marginSaved: marginSaved,
                     marginSavedPercent: marginSavedPercent,
                     premiumReceivable: netCredit,
@@ -5091,8 +5110,8 @@ const App = {
                                 ${isSell ? '' : '<th>Strike</th>'}
                                 <th>Lot</th>
                                 <th>${isSell ? 'Available Premium' : 'Premium'}</th>
-                                <th>${isSell ? 'Required Margin (Naked)' : 'Est. Margin'}</th>
-                                <th>${isSell ? 'Est. ROI' : 'Price Chg %'}</th>
+                                <th>${isSell ? 'Total Margin Required (SPAN + Exp)' : 'Est. Margin'}</th>
+                                <th>${isSell ? 'Est. ROI (on Total Margin)' : 'Price Chg %'}</th>
                                 ${isSell ? '<th>Hedge Option (If Required)</th>' : '<th>Score</th>'}
                                 <th style="text-align:center">${isSell ? 'Action' : 'Share'}</th>
                             </tr>
@@ -5128,13 +5147,16 @@ const App = {
                                             <div style="font-size:0.7rem; color:var(--text-muted)">₹${Number(d.premium).toFixed(2)} / share</div>
                                         </td>
                                         <td class="mono">
-                                            <div style="font-weight:700; color:var(--text-bright); font-size:0.9rem">₹${Math.round(d.nakedMargin || d.margin.total).toLocaleString()}</div>
+                                            <div style="font-weight:700; color:var(--text-bright); font-size:0.95rem">₹${Math.round(d.nakedMargin || d.margin?.total || 0).toLocaleString()}</div>
                                             ${d.margin?.modelName === 'Zerodha Live SPAN' ? `
-                                                <div style="font-size:0.65rem; color:#10b981; font-weight:600; margin-top:2px">
+                                                <div style="font-size:0.68rem; color:#10b981; font-weight:700; margin-top:2px; display:flex; align-items:center; gap:3px">
                                                     <i class="fas fa-check-circle"></i> Official Zerodha SPAN
                                                 </div>
+                                                <div style="font-size:0.65rem; color:var(--text-muted); margin-top:1px">
+                                                    SPAN: ₹${Math.round(d.margin.nakedSpan || d.margin.span || 0).toLocaleString()} + Exp: ₹${Math.round(d.margin.nakedExposure || d.margin.exposure || 0).toLocaleString()}
+                                                </div>
                                             ` : `
-                                                <div style="font-size:0.65rem; color:var(--text-muted)">Standard SPAN</div>
+                                                <div style="font-size:0.65rem; color:var(--text-muted); margin-top:2px">Total Margin (SPAN + Exp)</div>
                                             `}
                                         </td>
                                         <td>
@@ -5152,9 +5174,14 @@ const App = {
                                                         <span class="mono" style="color:var(--text-muted)">@ ₹${Number(d.hedgePremium).toFixed(2)}</span>
                                                     </div>
                                                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:3px">
-                                                        <span style="color:var(--text-muted); font-size:0.7rem">Hedged Margin:</span>
+                                                        <span style="color:var(--text-muted); font-size:0.7rem">Hedged Total Margin:</span>
                                                         <span class="mono" style="color:var(--text-bright); font-weight:600">₹${Math.round(d.hedgedMargin || d.margin.total).toLocaleString()}</span>
                                                     </div>
+                                                    ${d.margin?.modelName === 'Zerodha Live SPAN' && (d.margin.hedgedSpan || d.margin.span) ? `
+                                                        <div style="font-size:0.62rem; color:var(--text-muted); text-align:right">
+                                                            SPAN: ₹${Math.round(d.margin.hedgedSpan || d.margin.span).toLocaleString()} + Exp: ₹${Math.round(d.margin.hedgedExposure || d.margin.exposure).toLocaleString()}
+                                                        </div>
+                                                    ` : ''}
                                                     ${d.marginSavedPercent > 0 ? `
                                                         <div style="color:#10b981; font-size:0.68rem; font-weight:600; text-align:right">
                                                             Save ${d.marginSavedPercent}% (₹${Math.round(d.marginSaved || 0).toLocaleString()})

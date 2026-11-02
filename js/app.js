@@ -5567,15 +5567,21 @@ const App = {
         if (sStatus) sStatus.textContent = "Scan Complete!";
 
         // Render Results if view is active
-        if (resultsBox) {
-            this._renderScannerResults(sellCandidates, buyCandidates);
-            resultsBox.style.display = 'block';
+        try {
+            if (resultsBox) {
+                this._renderScannerResults(sellCandidates, buyCandidates);
+                resultsBox.style.display = 'block';
+            }
+        } catch (err) {
+            console.error("Scanner rendering error:", err);
+            if (resultsBox) resultsBox.style.display = 'block';
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fas fa-play"></i> Re-Scan`;
+            }
+            if (progCont) setTimeout(() => { progCont.style.display = 'none'; }, 2000);
         }
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = `<i class="fas fa-play"></i> Re-Scan`;
-        }
-        if (progCont) setTimeout(() => { progCont.style.display = 'none'; }, 2000);
     },
 
     _renderScannerResults(sell, buy) {
@@ -5703,7 +5709,9 @@ const App = {
                                                     </div>
                                                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:3px">
                                                         <span style="color:var(--text-muted); font-size:0.7rem">Hedged Total Margin:</span>
-                                                        <span class="mono" style="color:var(--text-bright); font-weight:600">₹${Math.round(d.hedgedMargin || d.margin.total).toLocaleString()}</span>
+                                                        <span class="mono" style="color:var(--text-bright); font-weight:600">
+                                                            ${d.isLiveZerodha && d.hedgedMargin ? `₹${Math.round(d.hedgedMargin).toLocaleString()}` : `<span style="color:var(--text-muted); font-size:0.75rem">Pending</span>`}
+                                                        </span>
                                                     </div>
                                                     ${d.margin?.modelName === 'Zerodha Live SPAN' && (d.margin.hedgedSpan || d.margin.span) ? `
                                                         <div style="font-size:0.62rem; color:var(--text-muted); text-align:right">
@@ -5725,10 +5733,10 @@ const App = {
                                             `}
                                         </td>
                                         <td style="text-align:center; white-space:nowrap">
-                                            <button class="chart-action-btn" onclick="event.stopPropagation(); App.openTradeDetailsModal('${d.symbol}', '${d.type}', ${d.strike}, ${d.hedgeStrike || 0}, ${parseFloat(d.premium).toFixed(2)}, ${parseFloat(d.hedgePremium || 0).toFixed(2)}, ${d.lotSize}, ${Math.round(d.nakedMargin || d.margin.total)}, ${Math.round(d.hedgedMargin || d.margin.total)}, ${Math.round(d.grossPremium || (d.premium * d.lotSize))}, ${Math.round(d.netCredit || (d.grossPremium - (d.hedgePremium * d.lotSize)))}, ${(d.nakedRoi || 0).toFixed(1)}, ${(d.hedgedRoi || 0).toFixed(1)}, '${d.expiry || ''}')" style="padding:0.4rem 0.75rem; background:rgba(59,130,246,0.2); color:#60a5fa; border:1px solid rgba(59,130,246,0.4); border-radius:6px; font-weight:600; margin-right:4px" title="Trade / Hedge Details">
+                                            <button class="chart-action-btn" onclick="event.stopPropagation(); App.openTradeDetailsModal('${d.symbol}', '${d.type}', ${d.strike}, ${d.hedgeStrike || 0}, ${parseFloat(d.premium).toFixed(2)}, ${parseFloat(d.hedgePremium || 0).toFixed(2)}, ${d.lotSize}, ${Math.round(d.nakedMargin || d.margin?.total || 0)}, ${Math.round(d.hedgedMargin || d.margin?.total || 0)}, ${Math.round(d.grossPremium || (d.premium * d.lotSize))}, ${Math.round(d.netCredit || (d.grossPremium - (d.hedgePremium * d.lotSize)))}, ${(d.nakedRoi || 0).toFixed(1)}, ${(d.hedgedRoi || 0).toFixed(1)}, '${d.expiry || ''}')" style="padding:0.4rem 0.75rem; background:rgba(59,130,246,0.2); color:#60a5fa; border:1px solid rgba(59,130,246,0.4); border-radius:6px; font-weight:600; margin-right:4px" title="Trade / Hedge Details">
                                                 <i class="fas fa-bolt"></i> Trade / Hedge
                                             </button>
-                                            <button class="chart-action-btn" onclick="event.stopPropagation(); App.shareTradeRecommendationSignal('${d.symbol}', '${d.type}', ${d.strike}, ${d.hedgeStrike || 0}, ${parseFloat(d.premium).toFixed(2)}, ${parseFloat(d.hedgePremium || 0).toFixed(2)}, ${d.lotSize}, ${Math.round(d.nakedMargin || d.margin.total)}, ${Math.round(d.hedgedMargin || d.margin.total)}, ${Math.round(d.grossPremium || (d.premium * d.lotSize))}, ${Math.round(d.netCredit || (d.grossPremium - (d.hedgePremium * d.lotSize)))}, ${(d.nakedRoi || 0).toFixed(1)}, ${(d.hedgedRoi || 0).toFixed(1)}, '${d.expiry || ''}')" style="padding:0.4rem 0.65rem; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); border-radius:6px" title="Share Signal">
+                                            <button class="chart-action-btn" onclick="event.stopPropagation(); App.shareTradeRecommendationSignal('${d.symbol}', '${d.type}', ${d.strike}, ${d.hedgeStrike || 0}, ${parseFloat(d.premium).toFixed(2)}, ${parseFloat(d.hedgePremium || 0).toFixed(2)}, ${d.lotSize}, ${Math.round(d.nakedMargin || d.margin?.total || 0)}, ${Math.round(d.hedgedMargin || d.margin?.total || 0)}, ${Math.round(d.grossPremium || (d.premium * d.lotSize))}, ${Math.round(d.netCredit || (d.grossPremium - (d.hedgePremium * d.lotSize)))}, ${(d.nakedRoi || 0).toFixed(1)}, ${(d.hedgedRoi || 0).toFixed(1)}, '${d.expiry || ''}')" style="padding:0.4rem 0.65rem; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); border-radius:6px" title="Share Signal">
                                                 <i class="fas fa-share-alt"></i>
                                             </button>
                                         </td>

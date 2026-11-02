@@ -4475,7 +4475,8 @@ const App = {
                     lotSize: actualLot,
                     scrip: liveMargin.scrip,
                     exchange: liveMargin.exchange,
-                    modelName: 'Zerodha Live SPAN'
+                    modelName: 'Zerodha Live SPAN',
+                    isLiveZerodha: true
                 };
             }
         }
@@ -4506,7 +4507,8 @@ const App = {
                     grossPremium: premium * lotSize,
                     hedgeCost: (hedgePremium || 0) * lotSize,
                     lotSize: lotSize,
-                    modelName: 'Zerodha Formula (Hedged)'
+                    modelName: 'Zerodha Formula (Hedged)',
+                    isLiveZerodha: false
                 };
             }
 
@@ -4520,7 +4522,8 @@ const App = {
                 premiumReceivable: premium * lotSize,
                 grossPremium: premium * lotSize,
                 hedgeCost: 0,
-                modelName: 'Zerodha Formula'
+                modelName: 'Zerodha Formula',
+                isLiveZerodha: false
             };
         } else {
             // Backup Heuristic Model

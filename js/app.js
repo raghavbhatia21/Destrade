@@ -5390,9 +5390,10 @@ const App = {
         let completed = 0;
         const total = symbols.length;
 
-        // Process in batches of 10 for fast parallel scanning
-        for (let i = 0; i < total; i += 10) {
-            const batch = symbols.slice(i, i + 10);
+        // Process in batches of 4 for steady, reliable parallel scanning without proxy/API rate drops
+        const scanBatchSize = 4;
+        for (let i = 0; i < total; i += scanBatchSize) {
+            const batch = symbols.slice(i, i + scanBatchSize);
             if (sStatus) sStatus.textContent = `Analyzing ${batch[0]} and others (${targetExpiryMode.toUpperCase()} expiry)...`;
 
             const promises = batch.map(async (sym) => {
@@ -5522,9 +5523,8 @@ const App = {
         // Precision enrichment: If Zerodha Live SPAN model is active, fetch official Zerodha SPAN for top setups
         if ((this.state.marginModel || 'zerodha_live') === 'zerodha_live' && sellCandidates.length > 0) {
             if (sStatus) sStatus.textContent = "Fetching official Zerodha SPAN for top setups...";
-            const topCE = sellCandidates.filter(d => d.type === 'CE').sort((a, b) => b.grossPremium - a.grossPremium).slice(0, 25);
-            const topPE = sellCandidates.filter(d => d.type === 'PE').sort((a, b) => b.grossPremium - a.grossPremium).slice(0, 25);
-            const toEnrich = [...topCE, ...topPE];
+            // Enrich all scanned sell candidates with official Zerodha margins (0ms instant lookup)
+            const toEnrich = sellCandidates;
 
             for (let j = 0; j < toEnrich.length; j++) {
                 const item = toEnrich[j];
@@ -5538,7 +5538,7 @@ const App = {
                     if (liveMargin && liveMargin.total > 0) {
                         item.margin = liveMargin;
                         item.nakedMargin = liveMargin.nakedMargin || liveMargin.total;
-                        item.hedgedMargin = liveMargin.total;
+                        item.hedgedMargin = liveMargin.hedgedMargin || liveMargin.total;
                         item.marginSaved = liveMargin.marginSaved || 0;
                         item.marginSavedPercent = liveMargin.marginSavedPercent || 0;
                         item.grossPremium = item.premium * item.lotSize;

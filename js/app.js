@@ -457,9 +457,19 @@ const App = {
         return this.computeMarketBiasFromSnapshot((this.state && this.state.biasTimeframe) || '1h');
     },
 
-    computeDualActionFromSnapshot() {
+    computeDualActionFromSnapshot(targetTf) {
         const snapshot = this._liveSnapshot;
-        if (!snapshot || typeof snapshot !== 'object') return { bull: [], bear: [], topBull: [], topBear: [] };
+        if (!snapshot || typeof snapshot !== 'object') return { bull: [], bear: [], topBull: [], topBear: [], tfLabel: '15-Min' };
+
+        // Default to 15m for genuine surge momentum unless specified
+        const tf = targetTf || (this.state && this.state.biasTimeframe) || '15m';
+        const tfMap = {
+            '5m':  { pcrIdx: 4, spotIdx: 12, label: '5-Min' },
+            '15m': { pcrIdx: 5, spotIdx: 13, label: '15-Min' },
+            '30m': { pcrIdx: 6, spotIdx: 14, label: '30-Min' },
+            '1h':  { pcrIdx: 7, spotIdx: 15, label: '1-Hour' }
+        };
+        const config = tfMap[tf] || tfMap['15m'];
 
         const bullList = [];
         const bearList = [];
@@ -468,30 +478,38 @@ const App = {
             const raw = snapshot[sym];
             if (!raw) return;
 
-            let curPcr, curSpot, curTimeStr, h1Pcr, h1Spot;
+            let curPcr, curSpot, curTimeStr;
+            let refPcr, refSpot;
+            let m5Pcr, m5Spot;
 
             if (Array.isArray(raw)) {
                 curPcr = raw[1] || 0;
                 curSpot = raw[2] || 0;
                 curTimeStr = raw[3] || '';
-                h1Pcr = raw[7] || 0;
-                h1Spot = raw[15] || 0;
+                refPcr = raw[config.pcrIdx] || 0;
+                refSpot = raw[config.spotIdx] || 0;
+                m5Pcr = raw[4] || 0;
+                m5Spot = raw[12] || 0;
             } else {
                 const norm = this.normalizeSnapshotItem(raw);
                 if (!norm) return;
                 curPcr = norm.curVal;
                 curSpot = norm.curSpot;
                 curTimeStr = norm.curTimeStr || '';
-                h1Pcr = norm.h ? norm.h[1] : 0;
-                h1Spot = norm.h ? norm.h[2] : 0;
+                const tfKey = tf === '5m' ? 'm5' : tf === '15m' ? 'm15' : tf === '30m' ? 'm30' : 'h';
+                const ref = norm[tfKey];
+                refPcr = (ref && ref[1]) ? ref[1] : 0;
+                refSpot = (ref && ref[2]) ? ref[2] : 0;
+                m5Pcr = (norm.m5 && norm.m5[1]) ? norm.m5[1] : 0;
+                m5Spot = (norm.m5 && norm.m5[2]) ? norm.m5[2] : 0;
             }
 
-            if (curPcr <= 0 || h1Pcr <= 0) return;
+            if (curPcr <= 0 || refPcr <= 0) return;
 
-            const pcrDiff = curPcr - h1Pcr;
-            const pcrPct = h1Pcr > 0 ? ((pcrDiff / h1Pcr) * 100) : 0;
-            const spotDiff = (curSpot && h1Spot) ? (curSpot - h1Spot) : 0;
-            const spotPct = h1Spot > 0 ? ((spotDiff / h1Spot) * 100) : 0;
+            const pcrDiff = curPcr - refPcr;
+            const pcrPct = refPcr > 0 ? ((pcrDiff / refPcr) * 100) : 0;
+            const spotDiff = (curSpot && refSpot) ? (curSpot - refSpot) : 0;
+            const spotPct = refSpot > 0 ? ((spotDiff / refSpot) * 100) : 0;
 
             const isBullishAligned = (spotDiff > 0 && pcrDiff > 0);
             const isBearishAligned = (spotDiff < 0 && pcrDiff < 0);
@@ -500,9 +518,49 @@ const App = {
 
             const absSpotPct = Math.abs(spotPct);
             const absPcrPct = Math.abs(pcrPct);
+
+            // Filter out micro noise: requires at least 0.15% spot move & genuine PCR shift (>= 0.8% or >= 0.003 absolute)
+            if (absSpotPct < 0.15 || (absPcrPct < 0.8 && Math.abs(pcrDiff) < 0.003)) return;
+
+            // Strict Freshness & Anti-Stale Guard: Evaluate latest 5-minute single tick
+            let m5SpotPct = 0;
+            let m5PcrPct = 0;
+            let m5SpotDiff = 0;
+            let m5PcrDiff = 0;
+
+            if (m5Spot > 0 && m5Pcr > 0) {
+                m5SpotDiff = curSpot - m5Spot;
+                m5SpotPct = (m5SpotDiff / m5Spot) * 100;
+                m5PcrDiff = curPcr - m5Pcr;
+                m5PcrPct = (m5PcrDiff / m5Pcr) * 100;
+
+                if (isBullishAligned) {
+                    // Retreating on latest tick: dump from surge
+                    if (m5SpotPct < -0.03 || m5PcrDiff < -0.003) return;
+                    // Stalled: multi-tick window with zero active forward velocity
+                    if (tf !== '5m' && m5SpotDiff <= 0 && m5PcrDiff <= 0) return;
+                } else if (isBearishAligned) {
+                    // Bouncing on latest tick: drop from crash
+                    if (m5SpotPct > 0.03 || m5PcrDiff > 0.003) return;
+                    // Stalled:
+                    if (tf !== '5m' && m5SpotDiff >= 0 && m5PcrDiff >= 0) return;
+                }
+            }
+
+            // Recalibrated Dynamic PowerScore: Logarithmic scaling across 50 to 95+ (no 99 saturation)
             const harmonicPct = Math.sqrt(absSpotPct * absPcrPct);
-            let powerScore = Math.round(50 + (harmonicPct * 20));
-            powerScore = Math.min(99, Math.max(50, powerScore));
+            const baseScore = 52 + (Math.log10(1 + harmonicPct) * 38);
+
+            // Acceleration bonus for aggressive current-tick momentum
+            let accelBonus = 0;
+            if (m5Spot > 0 && m5Pcr > 0) {
+                const m5DirSpot = isBullishAligned ? m5SpotPct : -m5SpotPct;
+                const m5DirPcr = isBullishAligned ? m5PcrPct : -m5PcrPct;
+                const m5Harmonic = Math.sqrt(Math.max(0, m5DirSpot) * Math.max(0, m5DirPcr));
+                accelBonus = Math.min(6, m5Harmonic * 2.5);
+            }
+
+            let powerScore = Math.min(97, Math.max(50, Math.round(baseScore + accelBonus)));
 
             if (isBullishAligned) {
                 bullList.push({
@@ -546,7 +604,8 @@ const App = {
             bull: bullList,
             bear: bearList,
             topBull: bullList.slice(0, 5),
-            topBear: bearList.slice(0, 5)
+            topBear: bearList.slice(0, 5),
+            tfLabel: config.label
         };
     },
 
@@ -2095,8 +2154,8 @@ const App = {
 
     calculateDualSpikePowerScore(pcrMult, spotMult) {
         const raw = (pcrMult * spotMult) * (pcrMult + spotMult);
-        let score = Math.round(40 + (Math.log2(raw + 1) * 8.5));
-        return Math.min(99, Math.max(50, score));
+        let score = Math.round(45 + (Math.log2(raw + 1) * 7.5));
+        return Math.min(97, Math.max(50, score));
     },
 
     renderScanHistoryTimeline() {
@@ -2188,8 +2247,9 @@ const App = {
                 const absSpotPct = Math.abs(spotPct);
                 const absPcrPct = Math.abs(pcrPct);
                 const harmonicPct = Math.sqrt(absSpotPct * absPcrPct);
-                let rawScore = 45 + (harmonicPct * 22) + (avgMultiplier * 4);
-                const powerScore = Math.min(99, Math.max(50, Math.round(rawScore)));
+                const baseScore = 52 + (Math.log10(1 + harmonicPct) * 36);
+                const multBonus = Math.min(8, Math.max(0, (avgMultiplier - 1.0) * 3.5));
+                const powerScore = Math.min(97, Math.max(50, Math.round(baseScore + multBonus)));
 
                 timeMap[timeStr].push({
                     symbol: sym,
@@ -2688,14 +2748,22 @@ const App = {
             localStorage.setItem('destrade_bias_tf', tf);
         } catch (e) { }
 
-        this.radarMode = '1hr';
+        // Preserve user's current radarMode (dual vs 1hr)
+        if (!this.radarMode) this.radarMode = '1hr';
         const btnDual = document.getElementById('radar-mode-dual');
         const btn1hr = document.getElementById('radar-mode-1hr');
         if (btnDual && btn1hr) {
-            btnDual.style.background = 'transparent';
-            btnDual.style.color = 'var(--text-muted)';
-            btn1hr.style.background = 'rgba(56, 189, 248, 0.2)';
-            btn1hr.style.color = '#38bdf8';
+            if (this.radarMode === 'dual') {
+                btnDual.style.background = 'rgba(16, 185, 129, 0.2)';
+                btnDual.style.color = '#10b981';
+                btn1hr.style.background = 'transparent';
+                btn1hr.style.color = 'var(--text-muted)';
+            } else {
+                btnDual.style.background = 'transparent';
+                btnDual.style.color = 'var(--text-muted)';
+                btn1hr.style.background = 'rgba(56, 189, 248, 0.2)';
+                btn1hr.style.color = '#38bdf8';
+            }
         }
 
         valid.forEach(t => {
@@ -2750,8 +2818,8 @@ const App = {
             topBull = bias1h.topBull;
             topBear = bias1h.topBear;
         } else {
-            // Live Dual Action Mode directly from snapshot
-            const snapDual = this.computeDualActionFromSnapshot();
+            // Live Dual Action Mode directly from snapshot using active timeframe (defaulting to 15m)
+            const snapDual = this.computeDualActionFromSnapshot(tf);
             topBull = snapDual.topBull;
             topBear = snapDual.topBear;
 
@@ -2824,17 +2892,20 @@ const App = {
                 }
 
                 const pcrDiffStr = (item.pcrDiff > 0 ? '+' : '') + item.pcrDiff.toFixed(4);
+                const pcrPctStr = (item.pcrPct > 0 ? '+' : '') + item.pcrPct.toFixed(1) + '%';
                 const spotDiffStr = (item.spotDiff > 0 ? '+' : '') + item.spotDiff.toFixed(2);
                 const spotPctStr = (item.spotPct > 0 ? '+' : '') + item.spotPct.toFixed(2) + '%';
+                const tagColor = isBull ? '#10b981' : '#ef4444';
+                const tagBg = isBull ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)';
 
                 return `
                     <div class="radar-row" onclick="App.switchView('pcr-analytics'); App.changePcrSymbol('${item.symbol}');"
                          style="display: flex; align-items: center; justify-content: space-between; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 0.6rem 0.85rem; cursor: pointer; transition: all 0.18s;"
-                         onmouseover="this.style.borderColor='${isBull ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)'}'; this.style.transform='translateX(${isBull ? '3px' : '-3px'})';"
+                         onmouseover="this.style.borderColor='${tagColor}80'; this.style.transform='translateX(${isBull ? '3px' : '-3px'})';"
                          onmouseout="this.style.borderColor='rgba(255,255,255,0.06)'; this.style.transform='none';">
                         
                         <div style="display: flex; align-items: center; gap: 0.6rem;">
-                            <div style="width: 22px; height: 22px; border-radius: 50%; background: ${isBull ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}; color: ${isBull ? '#10b981' : '#ef4444'}; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.72rem;">
+                            <div style="width: 22px; height: 22px; border-radius: 50%; background: ${tagBg}; color: ${tagColor}; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.72rem;">
                                 #${idx + 1}
                             </div>
                             <div>
@@ -2844,16 +2915,21 @@ const App = {
                                         ${item.tag}
                                     </span>
                                 </div>
-                                <div style="font-size: 0.7rem; color: var(--text-muted);">
-                                    Spot: <strong style="color: #f8fafc;">₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}</strong> <span style="color: ${item.spotDiff >= 0 ? '#10b981' : '#ef4444'}; font-weight:700;">(${spotDiffStr} | ${spotPctStr})</span>
+                                <div style="font-size: 0.7rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                    <span>PCR: <strong style="color: #38bdf8;">${item.pcrCur ? item.pcrCur.toFixed(3) : '---'}</strong> <span style="color: ${item.pcrDiff >= 0 ? '#10b981' : '#ef4444'}; font-weight:700;">(${pcrDiffStr} | ${pcrPctStr})</span></span>
+                                    <span style="opacity: 0.5;">•</span>
+                                    <span>Spot: <strong style="color: #f8fafc;">₹${item.spotCur ? item.spotCur.toLocaleString() : '---'}</strong> <span style="color: ${item.spotDiff >= 0 ? '#10b981' : '#ef4444'}; font-weight:700;">(${spotDiffStr} | ${spotPctStr})</span></span>
                                 </div>
                             </div>
                         </div>
 
                         <div style="text-align: right;">
-                            <span style="font-family:'JetBrains Mono',monospace; font-weight:800; font-size:0.82rem; color:${item.tagColor}; background:${item.tagBg}; padding:0.2rem 0.55rem; border-radius:6px; border:1px solid ${item.tagColor}50;">
+                            <div style="font-family:'JetBrains Mono',monospace; font-weight:800; font-size:0.85rem; color:${tagColor}; background:${tagBg}; padding:0.2rem 0.55rem; border-radius:6px; border:1px solid ${tagColor}50;">
                                 ${item.powerScore}<span style="font-size:0.65rem; opacity:0.75;">/100</span>
-                            </span>
+                            </div>
+                            <div style="font-size: 0.65rem; color: ${tagColor}; font-weight: 700; margin-top: 0.15rem;">
+                                ${isBull ? '▲ Dual Acceleration' : '▼ Dual Collapse'}
+                            </div>
                         </div>
                     </div>
                 `;
@@ -2867,8 +2943,8 @@ const App = {
                 <!-- Left: Bullish Leaders -->
                 <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 10px; padding: 0.85rem 1rem;">
                     <div style="font-weight: 700; color: #10b981; font-size: 0.88rem; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;">
-                        <span><i class="fas fa-arrow-trend-up"></i> ${is1hr ? `🟢 Top 5 Bullish ${tfLabel} Bias Leaders` : '🟢 Live Bullish Dual Surges'}</span>
-                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(16, 185, 129, 0.15); border-radius: 4px; color: #10b981; font-weight:800;">${is1hr ? `MAX ${shortTf} PCR EXPANSION` : 'DUAL ACTION MODE'}</span>
+                        <span><i class="fas fa-arrow-trend-up"></i> ${is1hr ? `🟢 Top 5 Bullish ${tfLabel} Bias Leaders` : `🟢 Live Bullish Dual Surges (${tfLabel})`}</span>
+                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(16, 185, 129, 0.15); border-radius: 4px; color: #10b981; font-weight:800;">${is1hr ? `MAX ${shortTf} PCR EXPANSION` : `${shortTf} DUAL MOMENTUM`}</span>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                         ${renderRows(topBull, true)}
@@ -2878,8 +2954,8 @@ const App = {
                 <!-- Right: Bearish Leaders -->
                 <div style="background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 10px; padding: 0.85rem 1rem;">
                     <div style="font-weight: 700; color: #ef4444; font-size: 0.88rem; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;">
-                        <span><i class="fas fa-arrow-trend-down"></i> ${is1hr ? `🔴 Top 5 Bearish ${tfLabel} Bias Leaders` : '🔴 Live Bearish Dual Crashes'}</span>
-                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(239, 68, 68, 0.15); border-radius: 4px; color: #ef4444; font-weight:800;">${is1hr ? `MAX ${shortTf} PCR COLLAPSE` : 'DUAL ACTION MODE'}</span>
+                        <span><i class="fas fa-arrow-trend-down"></i> ${is1hr ? `🔴 Top 5 Bearish ${tfLabel} Bias Leaders` : `🔴 Live Bearish Dual Crashes (${tfLabel})`}</span>
+                        <span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; background: rgba(239, 68, 68, 0.15); border-radius: 4px; color: #ef4444; font-weight:800;">${is1hr ? `MAX ${shortTf} PCR COLLAPSE` : `${shortTf} DUAL MOMENTUM`}</span>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                         ${renderRows(topBear, false)}

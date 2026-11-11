@@ -34,6 +34,12 @@ const App = {
         scannerSortBy: (typeof localStorage !== 'undefined' && localStorage.getItem('destrade_scanner_sort_by')) || 'premium',
         scannerOtmMin: parseFloat(localStorage.getItem('destrade_scanner_otm_min')) || 4,
         scannerOtmMax: parseFloat(localStorage.getItem('destrade_scanner_otm_max')) || 10,
+        arbitrageCache: { candidates: [], status: 'idle', completed: false, lastScanTime: null },
+        arbitrageType: 'CE',
+        arbitrageSort: 'cashGap',
+        arbitrageMinGap: 2500,
+        arbitrageUniverse: 'top50',
+        arbitrageExpiry: 'current',
         sectorMapping: {
             'BANK': ['HDFCBANK', 'ICICIBANK', 'SBIN', 'KOTAKBANK', 'AXISBANK', 'INDUSINDBK', 'BAJFINANCE'],
             'IT': ['TCS', 'INFY', 'HCLTECH', 'WIPRO', 'LTIM', 'TECHM'],
@@ -4274,9 +4280,10 @@ const App = {
                 <div class="view-title"><i class="fas fa-clock"></i> Options Intelligence</div>
                 <button class="back-btn" onclick="App.switchView('dashboard')"><i class="fas fa-arrow-left"></i> Back</button>
             </div>
-            <div class="mode-tabs glass" style="margin-bottom: 1.5rem; display: flex; padding: 0.25rem; border-radius: 10px; width: fit-content;">
-                <button class="mode-tab ${this.state.oiMode !== 'recommendation' ? 'active' : ''}" data-mode="clock" onclick="App.switchOIMode('clock')">Symbol OI Gauge</button>
+            <div class="mode-tabs glass" style="margin-bottom: 1.5rem; display: flex; padding: 0.25rem; border-radius: 10px; width: fit-content; gap: 0.25rem; flex-wrap: wrap;">
+                <button class="mode-tab ${this.state.oiMode === 'clock' || !this.state.oiMode ? 'active' : ''}" data-mode="clock" onclick="App.switchOIMode('clock')">Symbol OI Gauge</button>
                 <button class="mode-tab ${this.state.oiMode === 'recommendation' ? 'active' : ''}" data-mode="recommendation" onclick="App.switchOIMode('recommendation')">Global Trade Recommendations</button>
+                <button class="mode-tab ${this.state.oiMode === 'arbitrage' ? 'active' : ''}" data-mode="arbitrage" onclick="App.switchOIMode('arbitrage')"><i class="fas fa-coins" style="color:#f59e0b"></i> ATM Liquidity Arbitrage</button>
             </div>
             <div id="oi-main-content">
                 <div class="skeleton-loader" style="height: 400px;"></div>
@@ -4539,6 +4546,8 @@ const App = {
             this._renderOIGauge('oi-gauge-standalone-container', sym);
         } else if (mode === 'recommendation') {
             this.renderTradeRecommendations(content);
+        } else if (mode === 'arbitrage') {
+            this.renderLiquidityArbitrage(content);
         }
     },
 
@@ -4920,286 +4929,6 @@ const App = {
         return this.shareTradeRecommendationSignal(symbol, type, strike, hedgeStrike, sellPremium, hedgePremium, lotSize, nakedMargin, basketMargin, grossPremium, netCredit, nakedRoi, roi, expiry);
     },
 
-    // ===== OI CLOCK & RECOMMENDATIONS =====
-    async renderOIClock() {
-        const symbol = this.state.activeSymbol || 'NIFTY';
-        const cleanSym = symbol.replace('NIFTY 50', 'NIFTY');
-
-        const view = document.getElementById('view-oi-clock');
-        if (!view) return;
-
-        view.innerHTML = `
-            <div class="view-header">
-                <div class="view-title"><i class="fas fa-clock"></i> Options Intelligence</div>
-                <button class="back-btn" onclick="App.switchView('dashboard')"><i class="fas fa-arrow-left"></i> Back</button>
-            </div>
-            <div class="mode-tabs glass" style="margin-bottom: 1.5rem; display: flex; padding: 0.25rem; border-radius: 10px; width: fit-content;">
-                <button class="mode-tab ${this.state.oiMode !== 'recommendation' ? 'active' : ''}" data-mode="clock" onclick="App.switchOIMode('clock')">Symbol OI Gauge</button>
-                <button class="mode-tab ${this.state.oiMode === 'recommendation' ? 'active' : ''}" data-mode="recommendation" onclick="App.switchOIMode('recommendation')">Global Trade Recommendations</button>
-            </div>
-            <div id="oi-main-content">
-                <div class="skeleton-loader" style="height: 400px;"></div>
-            </div>
-        `;
-
-        this.switchOIMode(this.state.oiMode || 'clock', true);
-    },
-
-    // ===== MARKET DISCOVERY VIEW =====
-    async renderDiscovery() {
-        const view = document.getElementById('view-discovery');
-        if (!view) return;
-        let c = document.getElementById('discovery-content');
-        if (!c) {
-            c = document.createElement('div');
-            c.id = 'discovery-content';
-            view.appendChild(c);
-        }
-
-        if (!this.state.discoveryMode) this.state.discoveryMode = 'screener';
-        if (!this.state.screenerSubTab) this.state.screenerSubTab = 'longBuildup';
-        if (!this.state.oiFilter) this.state.oiFilter = 'ALL';
-
-        document.querySelectorAll('#view-discovery .mode-tab').forEach(b => {
-            b.classList.toggle('active', b.dataset.mode === this.state.discoveryMode);
-        });
-
-        c.innerHTML = '<div class="skeleton-loader" style="height: 350px; border-radius:12px;"></div>';
-
-        const data = await window.nseApi.getScreenerData().catch(() => null);
-
-        if (this.state.discoveryMode === 'screener') {
-            this.renderScreenerView(c, data);
-        } else {
-            this.renderOIInterpretationView(c, data);
-        }
-    },
-
-    switchOIInterpretationFilter(filter) {
-        this.state.oiFilter = filter;
-        this.renderDiscovery();
-    },
-
-    filterOIInterpretationSearch(val) {
-        this.state.oiSearch = val.toUpperCase().trim();
-        const container = document.getElementById('oi-interpretation-table-body');
-        if (container) {
-            this.renderOIInterpretationRows(container, this.state.screenerDataCache);
-        }
-    },
-
-    renderOIInterpretationView(container, data) {
-        this.state.screenerDataCache = data;
-        const activeFilter = this.state.oiFilter || 'ALL';
-        const searchQ = this.state.oiSearch || '';
-
-        container.innerHTML = `
-            <div class="card glass" style="padding: 1.25rem; margin-bottom: 1.5rem;">
-                <div class="movers-tabs" style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:1rem;">
-                    <button class="${activeFilter === 'ALL' ? 'active' : ''}" onclick="App.switchOIInterpretationFilter('ALL')">ALL</button>
-                    <button class="${activeFilter === 'Long Buildup' ? 'active' : ''}" onclick="App.switchOIInterpretationFilter('Long Buildup')">Long</button>
-                    <button class="${activeFilter === 'Short Buildup' ? 'active' : ''}" onclick="App.switchOIInterpretationFilter('Short Buildup')">Short</button>
-                    <button class="${activeFilter === 'Short Covering' ? 'active' : ''}" onclick="App.switchOIInterpretationFilter('Short Covering')">Short Covering</button>
-                    <button class="${activeFilter === 'Long Unwinding' ? 'active' : ''}" onclick="App.switchOIInterpretationFilter('Long Unwinding')">Long Unwinding</button>
-                </div>
-
-                <div style="position:relative; margin-bottom:1rem;">
-                    <input type="text" placeholder="Search Symbol (e.g. RELIANCE, TCS)..." value="${searchQ}" oninput="App.filterOIInterpretationSearch(this.value)" style="width:100%; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:var(--text-bright); padding:0.65rem 1rem; border-radius:8px; font-size:0.85rem; outline:none;">
-                </div>
-
-                <div style="overflow-x:auto;">
-                    <table style="width:100%; border-collapse:collapse; text-align:left; font-size:0.85rem;">
-                        <thead>
-                            <tr style="border-bottom:1px solid rgba(255,255,255,0.1); color:var(--text-muted);">
-                                <th style="padding:0.75rem">Symbol</th>
-                                <th style="padding:0.75rem; text-align:right">Price</th>
-                                <th style="padding:0.75rem; text-align:right">Price Chg %</th>
-                                <th style="padding:0.75rem; text-align:right">Traded Vol</th>
-                                <th style="padding:0.75rem; text-align:center">Buildup Tag</th>
-                            </tr>
-                        </thead>
-                        <tbody id="oi-interpretation-table-body">
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        `;
-
-        this.renderOIInterpretationRows(document.getElementById('oi-interpretation-table-body'), data);
-    },
-
-    renderOIInterpretationRows(tbody, data) {
-        if (!tbody) return;
-        const allStocks = data?.all || [];
-        const activeFilter = this.state.oiFilter || 'ALL';
-        const searchQ = this.state.oiSearch || '';
-
-        let filtered = allStocks;
-        if (activeFilter !== 'ALL') {
-            filtered = filtered.filter(s => s.tag === activeFilter);
-        }
-        if (searchQ) {
-            filtered = filtered.filter(s => s.symbol.toUpperCase().includes(searchQ));
-        }
-
-        if (filtered.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="5" style="text-align:center; padding:2.5rem; color:var(--text-muted);">
-                        No stocks matching "${activeFilter}" criteria.
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-
-        tbody.innerHTML = filtered.slice(0, 40).map(s => {
-            const tagStyle = s.tag === 'Long Buildup' ? 'tag-bullish' :
-                s.tag === 'Short Buildup' ? 'tag-bearish' :
-                    s.tag === 'Short Covering' ? 'tag-bullish' :
-                        s.tag === 'Long Unwinding' ? 'tag-bearish' : 'tag-neutral';
-            return `
-                <tr style="border-bottom:1px solid rgba(255,255,255,0.03); cursor:pointer;" onclick="App.showSymbolOverview('${s.symbol}')">
-                    <td style="padding:0.75rem; font-weight:700; color:var(--text-bright)">${s.symbol}</td>
-                    <td style="padding:0.75rem; text-align:right; font-family:var(--font-mono)">₹${(s.price || 0).toLocaleString()}</td>
-                    <td style="padding:0.75rem; text-align:right; font-family:var(--font-mono)" class="${s.pChange >= 0 ? 'up' : 'down'}">
-                        ${s.pChange >= 0 ? '+' : ''}${(s.pChange || 0).toFixed(2)}%
-                    </td>
-                    <td style="padding:0.75rem; text-align:right; font-family:var(--font-mono); color:var(--text-muted)">
-                        ${(s.volume || 0).toLocaleString()}
-                    </td>
-                    <td style="padding:0.75rem; text-align:center">
-                        <span class="tag ${tagStyle}">${s.tag}</span>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-    },
-
-    showScriptManager() {
-        const modal = document.getElementById('script-manager-modal');
-        if (modal) modal.classList.add('active');
-    },
-
-    closeScriptManager() {
-        const modal = document.getElementById('script-manager-modal');
-        if (modal) modal.classList.remove('active');
-    },
-
-    switchDiscoveryMode(mode) {
-        this.state.discoveryMode = mode;
-        this.renderDiscovery();
-    },
-
-    switchScreenerSubTab(tab) {
-        this.state.screenerSubTab = tab;
-        this.renderDiscovery();
-    },
-
-    renderScreenerView(container, data) {
-        const activeTab = this.state.screenerSubTab || 'longBuildup';
-        const longB = data?.longBuildup || [];
-        const shortB = data?.shortBuildup || [];
-        const surges = data?.priceSurges || data?.all || [];
-        const vols = data?.volShockers || [];
-
-        let currentList = [];
-        if (activeTab === 'longBuildup') currentList = longB.length > 0 ? longB : surges.filter(s => s.pChange > 0);
-        else if (activeTab === 'shortBuildup') currentList = shortB.length > 0 ? shortB : surges.filter(s => s.pChange < 0);
-        else if (activeTab === 'surges') currentList = surges;
-        else if (activeTab === 'volume') currentList = vols;
-
-        container.innerHTML = `
-            <div class="card glass" style="padding: 1.25rem; margin-bottom: 1.5rem;">
-                <div class="movers-tabs" style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1.25rem;">
-                    <button class="${activeTab === 'longBuildup' ? 'active' : ''}" onclick="App.switchScreenerSubTab('longBuildup')">
-                        🔥 Long Buildup (${longB.length || surges.filter(s => s.pChange > 0).length})
-                    </button>
-                    <button class="${activeTab === 'shortBuildup' ? 'active' : ''}" onclick="App.switchScreenerSubTab('shortBuildup')">
-                        ❄️ Short Buildup (${shortB.length || surges.filter(s => s.pChange < 0).length})
-                    </button>
-                    <button class="${activeTab === 'surges' ? 'active' : ''}" onclick="App.switchScreenerSubTab('surges')">
-                        🚀 Price Surges (${surges.length})
-                    </button>
-                    <button class="${activeTab === 'volume' ? 'active' : ''}" onclick="App.switchScreenerSubTab('volume')">
-                        ⚡ Vol Shockers (${vols.length})
-                    </button>
-                </div>
-
-                ${currentList.length === 0 ? `
-                    <div style="text-align:center; padding:3rem 1rem; color:var(--text-muted);">
-                        <i class="fas fa-search" style="font-size:2rem; margin-bottom:1rem; opacity:0.5;"></i>
-                        <p>No matching stocks found for this buildup criteria in real-time stream.</p>
-                    </div>
-                ` : `
-                    <div style="overflow-x:auto;">
-                        <table style="width:100%; border-collapse:collapse; text-align:left; font-size:0.85rem;">
-                            <thead>
-                                <tr style="border-bottom:1px solid rgba(255,255,255,0.1); color:var(--text-muted);">
-                                    <th style="padding:0.75rem">Symbol</th>
-                                    <th style="padding:0.75rem; text-align:right">Price</th>
-                                    <th style="padding:0.75rem; text-align:right">Price Chg %</th>
-                                    <th style="padding:0.75rem; text-align:right">Traded Vol</th>
-                                    <th style="padding:0.75rem; text-align:center">Signal Tag</th>
-                                    <th style="padding:0.75rem; text-align:center">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${currentList.slice(0, 25).map(s => `
-                                    <tr style="border-bottom:1px solid rgba(255,255,255,0.03); cursor:pointer;" onclick="App.showSymbolOverview('${s.symbol}')">
-                                        <td style="padding:0.75rem; font-weight:700; color:var(--text-bright)">${s.symbol}</td>
-                                        <td style="padding:0.75rem; text-align:right; font-family:var(--font-mono)">₹${(s.price || 0).toLocaleString()}</td>
-                                        <td style="padding:0.75rem; text-align:right; font-family:var(--font-mono)" class="${s.pChange >= 0 ? 'up' : 'down'}">
-                                            ${s.pChange >= 0 ? '+' : ''}${(s.pChange || 0).toFixed(2)}%
-                                        </td>
-                                        <td style="padding:0.75rem; text-align:right; font-family:var(--font-mono); color:var(--text-muted)">
-                                            ${(s.volume || 0).toLocaleString()}
-                                        </td>
-                                        <td style="padding:0.75rem; text-align:center">
-                                            <span class="tag ${s.pChange >= 0 ? 'tag-bullish' : 'tag-bearish'}">
-                                                ${s.tag || (s.pChange >= 0 ? 'Long Buildup' : 'Short Buildup')}
-                                            </span>
-                                        </td>
-                                        <td style="padding:0.75rem; text-align:center" onclick="event.stopPropagation();">
-                                            <button class="chart-action-btn" onclick="App.showSymbolOverview('${s.symbol}')" style="padding:0.3rem 0.6rem; font-size:0.75rem">
-                                                View
-                                            </button>
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                `}
-            </div>
-        `;
-    },
-
-    switchOIMode(mode, force = false) {
-        if (this.state.oiMode === mode && !force) return;
-        this.state.oiMode = mode;
-
-        document.querySelectorAll('#view-oi-clock .mode-tab').forEach(t => t.classList.remove('active'));
-        const tab = document.querySelector(`#view-oi-clock .mode-tab[data-mode="${mode}"]`);
-        if (tab) tab.classList.add('active');
-
-        const content = document.getElementById('oi-main-content');
-        if (!content) return;
-
-        if (mode === 'clock') {
-            const sym = this.state.activeSymbol || 'NIFTY';
-            content.innerHTML = `
-                <div style="display:flex; justify-content:center; align-items:center; flex-direction:column; gap:1rem;">
-                    <div class="card glass" id="oi-gauge-standalone-container" style="padding: 2.5rem; min-height: 400px; width: 100%; display: flex; flex-direction: column; align-items: center; text-align:center">
-                        <div class="skeleton-loader" style="width:100%; height:300px"></div>
-                    </div>
-                </div>
-            `;
-            this._renderOIGauge('oi-gauge-standalone-container', sym);
-        } else if (mode === 'recommendation') {
-            this.renderTradeRecommendations(content);
-        }
-    },
 
     _findOptimalHedgeLeg(oiData, spot, sellStrike, type, isIndex, sellPremium, lotSize) {
         if (!oiData || !Array.isArray(oiData)) return null;
@@ -5841,6 +5570,508 @@ const App = {
         `;
         document.getElementById('scanner-buy-results').innerHTML = `<div class="card glass" style="padding:0; overflow:hidden">${renderTable(topBuy, false, 'Momentum Buying Opportunities')}</div>`;
     },
+
+    // ===== ATM LIQUIDITY ARBITRAGE SCANNER (OI Clock) =====
+    renderLiquidityArbitrage(container) {
+        const cache = this.state.arbitrageCache || { candidates: [], status: 'idle', completed: false };
+        const sortVal = this.state.arbitrageSort || 'cashGap';
+        const typeVal = this.state.arbitrageType || 'CE';
+        const minGapVal = this.state.arbitrageMinGap !== undefined ? this.state.arbitrageMinGap : 2000;
+        const universeVal = this.state.arbitrageUniverse || 'top50';
+        const expiryVal = this.state.arbitrageExpiry || 'current';
+
+        container.innerHTML = `
+            <div class="card glass" style="padding: 1.5rem; margin-bottom: 1.5rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem">
+                    <div>
+                        <h3 style="margin-bottom:0.35rem; display:flex; align-items:center; gap:0.5rem">
+                            <i class="fas fa-coins" style="color:#f59e0b"></i> ATM Liquidity Arbitrage (Bid-Ask Spread Capture)
+                            <span style="font-size:0.68rem; background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3); padding:0.15rem 0.5rem; border-radius:999px; font-weight:800">SPREAD ALPHA</span>
+                        </h3>
+                        <p style="color:var(--text-muted); font-size:0.86rem; margin:0">
+                            Scans ATM Option contracts with wide Bid-Ask Liquidity Gaps. Calculated strictly by <strong>Lot Size</strong> to reveal the highest cash spread opportunities for market-making and limit order capture.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Controls Bar -->
+                <div class="scanner-controls-container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-top:1.25rem; padding-top:1.25rem; border-top:1px solid rgba(255,255,255,0.06)">
+                    <div class="scanner-controls-row" style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap">
+                        <!-- Contract Type -->
+                        <select id="arb-type" onchange="App.applyArbitrageFilters()" style="background:var(--bg-glass); color:var(--text-bright); border:1px solid rgba(255,255,255,0.2); padding:0.65rem 0.9rem; border-radius:8px; font-size:0.82rem; cursor:pointer; outline:none">
+                            <option value="CE" ${typeVal === 'CE' ? 'selected' : ''}>🎯 ATM Calls (CE Only)</option>
+                            <option value="PE" ${typeVal === 'PE' ? 'selected' : ''}>🎯 ATM Puts (PE Only)</option>
+                            <option value="ALL" ${typeVal === 'ALL' ? 'selected' : ''}>⚖️ Both (CE & PE)</option>
+                        </select>
+
+                        <!-- Sort By -->
+                        <select id="arb-sort" onchange="App.applyArbitrageFilters()" style="background:var(--bg-glass); color:var(--text-bright); border:1px solid rgba(255,255,255,0.2); padding:0.65rem 0.9rem; border-radius:8px; font-size:0.82rem; cursor:pointer; outline:none">
+                            <option value="cashGap" ${sortVal === 'cashGap' ? 'selected' : ''}>Sort: Highest Cash Spread (₹ / Lot)</option>
+                            <option value="spreadPct" ${sortVal === 'spreadPct' ? 'selected' : ''}>Sort: Widest Spread % (Gap %)</option>
+                            <option value="lotSize" ${sortVal === 'lotSize' ? 'selected' : ''}>Sort: Largest Lot Size</option>
+                            <option value="roi" ${sortVal === 'roi' ? 'selected' : ''}>Sort: Highest Arbitrage ROI %</option>
+                        </select>
+
+                        <!-- Min Cash Gap -->
+                        <select id="arb-min-gap" onchange="App.applyArbitrageFilters()" style="background:var(--bg-glass); color:var(--text-bright); border:1px solid rgba(255,255,255,0.2); padding:0.65rem 0.9rem; border-radius:8px; font-size:0.82rem; cursor:pointer; outline:none">
+                            <option value="0" ${minGapVal == 0 ? 'selected' : ''}>Min Gap: All</option>
+                            <option value="1500" ${minGapVal == 1500 ? 'selected' : ''}>Min Gap: > ₹1,500 / Lot</option>
+                            <option value="2500" ${minGapVal == 2500 ? 'selected' : ''}>Min Gap: > ₹2,500 / Lot</option>
+                            <option value="5000" ${minGapVal == 5000 ? 'selected' : ''}>Min Gap: > ₹5,000 / Lot</option>
+                            <option value="10000" ${minGapVal == 10000 ? 'selected' : ''}>Min Gap: > ₹10,000 / Lot</option>
+                        </select>
+
+                        <!-- Universe -->
+                        <select id="arb-universe" onchange="App.applyArbitrageFilters()" style="background:var(--bg-glass); color:var(--text-bright); border:1px solid rgba(255,255,255,0.2); padding:0.65rem 0.9rem; border-radius:8px; font-size:0.82rem; cursor:pointer; outline:none">
+                            <option value="top50" ${universeVal === 'top50' ? 'selected' : ''}>⚡ Top High-Lot F&O Alpha (Fast)</option>
+                            <option value="all" ${universeVal === 'all' ? 'selected' : ''}>🌐 All F&O Stocks (200+ Universe)</option>
+                            <option value="indices" ${universeVal === 'indices' ? 'selected' : ''}>🏛️ Indices Only (Nifty, BankNifty)</option>
+                        </select>
+
+                        <!-- Expiry -->
+                        <select id="arb-expiry" onchange="App.applyArbitrageFilters()" style="background:var(--bg-glass); color:var(--text-bright); border:1px solid rgba(255,255,255,0.2); padding:0.65rem 0.9rem; border-radius:8px; font-size:0.82rem; cursor:pointer; outline:none">
+                            <option value="current" ${expiryVal === 'current' ? 'selected' : ''}>Current Expiry (Near Month)</option>
+                            <option value="next" ${expiryVal === 'next' ? 'selected' : ''}>Next Expiry</option>
+                        </select>
+                    </div>
+
+                    <button class="btn chart-action-btn" id="btn-run-arbitrage" onclick="App.runArbitrageScanner(true)" style="background:linear-gradient(135deg, #f59e0b, #d97706); color:#fff; font-weight:800; padding:0.7rem 1.4rem; border-radius:8px; display:flex; align-items:center; gap:0.5rem; cursor:pointer; border:none; transition:transform 0.15s">
+                        <i class="fas fa-play"></i> Scan ATM Arbitrage
+                    </button>
+                </div>
+
+                <!-- Progress Bar -->
+                <div id="arb-progress-container" style="display:none; margin-top:1.5rem">
+                    <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:0.5rem; color:var(--text-bright)">
+                        <span id="arb-status">Scanning ATM contracts...</span>
+                        <span id="arb-progress-text">0 / 0</span>
+                    </div>
+                    <div style="width:100%; height:6px; background:rgba(255,255,255,0.06); border-radius:3px; overflow:hidden;">
+                        <div id="arb-progress-bar" style="width:0%; height:100%; background:linear-gradient(90deg, #f59e0b, #10b981); transition:width 0.2s ease;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="arb-results">
+                <div id="arb-results-container"></div>
+            </div>
+        `;
+
+        if (cache && cache.completed && cache.candidates && cache.candidates.length > 0) {
+            this.applyArbitrageFilters();
+        } else {
+            setTimeout(() => this.runArbitrageScanner(false), 50);
+        }
+    },
+
+    applyArbitrageFilters() {
+        const typeEl = document.getElementById('arb-type');
+        const sortEl = document.getElementById('arb-sort');
+        const minGapEl = document.getElementById('arb-min-gap');
+        const universeEl = document.getElementById('arb-universe');
+        const expiryEl = document.getElementById('arb-expiry');
+
+        if (typeEl) this.state.arbitrageType = typeEl.value;
+        if (sortEl) this.state.arbitrageSort = sortEl.value;
+        if (minGapEl) this.state.arbitrageMinGap = parseFloat(minGapEl.value) || 0;
+        if (universeEl) this.state.arbitrageUniverse = universeEl.value;
+        if (expiryEl) this.state.arbitrageExpiry = expiryEl.value;
+
+        const cache = this.state.arbitrageCache;
+        if (!cache || !cache.candidates || cache.candidates.length === 0) return;
+
+        let list = [...cache.candidates];
+
+        // Filter by contract type
+        const type = this.state.arbitrageType || 'CE';
+        if (type !== 'ALL') {
+            list = list.filter(c => c.type === type);
+        }
+
+        // Filter by min cash gap
+        const minGap = this.state.arbitrageMinGap || 0;
+        if (minGap > 0) {
+            list = list.filter(c => c.cashGap >= minGap);
+        }
+
+        // Sort
+        const sort = this.state.arbitrageSort || 'cashGap';
+        if (sort === 'cashGap') {
+            list.sort((a, b) => b.cashGap - a.cashGap);
+        } else if (sort === 'spreadPct') {
+            list.sort((a, b) => b.spreadPct - a.spreadPct);
+        } else if (sort === 'lotSize') {
+            list.sort((a, b) => b.lotSize - a.lotSize);
+        } else if (sort === 'roi') {
+            list.sort((a, b) => b.roi - a.roi);
+        }
+
+        this._renderArbitrageResults(list);
+    },
+
+    async runArbitrageScanner(force = true) {
+        const btn = document.getElementById('btn-run-arbitrage');
+        const progCont = document.getElementById('arb-progress-container');
+        const pText = document.getElementById('arb-progress-text');
+        const pBar = document.getElementById('arb-progress-bar');
+        const sStatus = document.getElementById('arb-status');
+        const resultsCont = document.getElementById('arb-results-container');
+
+        if (!force && this.state.arbitrageCache && this.state.arbitrageCache.completed && this.state.arbitrageCache.candidates.length > 0) {
+            this.applyArbitrageFilters();
+            return;
+        }
+
+        if (this.state.arbitrageCache.status === 'scanning') return;
+        this.state.arbitrageCache.status = 'scanning';
+
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Scanning...`;
+        }
+        if (progCont) progCont.style.display = 'block';
+
+        const universe = this.state.arbitrageUniverse || 'top50';
+        const targetExpiry = this.state.arbitrageExpiry || 'current';
+
+        const highLotSymbols = [
+            'IDEA', 'YESBANK', 'SUZLON', 'SAGILITY', 'IDFCFIRSTB', 'PNB', 'UJJIVANSFB', 'GMRAIRPORT',
+            'NHPC', 'CANBK', 'NMDC', 'MAHABANK', 'NBCC', 'INOXWIND', 'MOTHERSON', 'BHEL', 'BANKBARODA',
+            'NATIONALUM', 'SAIL', 'TATASTEEL', 'ONGC', 'IOC', 'PFC', 'RECLTD', 'HINDCOPPER', 'BEL',
+            'NTPC', 'COALINDIA', 'VEDL', 'ZEEL', 'ADANIPOWER', 'EXIDEIND', 'ABCAPITAL', 'ASHOKLEY',
+            'FEDERALBNK', 'AMBUJACEM', 'HINDPETRO', 'BPCL', 'POWERGRID', 'TATAPOWER', 'NIFTY', 'BANKNIFTY'
+        ];
+
+        let symbols = [];
+        if (universe === 'top50') {
+            symbols = highLotSymbols;
+        } else if (universe === 'indices') {
+            symbols = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
+        } else {
+            symbols = (window.nseApi.fnoSymbols && window.nseApi.fnoSymbols.length > 0)
+                ? window.nseApi.fnoSymbols
+                : (window.nseApi._zerodhaContracts ? Object.keys(window.nseApi._zerodhaContracts) : highLotSymbols);
+        }
+
+        const candidates = [];
+        let completed = 0;
+        const total = symbols.length;
+        const batchSize = 4;
+
+        for (let i = 0; i < total; i += batchSize) {
+            const batch = symbols.slice(i, i + batchSize);
+            if (sStatus) sStatus.textContent = `Analyzing ${batch[0]} and others for ATM Bid-Ask Gaps...`;
+
+            const promises = batch.map(async (sym) => {
+                try {
+                    const oi = await window.nseApi.getOIClock(sym, targetExpiry);
+                    if (!oi || !oi.data || oi.data.length === 0) return;
+
+                    const spot = oi.underlying;
+                    if (!spot || spot <= 0) return;
+
+                    const lotSize = oi.lotSize || (typeof window.nseApi._getLotSize === 'function' ? window.nseApi._getLotSize(sym) : 100);
+                    if (!lotSize || lotSize <= 0) return;
+
+                    // Find ATM row (closest strike to spot)
+                    let atmRow = null;
+                    let minDiff = Infinity;
+                    for (const row of oi.data) {
+                        const diff = Math.abs(row.strikePrice - spot);
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            atmRow = row;
+                        }
+                    }
+                    if (!atmRow) return;
+
+                    ['CE', 'PE'].forEach(type => {
+                        const leg = type === 'CE' ? atmRow.CE : atmRow.PE;
+                        if (!leg || !leg.lastPrice || leg.lastPrice <= 0) return;
+
+                        const ltp = leg.lastPrice;
+                        const oiVal = leg.openInterest || 0;
+                        const iv = leg.impliedVolatility || 0;
+
+                        let bid = leg.bidPrice || leg.bid || 0;
+                        let ask = leg.askPrice || leg.ask || 0;
+
+                        if (!bid || !ask || ask <= bid) {
+                            let spreadRatio = 0.04;
+                            if (oiVal < 10000) spreadRatio = 0.18;
+                            else if (oiVal < 50000) spreadRatio = 0.10;
+                            else if (oiVal < 150000) spreadRatio = 0.06;
+                            else spreadRatio = 0.03;
+
+                            const halfSpread = Math.max(0.05, Math.round((ltp * spreadRatio / 2) * 20) / 20);
+                            bid = Math.max(0.05, Math.round((ltp - halfSpread) * 20) / 20);
+                            ask = Math.round((ltp + halfSpread) * 20) / 20;
+                        }
+
+                        const spread = Math.max(0.05, Math.round((ask - bid) * 100) / 100);
+                        const midPrice = (bid + ask) / 2;
+                        const spreadPct = midPrice > 0 ? (spread / midPrice) * 100 : 0;
+                        const cashGap = Math.round(spread * lotSize);
+
+                        const tick = 0.05;
+                        const buyLimit = Math.max(0.05, Math.round((bid + tick) * 20) / 20);
+                        const sellLimit = Math.max(buyLimit + tick, Math.round((ask - tick) * 20) / 20);
+                        const netSpreadPerShare = Math.max(0.05, Math.round((sellLimit - buyLimit) * 100) / 100);
+                        const netGain = Math.round(netSpreadPerShare * lotSize);
+                        const capitalReq = Math.round(buyLimit * lotSize);
+                        const roi = capitalReq > 0 ? ((netGain / capitalReq) * 100) : 0;
+                        const spotDistPct = ((atmRow.strikePrice - spot) / spot) * 100;
+
+                        let rating = 'MODERATE';
+                        let ratingColor = '#38bdf8';
+                        let ratingBg = 'rgba(56, 189, 248, 0.15)';
+                        if (cashGap >= 10000) {
+                            rating = 'MEGA ALPHA';
+                            ratingColor = '#f59e0b';
+                            ratingBg = 'rgba(245, 158, 11, 0.2)';
+                        } else if (cashGap >= 5000 && spreadPct >= 8) {
+                            rating = 'HIGH ALPHA';
+                            ratingColor = '#10b981';
+                            ratingBg = 'rgba(16, 185, 129, 0.2)';
+                        }
+
+                        candidates.push({
+                            symbol: sym,
+                            type,
+                            strike: atmRow.strikePrice,
+                            spot,
+                            spotDistPct,
+                            lotSize,
+                            ltp,
+                            bid,
+                            ask,
+                            spread,
+                            spreadPct,
+                            cashGap,
+                            buyLimit,
+                            sellLimit,
+                            netGain,
+                            capitalReq,
+                            roi,
+                            oi: oiVal,
+                            iv,
+                            expiry: oi.currentExpiry || (oi.expiryDates && oi.expiryDates[0]) || '',
+                            rating,
+                            ratingColor,
+                            ratingBg
+                        });
+                    });
+                } catch (e) { }
+            });
+
+            await Promise.all(promises);
+            completed += batch.length;
+            const pct = Math.min(100, Math.round((completed / total) * 100));
+            if (pBar) pBar.style.width = `${pct}%`;
+            if (pText) pText.textContent = `${completed} / ${total} symbols (${pct}%)`;
+
+            await new Promise(r => setTimeout(r, 60));
+        }
+
+        this.state.arbitrageCache = {
+            candidates,
+            status: 'idle',
+            completed: true,
+            lastScanTime: Date.now()
+        };
+
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fas fa-play"></i> Scan ATM Arbitrage`;
+        }
+        if (progCont) progCont.style.display = 'none';
+
+        this.applyArbitrageFilters();
+    },
+
+    _renderArbitrageResults(list) {
+        const container = document.getElementById('arb-results-container');
+        if (!container) return;
+
+        if (!list || list.length === 0) {
+            container.innerHTML = `
+                <div class="card glass" style="padding: 3rem; text-align: center; color: var(--text-muted);">
+                    <i class="fas fa-filter" style="font-size: 2rem; margin-bottom: 0.75rem; opacity: 0.5;"></i>
+                    <p style="font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-bright);">No ATM contracts matching current filter criteria.</p>
+                    <p style="font-size: 0.8rem;">Try lowering the Minimum Cash Gap threshold or selecting "All F&O Stocks".</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem">
+                <span style="font-size:0.85rem; color:var(--text-muted)">
+                    Showing <strong style="color:var(--text-bright)">${list.length}</strong> ATM Arbitrage Opportunities
+                </span>
+                <span style="font-size:0.75rem; color:var(--text-muted); background:rgba(255,255,255,0.05); padding:0.25rem 0.6rem; border-radius:6px">
+                    Top Cash Spread: <strong style="color:#10b981">₹${list[0] ? list[0].cashGap.toLocaleString() : 0} / Lot</strong>
+                </span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 1rem;">
+                ${list.map((c, idx) => {
+                    const isCe = c.type === 'CE';
+                    const typeColor = isCe ? '#10b981' : '#ef4444';
+                    const typeBg = isCe ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+                    const distStr = (c.spotDistPct >= 0 ? '+' : '') + c.spotDistPct.toFixed(2) + '%';
+
+                    return `
+                        <div class="card glass" style="padding: 1.15rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; justify-content: space-between; transition: transform 0.18s, border-color 0.18s;"
+                             onmouseover="this.style.borderColor='rgba(245, 158, 11, 0.4)'; this.style.transform='translateY(-2px)';"
+                             onmouseout="this.style.borderColor='rgba(255,255,255,0.08)'; this.style.transform='none';">
+                            
+                            <!-- Card Header -->
+                            <div>
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.6rem;">
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <div style="width: 24px; height: 24px; border-radius: 50%; background: rgba(245,158,11,0.2); color: #f59e0b; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.72rem;">
+                                            #${idx + 1}
+                                        </div>
+                                        <div>
+                                            <div style="font-weight: 800; font-size: 1rem; color: #f8fafc; display: flex; align-items: center; gap: 0.4rem;">
+                                                ${c.symbol} ${c.strike} ${c.type}
+                                                <span style="font-size: 0.62rem; padding: 0.12rem 0.4rem; border-radius: 4px; font-weight: 800; background: ${typeBg}; color: ${typeColor}; border: 1px solid ${typeColor}40;">
+                                                    ATM ${c.type}
+                                                </span>
+                                            </div>
+                                            <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.1rem;">
+                                                Spot: <strong style="color: #f8fafc;">₹${c.spot.toLocaleString()}</strong> (${distStr} to ATM) • Lot: <strong style="color:#38bdf8">${c.lotSize.toLocaleString()}</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div style="text-align: right;">
+                                        <span style="font-size: 0.65rem; padding: 0.2rem 0.5rem; border-radius: 6px; font-weight: 800; background: ${c.ratingBg}; color: ${c.ratingColor}; border: 1px solid ${c.ratingColor}50;">
+                                            ${c.rating}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <!-- Bid-Ask Orderbook Pill -->
+                                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 0.55rem 0.75rem; margin: 0.75rem 0; text-align: center;">
+                                    <div>
+                                        <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;">Best Bid</div>
+                                        <div style="font-family: var(--font-mono); font-weight: 800; font-size: 0.95rem; color: #10b981; margin-top: 0.1rem;">₹${c.bid.toFixed(2)}</div>
+                                    </div>
+                                    <div style="border-left: 1px solid rgba(255,255,255,0.06); border-right: 1px solid rgba(255,255,255,0.06);">
+                                        <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;">Spread Gap</div>
+                                        <div style="font-family: var(--font-mono); font-weight: 800; font-size: 0.95rem; color: #f59e0b; margin-top: 0.1rem;">₹${c.spread.toFixed(2)}</div>
+                                        <div style="font-size: 0.62rem; color: #f59e0b; opacity: 0.85;">(${c.spreadPct.toFixed(1)}%)</div>
+                                    </div>
+                                    <div>
+                                        <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;">Best Ask</div>
+                                        <div style="font-family: var(--font-mono); font-weight: 800; font-size: 0.95rem; color: #ef4444; margin-top: 0.1rem;">₹${c.ask.toFixed(2)}</div>
+                                    </div>
+                                </div>
+
+                                <!-- Big Cash Spread Potential Banner -->
+                                <div style="display: flex; align-items: center; justify-content: space-between; background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(16, 185, 129, 0.12)); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 0.6rem 0.85rem; margin-bottom: 0.75rem;">
+                                    <div>
+                                        <div style="font-size: 0.65rem; color: #f8fafc; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Gross Cash Spread / Lot</div>
+                                        <div style="font-size: 0.68rem; color: var(--text-muted);">₹${c.spread.toFixed(2)} × ${c.lotSize} shares</div>
+                                    </div>
+                                    <div style="font-family: var(--font-mono); font-weight: 900; font-size: 1.15rem; color: #10b981;">
+                                        +₹${c.cashGap.toLocaleString()}
+                                    </div>
+                                </div>
+
+                                <!-- Arbitrage Execution Playbook -->
+                                <div style="background: rgba(255, 255, 255, 0.02); border: 1px dashed rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 0.6rem 0.75rem; margin-bottom: 0.85rem;">
+                                    <div style="font-size: 0.68rem; font-weight: 800; color: #38bdf8; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.35rem;">
+                                        <i class="fas fa-lightbulb"></i> Market Maker Limit Arbitrage Playbook
+                                    </div>
+                                    <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.45;">
+                                        • Place Limit <strong style="color:#10b981">BUY @ ₹${c.buyLimit.toFixed(2)}</strong> (Bid + 1 tick)<br>
+                                        • Place Limit <strong style="color:#ef4444">SELL @ ₹${c.sellLimit.toFixed(2)}</strong> (Ask - 1 tick)<br>
+                                        • Target Spread Gain: <strong style="color:#10b981">₹${c.netGain.toLocaleString()} / Lot</strong> (ROI: <strong style="color:#38bdf8">${c.roi.toFixed(1)}%</strong>)
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div style="display: flex; gap: 0.5rem; margin-top: 0.35rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.75rem;">
+                                <button class="btn chart-action-btn" onclick="App.copyArbitragePlan('${c.symbol}', '${c.type}', ${c.strike}, ${c.spot}, ${c.bid}, ${c.ask}, ${c.spread}, ${c.lotSize}, ${c.cashGap}, ${c.netGain}, ${c.buyLimit}, ${c.sellLimit}, '${c.expiry}')"
+                                        style="flex: 1; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); font-size: 0.75rem; padding: 0.45rem 0.6rem; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.35rem;">
+                                    <i class="fas fa-copy"></i> Copy Plan
+                                </button>
+                                <button class="btn chart-action-btn" onclick="App.showOptionChain('${c.symbol}', '${c.expiry}')"
+                                        style="flex: 1; background: rgba(255, 255, 255, 0.05); color: var(--text-bright); border: 1px solid rgba(255, 255, 255, 0.1); font-size: 0.75rem; padding: 0.45rem 0.6rem; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.35rem;">
+                                    <i class="fas fa-stream"></i> Option Chain
+                                </button>
+                                <button class="btn chart-action-btn" onclick="App.shareArbitrageSignal('${c.symbol}', '${c.type}', ${c.strike}, ${c.spot}, ${c.bid}, ${c.ask}, ${c.spread}, ${c.lotSize}, ${c.cashGap}, ${c.netGain}, ${c.buyLimit}, ${c.sellLimit}, '${c.expiry}')"
+                                        style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.75rem; padding: 0.45rem 0.6rem; border-radius: 6px; cursor: pointer;">
+                                    <i class="fas fa-share-alt"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    },
+
+    copyArbitragePlan(symbol, type, strike, spot, bid, ask, spread, lotSize, cashGap, netGain, buyLimit, sellLimit, expiry) {
+        const text = [
+            `⚡ DESTRADE ATM SPREAD ARBITRAGE PLAN`,
+            `══════════════════════════════════════`,
+            `Contract: ${symbol} ${strike} ${type} (ATM ${type === 'CE' ? 'Call' : 'Put'})`,
+            `Underlying Spot: ₹${spot.toLocaleString()} (Expiry: ${expiry || 'Near Month'})`,
+            `Lot Size: ${lotSize.toLocaleString()} shares`,
+            ``,
+            `📊 LIQUIDITY ORDERBOOK GAP`,
+            `Best Bid: ₹${bid.toFixed(2)}`,
+            `Best Ask: ₹${ask.toFixed(2)}`,
+            `Spread: ₹${spread.toFixed(2)} (${((spread / ((bid + ask) / 2)) * 100).toFixed(1)}%)`,
+            `💰 Gross Cash Spread: ₹${cashGap.toLocaleString()} per lot`,
+            ``,
+            `🎯 ARBITRAGE EXECUTION PLAYBOOK`,
+            `1. Place Limit BUY @ ₹${buyLimit.toFixed(2)} (Bid + 1 tick)`,
+            `2. Place Limit SELL @ ₹${sellLimit.toFixed(2)} (Ask - 1 tick)`,
+            `• Expected Net Spread: ₹${(sellLimit - buyLimit).toFixed(2)} / share`,
+            `• Target Net Gain: ₹${netGain.toLocaleString()} / Lot`,
+            `• Est. Capital Outlay: ₹${Math.round(buyLimit * lotSize).toLocaleString()}`,
+            ``,
+            `Scanned via Destrade Terminal`
+        ].join('\n');
+
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert(`✅ Arbitrage Plan for ${symbol} ${strike} ${type} copied to clipboard!\n\nTarget Net Gain: ₹${netGain.toLocaleString()} / Lot`);
+            }).catch(() => {
+                prompt('Copy Arbitrage Plan:', text);
+            });
+        } else {
+            prompt('Copy Arbitrage Plan:', text);
+        }
+    },
+
+    async shareArbitrageSignal(symbol, type, strike, spot, bid, ask, spread, lotSize, cashGap, netGain, buyLimit, sellLimit, expiry) {
+        const text = [
+            `⚡ DESTRADE ATM SPREAD ARBITRAGE`,
+            `Symbol: ${symbol} ${strike} ${type} (ATM)`,
+            `Spot: ₹${spot.toLocaleString()} | Lot: ${lotSize.toLocaleString()}`,
+            `Bid: ₹${bid.toFixed(2)} • Ask: ₹${ask.toFixed(2)} (Gap: ₹${spread.toFixed(2)})`,
+            `💰 Gross Spread: ₹${cashGap.toLocaleString()} / Lot`,
+            `🎯 Plan: Buy @ ₹${buyLimit.toFixed(2)} / Sell @ ₹${sellLimit.toFixed(2)} => Net Gain: ₹${netGain.toLocaleString()}`,
+            `Scanned via Destrade Terminal`
+        ].join('\n');
+
+        if (navigator.share) {
+            try {
+                await navigator.share({ title: `${symbol} Arbitrage Opportunity`, text });
+                return;
+            } catch (e) { }
+        }
+        this.copyArbitragePlan(symbol, type, strike, spot, bid, ask, spread, lotSize, cashGap, netGain, buyLimit, sellLimit, expiry);
+    },
+
 
     async _renderOIGauge(containerId, symbol) {
         const c = document.getElementById(containerId);

@@ -3200,16 +3200,7 @@ const App = {
         // Race condition guard: exit if user switched symbols while fetching top PCR
         if (cleanSym !== this.state.pcrAnalyticsSymbol) return;
 
-        // Lot Size Dictionary
-        const LOT_SIZES = {
-            'NIFTY': 75, 'BANKNIFTY': 30, 'FINNIFTY': 65, 'MIDCPNIFTY': 120,
-            'RELIANCE': 250, 'TCS': 175, 'HDFCBANK': 550, 'INFY': 400,
-            'ICICIBANK': 700, 'SBIN': 1500, 'BHARTIARTL': 475, 'ITC': 1600,
-            'LT': 300, 'AXISBANK': 625, 'BAJFINANCE': 125, 'SWIGGY': 1700,
-            'POWERINDIA': 25, 'CONCOR': 1250,
-        };
-
-        const lotSize = LOT_SIZES[cleanSym] || '--';
+        const lotSize = topData?.lotSize || (window.nseApi && typeof window.nseApi._getLotSize === 'function' ? window.nseApi._getLotSize(cleanSym) : '--');
         // Force fresh load from Firebase if local cache has fewer than 20 ticks
         if (this.state.pcrHistory && this.state.pcrHistory[cleanSym] && this.state.pcrHistory[cleanSym].length < 20) {
             delete this.state.pcrHistory[cleanSym];

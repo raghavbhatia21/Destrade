@@ -5786,38 +5786,31 @@ const App = {
                     }
                     if (!atmRow) return;
 
-                    ['CE', 'PE'].forEach(type => {
+                    await Promise.all(['CE', 'PE'].map(async (type) => {
                         const leg = type === 'CE' ? atmRow.CE : atmRow.PE;
-                        if (!leg || !leg.lastPrice || leg.lastPrice <= 0) return;
+                        if (!leg || !leg.contractId) return;
 
-                        const ltp = leg.lastPrice;
+                        const depth = await window.nseApi.getContractDepthGroww(leg.contractId);
+                        if (!depth || depth.bid <= 0 || depth.ask <= 0 || depth.ask <= depth.bid) return;
+
+                        const bid = depth.bid;
+                        const ask = depth.ask;
+                        const bidQty = depth.bidQty || 0;
+                        const askQty = depth.askQty || 0;
+                        const ltp = leg.lastPrice || ((bid + ask) / 2);
                         const oiVal = leg.openInterest || 0;
                         const iv = leg.impliedVolatility || 0;
 
-                        let bid = leg.bidPrice || leg.bid || 0;
-                        let ask = leg.askPrice || leg.ask || 0;
-
-                        if (!bid || !ask || ask <= bid) {
-                            let spreadRatio = 0.04;
-                            if (oiVal < 10000) spreadRatio = 0.18;
-                            else if (oiVal < 50000) spreadRatio = 0.10;
-                            else if (oiVal < 150000) spreadRatio = 0.06;
-                            else spreadRatio = 0.03;
-
-                            const halfSpread = Math.max(0.05, Math.round((ltp * spreadRatio / 2) * 20) / 20);
-                            bid = Math.max(0.05, Math.round((ltp - halfSpread) * 20) / 20);
-                            ask = Math.round((ltp + halfSpread) * 20) / 20;
-                        }
-
-                        const spread = Math.max(0.05, Math.round((ask - bid) * 100) / 100);
+                        const spread = Math.round((ask - bid) * 100) / 100;
                         const midPrice = (bid + ask) / 2;
                         const spreadPct = midPrice > 0 ? (spread / midPrice) * 100 : 0;
                         const cashGap = Math.round(spread * lotSize);
 
-                        const tick = 0.05;
-                        const buyLimit = Math.max(0.05, Math.round((bid + tick) * 20) / 20);
-                        const sellLimit = Math.max(buyLimit + tick, Math.round((ask - tick) * 20) / 20);
-                        const netSpreadPerShare = Math.max(0.05, Math.round((sellLimit - buyLimit) * 100) / 100);
+                        const tick = bid < 250 ? 0.01 : 0.05;
+                        const canStepInside = spread > (tick * 2.01);
+                        const buyLimit = canStepInside ? Number((bid + tick).toFixed(2)) : bid;
+                        const sellLimit = canStepInside ? Number((ask - tick).toFixed(2)) : ask;
+                        const netSpreadPerShare = Math.max(0, Math.round((sellLimit - buyLimit) * 100) / 100);
                         const netGain = Math.round(netSpreadPerShare * lotSize);
                         const capitalReq = Math.round(buyLimit * lotSize);
                         const roi = capitalReq > 0 ? ((netGain / capitalReq) * 100) : 0;
@@ -5845,7 +5838,10 @@ const App = {
                             lotSize,
                             ltp,
                             bid,
+                            bidQty,
                             ask,
+                            askQty,
+                            tick,
                             spread,
                             spreadPct,
                             cashGap,
@@ -5861,7 +5857,7 @@ const App = {
                             ratingColor,
                             ratingBg
                         });
-                    });
+                    }));
                 } catch (e) { }
             });
 
@@ -5959,6 +5955,7 @@ const App = {
                                     <div>
                                         <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;">Best Bid</div>
                                         <div style="font-family: var(--font-mono); font-weight: 800; font-size: 0.95rem; color: #10b981; margin-top: 0.1rem;">₹${c.bid.toFixed(2)}</div>
+                                        <div style="font-size: 0.62rem; color: var(--text-muted);">Qty: ${(c.bidQty || 0).toLocaleString()}</div>
                                     </div>
                                     <div style="border-left: 1px solid rgba(255,255,255,0.06); border-right: 1px solid rgba(255,255,255,0.06);">
                                         <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;">Spread Gap</div>
@@ -5968,6 +5965,7 @@ const App = {
                                     <div>
                                         <div style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;">Best Ask</div>
                                         <div style="font-family: var(--font-mono); font-weight: 800; font-size: 0.95rem; color: #ef4444; margin-top: 0.1rem;">₹${c.ask.toFixed(2)}</div>
+                                        <div style="font-size: 0.62rem; color: var(--text-muted);">Qty: ${(c.askQty || 0).toLocaleString()}</div>
                                     </div>
                                 </div>
 
@@ -5988,8 +5986,8 @@ const App = {
                                         <i class="fas fa-lightbulb"></i> Market Maker Limit Arbitrage Playbook
                                     </div>
                                     <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.45;">
-                                        • Place Limit <strong style="color:#10b981">BUY @ ₹${c.buyLimit.toFixed(2)}</strong> (Bid + 1 tick)<br>
-                                        • Place Limit <strong style="color:#ef4444">SELL @ ₹${c.sellLimit.toFixed(2)}</strong> (Ask - 1 tick)<br>
+                                        • Place Limit <strong style="color:#10b981">BUY @ ₹${c.buyLimit.toFixed(2)}</strong> (${c.buyLimit > c.bid ? `Bid + ₹${(c.tick || 0.05).toFixed(2)}` : 'at Best Bid'})<br>
+                                        • Place Limit <strong style="color:#ef4444">SELL @ ₹${c.sellLimit.toFixed(2)}</strong> (${c.sellLimit < c.ask ? `Ask - ₹${(c.tick || 0.05).toFixed(2)}` : 'at Best Ask'})<br>
                                         • Target Spread Gain: <strong style="color:#10b981">₹${c.netGain.toLocaleString()} / Lot</strong> (ROI: <strong style="color:#38bdf8">${c.roi.toFixed(1)}%</strong>)
                                     </div>
                                 </div>

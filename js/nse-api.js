@@ -1358,6 +1358,7 @@ class NSEApi {
                     return {
                         strikePrice: strike,
                         CE: c.ce ? {
+                            contractId: c.ce.growwContractId || '',
                             strikePrice: strike,
                             openInterest: c.ce.liveData ? (c.ce.liveData.oi !== undefined ? c.ce.liveData.oi : (c.ce.liveData.openInterest || 0)) : 0,
                             changeinOpenInterest: c.ce.liveData ? ((c.ce.liveData.oi || 0) - (c.ce.liveData.prevOI || 0)) : 0,
@@ -1372,6 +1373,7 @@ class NSEApi {
                             }
                         } : null,
                         PE: c.pe ? {
+                            contractId: c.pe.growwContractId || '',
                             strikePrice: strike,
                             openInterest: c.pe.liveData ? (c.pe.liveData.oi !== undefined ? c.pe.liveData.oi : (c.pe.liveData.openInterest || 0)) : 0,
                             changeinOpenInterest: c.pe.liveData ? ((c.pe.liveData.oi || 0) - (c.pe.liveData.prevOI || 0)) : 0,
@@ -1394,6 +1396,30 @@ class NSEApi {
                 timestamp: new Date().toLocaleTimeString()
             }
         };
+    }
+    async getContractDepthGroww(contractId) {
+        if (!contractId) return null;
+        try {
+            const url = `https://groww.in/v1/api/stocks_fo_data/v1/tr_live_book/exchange/NSE/segment/FNO/${encodeURIComponent(contractId)}/latest`;
+            const d = await this._fetchGroww(url);
+            if (!d || (!d.buyBook && !d.sellBook)) return null;
+            const topBuy = d.buyBook?.['1'];
+            const topSell = d.sellBook?.['1'];
+            const bid = (topBuy && !topBuy.empty && topBuy.price > 0) ? Number(topBuy.price) : 0;
+            const bidQty = (topBuy && !topBuy.empty && topBuy.qty > 0) ? Number(topBuy.qty) : 0;
+            const ask = (topSell && !topSell.empty && topSell.price > 0) ? Number(topSell.price) : 0;
+            const askQty = (topSell && !topSell.empty && topSell.qty > 0) ? Number(topSell.qty) : 0;
+            return {
+                bid,
+                bidQty,
+                ask,
+                askQty,
+                buyBook: d.buyBook || {},
+                sellBook: d.sellBook || {}
+            };
+        } catch (e) {
+            return null;
+        }
     }
 
     // Official Zerodha SPAN contracts catalog directly from https://zerodha.com/margin-calculator/SPAN/

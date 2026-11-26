@@ -4921,7 +4921,7 @@ const App = {
     },
 
 
-    _findOptimalHedgeLeg(oiData, spot, sellStrike, type, isIndex, sellPremium, lotSize) {
+    _findOptimalHedgeLeg(oiData, spot, sellStrike, type, isIndex, sellPremium, lotSize, returnList = false) {
         if (!oiData || !Array.isArray(oiData)) return null;
 
         const candidates = [];
@@ -4986,7 +4986,7 @@ const App = {
         }
 
         candidates.sort((a, b) => b.score - a.score);
-        return candidates[0];
+        return returnList ? candidates.slice(0, 4) : candidates[0];
     },
 
     changeMarginModel(model) {
@@ -5218,70 +5218,28 @@ const App = {
                     const peMaxDist = 1 - (finalMinOtm / 100);
                     const peMinDist = 1 - (finalMaxOtm / 100);
 
-                    let bestCEForSym = null;
-                    let bestPEForSym = null;
+                    const ceRawCands = [];
+                    const peRawCands = [];
 
                     for (const row of oi.data) {
                         const strike = row.strikePrice;
 
-                        // CE Sell: Near OTM, select contract where most premium is available (require >= 1 lot OI liquidity)
-                        if (strike >= spot * ceMinDist && strike <= spot * ceMaxDist && row.CE && row.CE.lastPrice > 0 && (row.CE.openInterest || 0) >= lotSize) {
-                            const grossPremium = row.CE.lastPrice * lotSize;
-                            const bestHedge = this._findOptimalHedgeLeg(oi.data, spot, strike, 'CE', isIndex, row.CE.lastPrice, lotSize);
-                            const hedgeStrike = bestHedge ? bestHedge.strike : null;
-                            const hedgePremium = bestHedge ? bestHedge.premium : 0;
-
-                            const netPremium = Math.max(0.05, row.CE.lastPrice - hedgePremium);
-                            const netCredit = netPremium * lotSize;
-
-                            const cand = {
-                                symbol: sym, type: 'CE', strike, contractId: row.CE.contractId || '', spot, premium: row.CE.lastPrice, lotSize,
-                                grossPremium,
-                                otmPercent: ((strike - spot) / spot) * 100,
-                                margin: null, nakedMargin: null, nakedRoi: 0, roi: 0,
-                                hedgedMargin: null, hedgedRoi: 0, hedgeStrike, hedgeContractId: bestHedge?.contractId || '', hedgePremium, netPremium, netCredit,
-                                value: grossPremium, marginSaved: 0, marginSavedPercent: 0,
-                                strategyName: 'Bear Call Spread', iv: row.CE.impliedVolatility || 0,
-                                oiChg: row.CE.changeinOpenInterest || 0, expiry: oi.currentExpiry || '',
-                                isLiveZerodha: false, isLiveBid: false
-                            };
-                            if (!bestCEForSym || cand.grossPremium > bestCEForSym.grossPremium) {
-                                bestCEForSym = cand;
-                            }
+                        // CE Sell: Near OTM, require >= 1 lot OI liquidity
+                        if (strike >= spot * ceMinDist && strike <= spot * ceMaxDist && row.CE && row.CE.lastPrice > 0 && (row.CE.openInterest || 0) >= lotSize && row.CE.contractId) {
+                            ceRawCands.push({ row, strike, leg: row.CE, grossLtp: row.CE.lastPrice * lotSize });
                         }
 
-                        // PE Sell: Near OTM, select contract where most premium is available (require >= 1 lot OI liquidity)
-                        if (strike <= spot * peMaxDist && strike >= spot * peMinDist && row.PE && row.PE.lastPrice > 0 && (row.PE.openInterest || 0) >= lotSize) {
-                            const grossPremium = row.PE.lastPrice * lotSize;
-                            const bestHedge = this._findOptimalHedgeLeg(oi.data, spot, strike, 'PE', isIndex, row.PE.lastPrice, lotSize);
-                            const hedgeStrike = bestHedge ? bestHedge.strike : null;
-                            const hedgePremium = bestHedge ? bestHedge.premium : 0;
-
-                            const netPremium = Math.max(0.05, row.PE.lastPrice - hedgePremium);
-                            const netCredit = netPremium * lotSize;
-
-                            const cand = {
-                                symbol: sym, type: 'PE', strike, contractId: row.PE.contractId || '', spot, premium: row.PE.lastPrice, lotSize,
-                                grossPremium,
-                                otmPercent: ((spot - strike) / spot) * 100,
-                                margin: null, nakedMargin: null, nakedRoi: 0, roi: 0,
-                                hedgedMargin: null, hedgedRoi: 0, hedgeStrike, hedgeContractId: bestHedge?.contractId || '', hedgePremium, netPremium, netCredit,
-                                value: grossPremium, marginSaved: 0, marginSavedPercent: 0,
-                                strategyName: 'Bull Put Spread', iv: row.PE.impliedVolatility || 0,
-                                oiChg: row.PE.changeinOpenInterest || 0, expiry: oi.currentExpiry || '',
-                                isLiveZerodha: false, isLiveBid: false
-                            };
-                            if (!bestPEForSym || cand.grossPremium > bestPEForSym.grossPremium) {
-                                bestPEForSym = cand;
-                            }
+                        // PE Sell: Near OTM, require >= 1 lot OI liquidity
+                        if (strike <= spot * peMaxDist && strike >= spot * peMinDist && row.PE && row.PE.lastPrice > 0 && (row.PE.openInterest || 0) >= lotSize && row.PE.contractId) {
+                            peRawCands.push({ row, strike, leg: row.PE, grossLtp: row.PE.lastPrice * lotSize });
                         }
 
-                        // Buy Logic: ATM options with active Price & Daily OI Change > 0
+                        // Buy Logic: ATM options with active Price, Daily OI Change > 0 & >= 1 lot OI
                         if (Math.abs(strike - spot) / spot <= 0.025) {
-                            if (row.CE && row.CE.lastPrice > 0 && row.CE.pChange > 0 && (row.CE.changeinOpenInterest || 0) > 0 && (row.CE.openInterest || 0) > 0) {
+                            if (row.CE && row.CE.lastPrice > 0 && row.CE.pChange > 0 && (row.CE.changeinOpenInterest || 0) > 0 && (row.CE.openInterest || 0) >= lotSize) {
                                 const buyMargin = isIndex ? (row.CE.lastPrice * lotSize * 0.70) : (row.CE.lastPrice * lotSize);
                                 buyCandidates.push({
-                                    symbol: sym, type: 'CE', strike, spot, premium: row.CE.lastPrice, lotSize,
+                                    symbol: sym, type: 'CE', strike, contractId: row.CE.contractId || '', spot, premium: row.CE.lastPrice, lotSize,
                                     margin: buyMargin,
                                     pChange: row.CE.pChange,
                                     oiChg: row.CE.changeinOpenInterest, oi: row.CE.openInterest,
@@ -5289,10 +5247,10 @@ const App = {
                                     expiry: oi.currentExpiry || ''
                                 });
                             }
-                            if (row.PE && row.PE.lastPrice > 0 && row.PE.pChange > 0 && (row.PE.changeinOpenInterest || 0) > 0 && (row.PE.openInterest || 0) > 0) {
+                            if (row.PE && row.PE.lastPrice > 0 && row.PE.pChange > 0 && (row.PE.changeinOpenInterest || 0) > 0 && (row.PE.openInterest || 0) >= lotSize) {
                                 const buyMargin = isIndex ? (row.PE.lastPrice * lotSize * 0.70) : (row.PE.lastPrice * lotSize);
                                 buyCandidates.push({
-                                    symbol: sym, type: 'PE', strike, spot, premium: row.PE.lastPrice, lotSize,
+                                    symbol: sym, type: 'PE', strike, contractId: row.PE.contractId || '', spot, premium: row.PE.lastPrice, lotSize,
                                     margin: buyMargin,
                                     pChange: row.PE.pChange,
                                     oiChg: row.PE.changeinOpenInterest, oi: row.PE.openInterest,
@@ -5302,6 +5260,84 @@ const App = {
                             }
                         }
                     }
+
+                    const pickBestLiquidSell = async (rawList, optType) => {
+                        if (rawList.length === 0) return null;
+                        rawList.sort((a, b) => b.grossLtp - a.grossLtp);
+                        const topToCheck = rawList.slice(0, 4);
+                        const depths = await Promise.all(topToCheck.map(c => window.nseApi.getContractDepthGroww(c.leg.contractId)));
+
+                        let bestSell = null;
+                        for (let idx = 0; idx < topToCheck.length; idx++) {
+                            const c = topToCheck[idx];
+                            const depth = depths[idx];
+                            // Strictly require live Best Bid > 0 and Bid Qty >= 1 lot (reject illiquid/zero-bid contracts)
+                            if (!depth || depth.bid <= 0 || depth.bidQty < lotSize) continue;
+                            // Reject broken/illiquid spreads (> 65% wide)
+                            if (depth.ask > 0 && ((depth.ask - depth.bid) / depth.ask) > 0.65) continue;
+
+                            const sellBid = depth.bid;
+                            const grossPremium = sellBid * lotSize;
+                            if (!bestSell || grossPremium > bestSell.grossPremium) {
+                                bestSell = {
+                                    symbol: sym,
+                                    type: optType,
+                                    strike: c.strike,
+                                    contractId: c.leg.contractId,
+                                    spot,
+                                    premium: sellBid,
+                                    bidQty: depth.bidQty,
+                                    askPrice: depth.ask || 0,
+                                    lotSize,
+                                    grossPremium,
+                                    otmPercent: optType === 'CE' ? (((c.strike - spot) / spot) * 100) : (((spot - c.strike) / spot) * 100),
+                                    margin: null, nakedMargin: null, nakedRoi: 0, roi: 0,
+                                    hedgedMargin: null, hedgedRoi: 0,
+                                    hedgeStrike: null, hedgeContractId: '', hedgePremium: 0, hedgeAskQty: 0,
+                                    netPremium: sellBid, netCredit: grossPremium,
+                                    value: grossPremium, marginSaved: 0, marginSavedPercent: 0,
+                                    strategyName: optType === 'CE' ? 'Bear Call Spread' : 'Bull Put Spread',
+                                    iv: c.leg.impliedVolatility || 0,
+                                    oiChg: c.leg.changeinOpenInterest || 0,
+                                    expiry: oi.currentExpiry || '',
+                                    isLiveZerodha: false,
+                                    isLiveBid: true,
+                                    isLiveHedgeAsk: false
+                                };
+                            }
+                        }
+
+                        if (!bestSell) return null;
+
+                        // Find liquid hedge priced strictly at live Best Ask
+                        const hedgeList = this._findOptimalHedgeLeg(oi.data, spot, bestSell.strike, optType, isIndex, bestSell.premium, lotSize, true);
+                        if (Array.isArray(hedgeList) && hedgeList.length > 0) {
+                            const hDepths = await Promise.all(hedgeList.map(h => h.contractId ? window.nseApi.getContractDepthGroww(h.contractId) : Promise.resolve(null)));
+                            for (let hIdx = 0; hIdx < hedgeList.length; hIdx++) {
+                                const h = hedgeList[hIdx];
+                                const hd = hDepths[hIdx];
+                                if (!hd || hd.ask <= 0 || hd.askQty < lotSize) continue;
+                                if (hd.ask >= bestSell.premium * 0.65) continue;
+                                if (hd.bid > 0 && ((hd.ask - hd.bid) / hd.ask) > 0.65) continue;
+
+                                bestSell.hedgeStrike = h.strike;
+                                bestSell.hedgeContractId = h.contractId || '';
+                                bestSell.hedgePremium = hd.ask;
+                                bestSell.hedgeAskQty = hd.askQty;
+                                bestSell.isLiveHedgeAsk = true;
+                                bestSell.netPremium = Math.max(0.05, bestSell.premium - hd.ask);
+                                bestSell.netCredit = bestSell.netPremium * lotSize;
+                                break;
+                            }
+                        }
+
+                        return bestSell;
+                    };
+
+                    const [bestCEForSym, bestPEForSym] = await Promise.all([
+                        pickBestLiquidSell(ceRawCands, 'CE'),
+                        pickBestLiquidSell(peRawCands, 'PE')
+                    ]);
 
                     if (bestCEForSym) sellCandidates.push(bestCEForSym);
                     if (bestPEForSym) sellCandidates.push(bestPEForSym);
@@ -5316,35 +5352,6 @@ const App = {
             if (pBar) pBar.style.width = `${(completed / total) * 100}%`;
 
             await new Promise(r => setTimeout(r, 60)); // Fast batch buffer
-        }
-
-        // Live Orderbook Bid Sync: verify top sell candidates against live Best Bid when market depth is active
-        if (sellCandidates.length > 0 && typeof window.nseApi.getContractDepthGroww === 'function') {
-            if (sStatus) sStatus.textContent = "Verifying live Bid/Ask orderbook for top sell setups...";
-            sellCandidates.sort((a, b) => b.grossPremium - a.grossPremium);
-            const depthTargets = sellCandidates.slice(0, 80);
-            for (let j = 0; j < depthTargets.length; j += 10) {
-                const chunk = depthTargets.slice(j, j + 10);
-                await Promise.all(chunk.map(async (item) => {
-                    if (!item.contractId) return;
-                    try {
-                        const depth = await window.nseApi.getContractDepthGroww(item.contractId);
-                        if (depth && depth.bid > 0) {
-                            item.premium = depth.bid;
-                            item.grossPremium = depth.bid * item.lotSize;
-                            item.isLiveBid = true;
-                            if (item.hedgeContractId) {
-                                const hDepth = await window.nseApi.getContractDepthGroww(item.hedgeContractId);
-                                if (hDepth && hDepth.ask > 0) {
-                                    item.hedgePremium = hDepth.ask;
-                                }
-                            }
-                            item.netPremium = Math.max(0.05, item.premium - (item.hedgePremium || 0));
-                            item.netCredit = item.netPremium * item.lotSize;
-                        }
-                    } catch (e) {}
-                }));
-            }
         }
 
         // Precision enrichment: If Zerodha Live SPAN model is active, fetch official Zerodha SPAN for top setups
@@ -5445,7 +5452,7 @@ const App = {
         const topBuy = filteredBuy.sort((a, b) => b.score - a.score).slice(0, 50);
 
         const renderTable = (data, isSell, title) => {
-            const emptyMsg = `<div class="card glass" style="padding:2rem;text-align:center;color:var(--text-muted)">No ${title || 'options'} matched the scanning criteria.</div>`;
+            const emptyMsg = `<div class="card glass" style="padding:2rem;text-align:center;color:var(--text-muted)">No liquid ${title || 'options'} matched (requires live Bid/Ask orderbook depth &ge; 1 lot).</div>`;
             if (data.length === 0) return emptyMsg;
 
             return `
@@ -5485,7 +5492,8 @@ const App = {
                                                 <b class="mono" style="color:var(--text-bright); font-size:0.95rem">${d.strike}</b>
                                             </div>
                                             <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px">
-                                                ${d.isLiveBid ? 'Live Bid' : 'LTP'}: <span class="mono" style="color:var(--text-bright); font-weight:600">₹${Number(d.premium).toFixed(2)}</span>
+                                                Bid: <span class="mono" style="color:#10b981; font-weight:700">₹${Number(d.premium).toFixed(2)}</span>
+                                                ${d.bidQty ? `<span style="font-size:0.65rem; color:var(--text-muted)"> (Qty: ${d.bidQty.toLocaleString()})</span>` : ''}
                                             </div>
                                         </td>
                                     ` : `
@@ -5532,7 +5540,7 @@ const App = {
                                                             <span class="tag" style="background:rgba(16,185,129,0.2); color:#10b981; font-weight:700; font-size:0.6rem; padding:1px 5px">BUY HEDGE</span>
                                                             <b class="mono" style="color:var(--text-bright)">${d.hedgeStrike} ${d.type}</b>
                                                         </span>
-                                                        <span class="mono" style="color:var(--text-muted)">@ ₹${Number(d.hedgePremium).toFixed(2)}</span>
+                                                        <span class="mono" style="color:#ef4444; font-weight:600">@ Ask ₹${Number(d.hedgePremium).toFixed(2)}</span>
                                                     </div>
                                                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:3px">
                                                         <span style="color:var(--text-muted); font-size:0.7rem">Hedged Total Margin:</span>

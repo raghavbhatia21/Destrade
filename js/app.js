@@ -4937,6 +4937,7 @@ const App = {
                         const distPercent = ((strike - spot) / spot) * 100;
                         candidates.push({
                             strike,
+                            contractId: row.CE.contractId || '',
                             premium: hedgeP,
                             oi: row.CE.openInterest,
                             netP,
@@ -4954,6 +4955,7 @@ const App = {
                         const distPercent = ((spot - strike) / spot) * 100;
                         candidates.push({
                             strike,
+                            contractId: row.PE.contractId || '',
                             premium: hedgeP,
                             oi: row.PE.openInterest,
                             netP,
@@ -5222,8 +5224,8 @@ const App = {
                     for (const row of oi.data) {
                         const strike = row.strikePrice;
 
-                        // CE Sell: Near OTM, select contract where most premium is available
-                        if (strike >= spot * ceMinDist && strike <= spot * ceMaxDist && row.CE && row.CE.lastPrice > 0 && (row.CE.openInterest || 0) > 0) {
+                        // CE Sell: Near OTM, select contract where most premium is available (require >= 1 lot OI liquidity)
+                        if (strike >= spot * ceMinDist && strike <= spot * ceMaxDist && row.CE && row.CE.lastPrice > 0 && (row.CE.openInterest || 0) >= lotSize) {
                             const grossPremium = row.CE.lastPrice * lotSize;
                             const bestHedge = this._findOptimalHedgeLeg(oi.data, spot, strike, 'CE', isIndex, row.CE.lastPrice, lotSize);
                             const hedgeStrike = bestHedge ? bestHedge.strike : null;
@@ -5233,23 +5235,23 @@ const App = {
                             const netCredit = netPremium * lotSize;
 
                             const cand = {
-                                symbol: sym, type: 'CE', strike, spot, premium: row.CE.lastPrice, lotSize,
+                                symbol: sym, type: 'CE', strike, contractId: row.CE.contractId || '', spot, premium: row.CE.lastPrice, lotSize,
                                 grossPremium,
                                 otmPercent: ((strike - spot) / spot) * 100,
                                 margin: null, nakedMargin: null, nakedRoi: 0, roi: 0,
-                                hedgedMargin: null, hedgedRoi: 0, hedgeStrike, hedgePremium, netPremium, netCredit,
+                                hedgedMargin: null, hedgedRoi: 0, hedgeStrike, hedgeContractId: bestHedge?.contractId || '', hedgePremium, netPremium, netCredit,
                                 value: grossPremium, marginSaved: 0, marginSavedPercent: 0,
                                 strategyName: 'Bear Call Spread', iv: row.CE.impliedVolatility || 0,
                                 oiChg: row.CE.changeinOpenInterest || 0, expiry: oi.currentExpiry || '',
-                                isLiveZerodha: false
+                                isLiveZerodha: false, isLiveBid: false
                             };
                             if (!bestCEForSym || cand.grossPremium > bestCEForSym.grossPremium) {
                                 bestCEForSym = cand;
                             }
                         }
 
-                        // PE Sell: Near OTM, select contract where most premium is available
-                        if (strike <= spot * peMaxDist && strike >= spot * peMinDist && row.PE && row.PE.lastPrice > 0 && (row.PE.openInterest || 0) > 0) {
+                        // PE Sell: Near OTM, select contract where most premium is available (require >= 1 lot OI liquidity)
+                        if (strike <= spot * peMaxDist && strike >= spot * peMinDist && row.PE && row.PE.lastPrice > 0 && (row.PE.openInterest || 0) >= lotSize) {
                             const grossPremium = row.PE.lastPrice * lotSize;
                             const bestHedge = this._findOptimalHedgeLeg(oi.data, spot, strike, 'PE', isIndex, row.PE.lastPrice, lotSize);
                             const hedgeStrike = bestHedge ? bestHedge.strike : null;
@@ -5259,15 +5261,15 @@ const App = {
                             const netCredit = netPremium * lotSize;
 
                             const cand = {
-                                symbol: sym, type: 'PE', strike, spot, premium: row.PE.lastPrice, lotSize,
+                                symbol: sym, type: 'PE', strike, contractId: row.PE.contractId || '', spot, premium: row.PE.lastPrice, lotSize,
                                 grossPremium,
                                 otmPercent: ((spot - strike) / spot) * 100,
                                 margin: null, nakedMargin: null, nakedRoi: 0, roi: 0,
-                                hedgedMargin: null, hedgedRoi: 0, hedgeStrike, hedgePremium, netPremium, netCredit,
+                                hedgedMargin: null, hedgedRoi: 0, hedgeStrike, hedgeContractId: bestHedge?.contractId || '', hedgePremium, netPremium, netCredit,
                                 value: grossPremium, marginSaved: 0, marginSavedPercent: 0,
                                 strategyName: 'Bull Put Spread', iv: row.PE.impliedVolatility || 0,
                                 oiChg: row.PE.changeinOpenInterest || 0, expiry: oi.currentExpiry || '',
-                                isLiveZerodha: false
+                                isLiveZerodha: false, isLiveBid: false
                             };
                             if (!bestPEForSym || cand.grossPremium > bestPEForSym.grossPremium) {
                                 bestPEForSym = cand;
@@ -5314,6 +5316,35 @@ const App = {
             if (pBar) pBar.style.width = `${(completed / total) * 100}%`;
 
             await new Promise(r => setTimeout(r, 60)); // Fast batch buffer
+        }
+
+        // Live Orderbook Bid Sync: verify top sell candidates against live Best Bid when market depth is active
+        if (sellCandidates.length > 0 && typeof window.nseApi.getContractDepthGroww === 'function') {
+            if (sStatus) sStatus.textContent = "Verifying live Bid/Ask orderbook for top sell setups...";
+            sellCandidates.sort((a, b) => b.grossPremium - a.grossPremium);
+            const depthTargets = sellCandidates.slice(0, 80);
+            for (let j = 0; j < depthTargets.length; j += 10) {
+                const chunk = depthTargets.slice(j, j + 10);
+                await Promise.all(chunk.map(async (item) => {
+                    if (!item.contractId) return;
+                    try {
+                        const depth = await window.nseApi.getContractDepthGroww(item.contractId);
+                        if (depth && depth.bid > 0) {
+                            item.premium = depth.bid;
+                            item.grossPremium = depth.bid * item.lotSize;
+                            item.isLiveBid = true;
+                            if (item.hedgeContractId) {
+                                const hDepth = await window.nseApi.getContractDepthGroww(item.hedgeContractId);
+                                if (hDepth && hDepth.ask > 0) {
+                                    item.hedgePremium = hDepth.ask;
+                                }
+                            }
+                            item.netPremium = Math.max(0.05, item.premium - (item.hedgePremium || 0));
+                            item.netCredit = item.netPremium * item.lotSize;
+                        }
+                    } catch (e) {}
+                }));
+            }
         }
 
         // Precision enrichment: If Zerodha Live SPAN model is active, fetch official Zerodha SPAN for top setups
@@ -5454,7 +5485,7 @@ const App = {
                                                 <b class="mono" style="color:var(--text-bright); font-size:0.95rem">${d.strike}</b>
                                             </div>
                                             <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px">
-                                                LTP: <span class="mono" style="color:var(--text-bright); font-weight:600">₹${Number(d.premium).toFixed(2)}</span>
+                                                ${d.isLiveBid ? 'Live Bid' : 'LTP'}: <span class="mono" style="color:var(--text-bright); font-weight:600">₹${Number(d.premium).toFixed(2)}</span>
                                             </div>
                                         </td>
                                     ` : `
@@ -5509,7 +5540,7 @@ const App = {
                                                             ${d.isLiveZerodha && d.hedgedMargin ? `₹${Math.round(d.hedgedMargin).toLocaleString()}` : `<span style="color:var(--text-muted); font-size:0.75rem">Pending</span>`}
                                                         </span>
                                                     </div>
-                                                    ${d.margin?.modelName === 'Zerodha Live SPAN' && (d.margin.hedgedSpan || d.margin.span) ? `
+                                                    ${(d.margin?.hedgedSpan || d.margin?.span) ? `
                                                         <div style="font-size:0.62rem; color:var(--text-muted); text-align:right">
                                                             SPAN: ₹${Math.round(d.margin.hedgedSpan || d.margin.span).toLocaleString()} + Exp: ₹${Math.round(d.margin.hedgedExposure || d.margin.exposure).toLocaleString()}
                                                         </div>
